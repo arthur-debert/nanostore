@@ -1,0 +1,17 @@
+name: TODO to Issue
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  todos-to-issues:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: TODO to Issue
+        uses: alstr/todo-to-issue-action@v4
+        with:
+          CLOSE_ISSUES: true
+          AUTO_P: true

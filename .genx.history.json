@@ -1,0 +1,59 @@
+{
+  "version": "1.0",
+  "created": "2025-09-13T01:53:47.932125Z",
+  "modules": {
+    "go": {
+      "status": "installed",
+      "dependencies": [],
+      "operations": [
+        {
+          "type": "install",
+          "timestamp": "2025-09-13T01:53:49.690182Z",
+          "version": "latest",
+          "files_modified": [
+            ".envrc",
+            ".github/.info",
+            ".github/workflows/go.yml",
+            ".github/workflows/release.yml",
+            ".github/workflows/todo-to-issue.yml",
+            ".gitignore",
+            ".goreleaser.yml",
+            ".info",
+            "Dockerfile.deb-test",
+            "LICENSE",
+            "README.md",
+            "TEMPLATE_USAGE.md",
+            "bin/nanostore",
+            "bin/nanostore.darwin-arm64",
+            "cmd/main.go",
+            "cmd/root.go",
+            "container/Dockerfile.fragment",
+            "container/apt-packages.txt",
+            "copier.yml",
+            "docs/dev/README.md",
+            "go.mod",
+            "go.sum",
+            "internal/version/version.go",
+            "local/prompts/.gitkeep",
+            "logging.go",
+            "scripts/build",
+            "scripts/build-all",
+            "scripts/fmt",
+            "scripts/gen-completion",
+            "scripts/gen-manpage",
+            "scripts/go-cloc",
+            "scripts/go-inner-deps",
+            "scripts/go-test-cov",
+            "scripts/lint",
+            "scripts/pre-commit",
+            "scripts/release-new",
+            "scripts/test-deb"
+          ],
+          "success": true,
+          "error_message": null,
+          "conflict_resolution": "overwrite"
+        }
+      ]
+    }
+  }
+}

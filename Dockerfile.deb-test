@@ -1,0 +1,30 @@
+FROM ubuntu:latest
+
+# Install dependencies
+RUN apt-get update && apt-get install -y \
+    curl \
+    sudo \
+    man-db \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy the .deb file
+COPY dist/*.deb /tmp/
+
+# Install the package
+RUN dpkg -i /tmp/*.deb || apt-get install -f -y
+
+# Test the installation
+RUN which nanostore
+RUN nanostore --version
+RUN nanostore --help
+
+# Test completions are installed
+RUN test -f /usr/share/bash-completion/completions/nanostore
+RUN test -f /usr/share/zsh/site-functions/_nanostore
+RUN test -f /usr/share/fish/vendor_completions.d/nanostore.fish
+
+# Test man page is installed
+RUN test -f /usr/share/man/man1/nanostore.1.gz
+RUN man nanostore | head -n 5
+
+CMD ["nanostore", "--help"]

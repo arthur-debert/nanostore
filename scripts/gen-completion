@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Always build the binary to ensure it's for the current platform
+echo "Building nanostore..."
+./scripts/build
+
+# Create completions directory
+mkdir -p completions
+
+# Generate completions
+echo "Generating bash completion..."
+./bin/nanostore completion bash > completions/nanostore.bash
+
+echo "Generating zsh completion..."
+./bin/nanostore completion zsh > completions/_nanostore
+
+echo "Generating fish completion..."
+./bin/nanostore completion fish > completions/nanostore.fish
+
+echo "✅ Completions generated in completions/"
