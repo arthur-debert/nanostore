@@ -1,0 +1,16 @@
+#!/bin/bash
+# Generate and display test coverage for nanostore
+
+# Run tests with coverage for all relevant packages
+go test -coverprofile=coverage.out -coverpkg=github.com/arthur-debert/nanostore/nanostore/internal/engine,github.com/arthur-debert/nanostore/nanostore ./nanostore
+
+# Display coverage report, filtering out files that don't need coverage
+go tool cover -func=coverage.out | \
+  grep -v -E "(internal/version|logging\.go|queries\.go)" | \
+  awk 'BEGIN { printf "%-80s %10s\n", "File", "Coverage" } 
+       { printf "%-80s %10s\n", $1, $NF } 
+       END { print "--------------------------------------------------------------------------------" }'
+
+# Show total coverage (excluding filtered files)
+echo -n "Total coverage (core functionality): "
+go tool cover -func=coverage.out | grep -v -E "(internal/version|logging\.go|queries\.go)" | tail -1 | awk '{print $NF}'
