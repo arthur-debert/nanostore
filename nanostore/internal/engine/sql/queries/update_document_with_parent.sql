@@ -1,9 +1,14 @@
 -- Update document fields including parent
 -- Only updates fields where a value is explicitly provided
--- For parent_uuid: 
---   - NULL in query means don't change
---   - Empty string means set to NULL (make root)
---   - Non-empty string means set new parent
+--
+-- This query uses different semantics for NULL handling:
+-- - For title/body: COALESCE means NULL values don't change the field
+-- - For parent_uuid: We need a CASE statement because:
+--   * NULL parameter (?3 IS NULL) means "don't change parent"
+--   * Empty string parameter means "remove parent" (make root)
+--   * Any other value means "set this as the new parent"
+--
+-- This allows us to distinguish between "no change" and "make root" operations
 UPDATE documents 
 SET 
     title = COALESCE(?1, title),
