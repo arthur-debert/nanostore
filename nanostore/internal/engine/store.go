@@ -18,8 +18,10 @@ type store struct {
 	db *sql.DB
 }
 
-// New creates a new store instance
-func New(dbPath string) (*store, error) {
+// New creates a new store instance that implements the Engine interface.
+// This function returns the Engine interface to ensure proper abstraction
+// and prevent direct access to the concrete store implementation.
+func New(dbPath string) (Engine, error) {
 	db, err := sql.Open("sqlite3", dbPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
@@ -66,28 +68,15 @@ func (s *store) Add(title string, parentID *string) (string, error) {
 }
 
 // Update modifies an existing document
-func (s *store) Update(id string, updates interface{}) error {
-	// Type assert the updates to a map
-	updateMap, ok := updates.(map[string]*string)
-	if !ok {
-		return fmt.Errorf("invalid update request type")
-	}
-
+func (s *store) Update(id string, updates UpdateRequest) error {
+	// No more type assertions needed - we have concrete types!
 	query, err := loadQuery("queries/update_document.sql")
 	if err != nil {
 		return err
 	}
 
-	// Extract title and body from the map
-	var title, body *string
-	if t, exists := updateMap["title"]; exists {
-		title = t
-	}
-	if b, exists := updateMap["body"]; exists {
-		body = b
-	}
-
-	result, err := s.db.Exec(query, title, body, id)
+	// Direct access to strongly-typed fields
+	result, err := s.db.Exec(query, updates.Title, updates.Body, id)
 	if err != nil {
 		return fmt.Errorf("failed to update document: %w", err)
 	}
@@ -129,7 +118,10 @@ func (s *store) SetStatus(id string, status string) error {
 }
 
 // List returns documents based on options
-func (s *store) List(opts interface{}) ([]interface{}, error) {
+func (s *store) List(opts ListOptions) ([]Document, error) {
+	// TODO: In the future, use opts to filter results
+	// For now, we'll implement the basic list functionality
+
 	query, err := loadQuery("queries/list.sql")
 	if err != nil {
 		return nil, err
@@ -141,7 +133,8 @@ func (s *store) List(opts interface{}) ([]interface{}, error) {
 	}
 	defer func() { _ = rows.Close() }()
 
-	var results []interface{}
+	// Using concrete Document type instead of interface{}
+	var results []Document
 	for rows.Next() {
 		var (
 			uuid         string
@@ -159,19 +152,20 @@ func (s *store) List(opts interface{}) ([]interface{}, error) {
 			return nil, fmt.Errorf("failed to scan row: %w", err)
 		}
 
-		doc := map[string]interface{}{
-			"uuid":           uuid,
-			"user_facing_id": userFacingID,
-			"title":          title,
-			"body":           body,
-			"status":         status,
-			"parent_uuid":    nil,
-			"created_at":     createdAt,
-			"updated_at":     updatedAt,
+		// Build strongly-typed Document
+		doc := Document{
+			UUID:         uuid,
+			UserFacingID: userFacingID,
+			Title:        title,
+			Body:         body,
+			Status:       status,
+			CreatedAt:    time.Unix(createdAt, 0),
+			UpdatedAt:    time.Unix(updatedAt, 0),
 		}
 
+		// Handle optional parent UUID
 		if parentUUID.Valid {
-			doc["parent_uuid"] = parentUUID.String
+			doc.ParentUUID = &parentUUID.String
 		}
 
 		results = append(results, doc)
