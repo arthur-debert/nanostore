@@ -505,3 +505,68 @@ func (s *store) listSimpleFiltered(opts types.ListOptions) ([]types.Document, er
 
 	return results, nil
 }
+
+// Delete removes a document and optionally its children
+func (s *store) Delete(id string, cascade bool) error {
+	// Start a transaction
+	tx, err := s.db.Begin()
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	// If not cascading, check if the document has children
+	if !cascade {
+		checkQuery, err := loadQuery("queries/check_has_children.sql")
+		if err != nil {
+			return err
+		}
+
+		var hasChildren bool
+		err = tx.QueryRow(checkQuery, id).Scan(&hasChildren)
+		if err != nil {
+			return fmt.Errorf("failed to check for children: %w", err)
+		}
+
+		if hasChildren {
+			return fmt.Errorf("cannot delete document with children unless cascade is true")
+		}
+	}
+
+	// Load the appropriate delete query
+	var deleteQuery string
+	if cascade {
+		deleteQuery, err = loadQuery("queries/delete_cascade.sql")
+		if err != nil {
+			return err
+		}
+	} else {
+		deleteQuery, err = loadQuery("queries/delete_document.sql")
+		if err != nil {
+			return err
+		}
+	}
+
+	// Execute the delete
+	result, err := tx.Exec(deleteQuery, id)
+	if err != nil {
+		return fmt.Errorf("failed to delete document: %w", err)
+	}
+
+	// Check if any rows were affected
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %w", err)
+	}
+
+	if rowsAffected == 0 {
+		return fmt.Errorf("document not found: %s", id)
+	}
+
+	// Commit the transaction
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	return nil
+}

@@ -14,6 +14,7 @@ type Engine interface {
 	Update(id string, updates UpdateRequest) error
 	SetStatus(id string, status Status) error
 	ResolveUUID(userFacingID string) (string, error)
+	Delete(id string, cascade bool) error
 	Close() error
 }
 
@@ -62,6 +63,11 @@ func (s *storeAdapter) SetStatus(id string, status Status) error {
 // ResolveUUID converts a user-facing ID to a UUID
 func (s *storeAdapter) ResolveUUID(userFacingID string) (string, error) {
 	return s.engine.ResolveUUID(userFacingID)
+}
+
+// Delete removes a document and optionally its children
+func (s *storeAdapter) Delete(id string, cascade bool) error {
+	return s.engine.Delete(id, cascade)
 }
 
 // Close releases any resources

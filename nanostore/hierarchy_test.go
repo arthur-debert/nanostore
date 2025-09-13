@@ -217,9 +217,65 @@ func TestSiblingNumbering(t *testing.T) {
 }
 
 func TestDeletedParentHandling(t *testing.T) {
-	// Note: The current API doesn't have a Delete method
-	// This test would verify CASCADE delete behavior
-	t.Skip("Delete operation not implemented yet")
+	store, err := nanostore.New(":memory:")
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer func() { _ = store.Close() }()
+
+	// Create a hierarchy
+	parentID, err := store.Add("Parent", nil)
+	if err != nil {
+		t.Fatalf("failed to add parent: %v", err)
+	}
+
+	childID, err := store.Add("Child", &parentID)
+	if err != nil {
+		t.Fatalf("failed to add child: %v", err)
+	}
+
+	grandchildID, err := store.Add("Grandchild", &childID)
+	if err != nil {
+		t.Fatalf("failed to add grandchild: %v", err)
+	}
+
+	// Delete the middle node (child) with cascade
+	err = store.Delete(childID, true)
+	if err != nil {
+		t.Errorf("failed to delete child with cascade: %v", err)
+	}
+
+	// Verify parent still exists but child and grandchild are gone
+	docs, err := store.List(nanostore.ListOptions{})
+	if err != nil {
+		t.Fatalf("failed to list documents: %v", err)
+	}
+
+	if len(docs) != 1 {
+		t.Errorf("expected 1 document, got %d", len(docs))
+	}
+
+	if docs[0].UUID != parentID {
+		t.Error("parent not found after cascade delete")
+	}
+
+	// Verify child and grandchild are gone
+	for _, doc := range docs {
+		if doc.UUID == childID || doc.UUID == grandchildID {
+			t.Errorf("found deleted document: %s", doc.Title)
+		}
+	}
+
+	// Test that we can't resolve the deleted documents' IDs
+	_, err = store.ResolveUUID("1.1")
+	if err == nil {
+		t.Error("expected error when resolving deleted child ID")
+	}
+
+	_, err = store.ResolveUUID("1.1.1")
+	if err == nil {
+		t.Error("expected error when resolving deleted grandchild ID")
+	}
 }
 
 func TestResolveComplexIDs(t *testing.T) {

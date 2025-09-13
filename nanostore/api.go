@@ -19,6 +19,11 @@ type Store interface {
 	// ResolveUUID converts a user-facing ID (e.g., "1.2.c3") to a UUID
 	ResolveUUID(userFacingID string) (string, error)
 
+	// Delete removes a document and optionally its children
+	// If cascade is true, all child documents are also deleted
+	// If cascade is false and the document has children, an error is returned
+	Delete(id string, cascade bool) error
+
 	// Close releases any resources held by the store
 	Close() error
 }

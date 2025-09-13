@@ -1,0 +1,38 @@
+proj readme
+
+
+now that v1 is ready, we'll write an internal README.txt for the project.
+
+guidelins: 
+- no markdown, this is a plain text file.
+- no emojis.
+- this is not a ghithub marketing piece, this is a informal but informantional
+  readme that explains the project to a new developer or contributor.
+- you can assume very  senior engineers will read this, so you can use
+  technical terms and jargon without explaining them,  and no need to go over
+  DECLOUPING HAS THIS BENEFITS:.... they know it.
+- create 
+
+  1. Motiviation
+
+  explain the use case, with a good example
+
+  2. Design Decisions
+
+  explain the architecture, the trade-offs (like  +3 levels deep we don't
+  optimize the uuid generation, and it's fine)
+  explain that, give then use case (small scale interactive apps on
+  workstatison) we dont handle concurrecty, that's why sqllite is a good fit.
+
+  3. Feature
+
+  short run down of the lib's features
+
+
+  4. The api
+
+  (not a full api doc, jsut a high level example of how to user to say, a todo
+  list with done and smart ids for users)
+
+
+point to the originating docs/doc-id-store.txt
