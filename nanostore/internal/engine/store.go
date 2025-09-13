@@ -151,56 +151,18 @@ func (s *store) SetStatus(id string, status types.Status) error {
 
 // List returns documents based on options
 func (s *store) List(opts types.ListOptions) ([]types.Document, error) {
-	// Build the query with filters
-	baseQuery, err := loadQuery("queries/list.sql")
+	// If we have filters, we need to use the templated query
+	if hasFilters(opts) {
+		return s.listWithFilters(opts)
+	}
+
+	// No filters - use the simple query
+	query, err := loadQuery("queries/list.sql")
 	if err != nil {
 		return nil, err
 	}
 
-	// Build WHERE conditions and args
-	var conditions []string
-	var args []interface{}
-
-	// Filter by status
-	if len(opts.FilterByStatus) > 0 {
-		placeholders := make([]string, len(opts.FilterByStatus))
-		for i, status := range opts.FilterByStatus {
-			placeholders[i] = "?"
-			args = append(args, string(status))
-		}
-		conditions = append(conditions, fmt.Sprintf("status IN (%s)", strings.Join(placeholders, ", ")))
-	}
-
-	// Filter by parent
-	if opts.FilterByParent != nil {
-		if *opts.FilterByParent == "" {
-			// Empty string means root documents
-			conditions = append(conditions, "parent_uuid IS NULL")
-		} else {
-			conditions = append(conditions, "parent_uuid = ?")
-			args = append(args, *opts.FilterByParent)
-		}
-	}
-
-	// Filter by search (searches in title and body)
-	if opts.FilterBySearch != "" {
-		searchPattern := "%" + opts.FilterBySearch + "%"
-		conditions = append(conditions, "(title LIKE ? OR body LIKE ?)")
-		args = append(args, searchPattern, searchPattern)
-	}
-
-	// Build the final query
-	finalQuery := baseQuery
-	if len(conditions) > 0 {
-		// We need to inject the WHERE clause into the main query, not the CTEs
-		// Replace the final SELECT with one that includes WHERE
-		finalQuery = strings.Replace(baseQuery,
-			"FROM id_tree\nORDER BY depth, created_at",
-			fmt.Sprintf("FROM id_tree\nWHERE %s\nORDER BY depth, created_at", strings.Join(conditions, " AND ")),
-			1)
-	}
-
-	rows, err := s.db.Query(finalQuery, args...)
+	rows, err := s.db.Query(query)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list documents: %w", err)
 	}
@@ -246,6 +208,299 @@ func (s *store) List(opts types.ListOptions) ([]types.Document, error) {
 
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("error iterating rows: %w", err)
+	}
+
+	return results, nil
+}
+
+// hasFilters checks if any filters are specified
+func hasFilters(opts types.ListOptions) bool {
+	return len(opts.FilterByStatus) > 0 ||
+		opts.FilterByParent != nil ||
+		opts.FilterBySearch != ""
+}
+
+// listWithFilters handles filtered queries by building the WHERE clauses into the CTEs
+func (s *store) listWithFilters(opts types.ListOptions) ([]types.Document, error) {
+	// Special case: filtering by a specific parent (not root)
+	if opts.FilterByParent != nil && *opts.FilterByParent != "" {
+		return s.listBySpecificParent(opts)
+	}
+
+	// If we have status or search filters, use the simple filtered query
+	// because these filters can break the hierarchical tree structure
+	if len(opts.FilterByStatus) > 0 || opts.FilterBySearch != "" {
+		return s.listSimpleFiltered(opts)
+	}
+
+	// Load the base query template for hierarchical queries
+	baseQuery, err := loadQuery("queries/list_base.sql")
+	if err != nil {
+		return nil, err
+	}
+
+	// Build WHERE conditions and args
+	var conditions []string
+	var args []interface{}
+
+	// Filter by status
+	if len(opts.FilterByStatus) > 0 {
+		placeholders := make([]string, len(opts.FilterByStatus))
+		for i, status := range opts.FilterByStatus {
+			placeholders[i] = "?"
+			args = append(args, string(status))
+		}
+		conditions = append(conditions, fmt.Sprintf("status IN (%s)", strings.Join(placeholders, ", ")))
+	}
+
+	// Filter by search (searches in title and body)
+	if opts.FilterBySearch != "" {
+		searchPattern := "%" + opts.FilterBySearch + "%"
+		conditions = append(conditions, "(title LIKE ? OR body LIKE ?)")
+		args = append(args, searchPattern, searchPattern)
+	}
+
+	// Build the WHERE clause string
+	whereClause := ""
+	if len(conditions) > 0 {
+		whereClause = " AND " + strings.Join(conditions, " AND ")
+	}
+
+	// Handle parent filter for root documents only
+	rootWhereClause := whereClause
+	childWhereClause := whereClause
+
+	if opts.FilterByParent != nil && *opts.FilterByParent == "" {
+		// Filter for root documents only - child_docs should return nothing
+		childWhereClause = " AND 1=0" // This ensures no children are selected
+	}
+
+	// Replace placeholders in the query
+	finalQuery := strings.Replace(baseQuery, "{{ROOT_WHERE_CLAUSE}}", rootWhereClause, 1)
+	finalQuery = strings.Replace(finalQuery, "{{CHILD_WHERE_CLAUSE}}", childWhereClause, 1)
+
+	// We need to duplicate args for both root and child clauses
+	// Since both CTEs use the same WHERE conditions, we need the args twice
+	allArgs := make([]interface{}, 0, len(args)*2)
+	allArgs = append(allArgs, args...) // For root_docs
+	allArgs = append(allArgs, args...) // For child_docs
+
+	rows, err := s.db.Query(finalQuery, allArgs...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list documents with filters: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	// Parse results using the same logic as the non-filtered version
+	var results []types.Document
+	for rows.Next() {
+		var doc types.Document
+		var parentUUID sql.NullString
+		var createdUnix, updatedUnix int64
+
+		err := rows.Scan(
+			&doc.UUID,
+			&doc.UserFacingID,
+			&doc.Title,
+			&doc.Body,
+			&doc.Status,
+			&parentUUID,
+			&createdUnix,
+			&updatedUnix,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan document: %w", err)
+		}
+
+		// Convert nullable parent UUID
+		if parentUUID.Valid {
+			doc.ParentUUID = &parentUUID.String
+		}
+
+		// Convert Unix timestamps to time.Time
+		doc.CreatedAt = time.Unix(createdUnix, 0)
+		doc.UpdatedAt = time.Unix(updatedUnix, 0)
+
+		results = append(results, doc)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating results: %w", err)
+	}
+
+	return results, nil
+}
+
+// listBySpecificParent handles listing direct children of a specific parent
+func (s *store) listBySpecificParent(opts types.ListOptions) ([]types.Document, error) {
+	// Load the parent-specific query
+	baseQuery, err := loadQuery("queries/list_by_parent.sql")
+	if err != nil {
+		return nil, err
+	}
+
+	// Start with parent UUID as first arg
+	args := []interface{}{*opts.FilterByParent}
+
+	// Build additional WHERE conditions
+	var conditions []string
+
+	// Filter by status
+	if len(opts.FilterByStatus) > 0 {
+		placeholders := make([]string, len(opts.FilterByStatus))
+		for i, status := range opts.FilterByStatus {
+			placeholders[i] = "?"
+			args = append(args, string(status))
+		}
+		conditions = append(conditions, fmt.Sprintf("status IN (%s)", strings.Join(placeholders, ", ")))
+	}
+
+	// Filter by search
+	if opts.FilterBySearch != "" {
+		searchPattern := "%" + opts.FilterBySearch + "%"
+		conditions = append(conditions, "(title LIKE ? OR body LIKE ?)")
+		args = append(args, searchPattern, searchPattern)
+	}
+
+	// Build additional WHERE clause
+	additionalWhere := ""
+	if len(conditions) > 0 {
+		additionalWhere = " AND " + strings.Join(conditions, " AND ")
+	}
+
+	// Replace placeholder in query
+	finalQuery := strings.Replace(baseQuery, "{{ADDITIONAL_WHERE}}", additionalWhere, 1)
+
+	rows, err := s.db.Query(finalQuery, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list children of parent: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	// Parse results
+	var results []types.Document
+	for rows.Next() {
+		var doc types.Document
+		var parentUUID sql.NullString
+		var createdUnix, updatedUnix int64
+
+		err := rows.Scan(
+			&doc.UUID,
+			&doc.UserFacingID,
+			&doc.Title,
+			&doc.Body,
+			&doc.Status,
+			&parentUUID,
+			&createdUnix,
+			&updatedUnix,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan document: %w", err)
+		}
+
+		// Convert nullable parent UUID
+		if parentUUID.Valid {
+			doc.ParentUUID = &parentUUID.String
+		}
+
+		// Convert Unix timestamps to time.Time
+		doc.CreatedAt = time.Unix(createdUnix, 0)
+		doc.UpdatedAt = time.Unix(updatedUnix, 0)
+
+		results = append(results, doc)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating results: %w", err)
+	}
+
+	return results, nil
+}
+
+// listSimpleFiltered handles queries with status/search filters using a simple non-hierarchical approach
+func (s *store) listSimpleFiltered(opts types.ListOptions) ([]types.Document, error) {
+	// Load the simple filtered query
+	baseQuery, err := loadQuery("queries/list_filtered.sql")
+	if err != nil {
+		return nil, err
+	}
+
+	// Build WHERE conditions and args
+	var conditions []string
+	var args []interface{}
+
+	// Filter by status
+	if len(opts.FilterByStatus) > 0 {
+		placeholders := make([]string, len(opts.FilterByStatus))
+		for i, status := range opts.FilterByStatus {
+			placeholders[i] = "?"
+			args = append(args, string(status))
+		}
+		conditions = append(conditions, fmt.Sprintf("status IN (%s)", strings.Join(placeholders, ", ")))
+	}
+
+	// Filter by search
+	if opts.FilterBySearch != "" {
+		searchPattern := "%" + opts.FilterBySearch + "%"
+		conditions = append(conditions, "(title LIKE ? OR body LIKE ?)")
+		args = append(args, searchPattern, searchPattern)
+	}
+
+	// Filter by parent (only root documents)
+	if opts.FilterByParent != nil && *opts.FilterByParent == "" {
+		conditions = append(conditions, "parent_uuid IS NULL")
+	}
+
+	// Build WHERE clause
+	whereClause := ""
+	if len(conditions) > 0 {
+		whereClause = " AND " + strings.Join(conditions, " AND ")
+	}
+
+	// Replace placeholder in query
+	finalQuery := strings.Replace(baseQuery, "{{WHERE_CLAUSE}}", whereClause, 1)
+
+	rows, err := s.db.Query(finalQuery, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list with simple filter: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	// Parse results
+	var results []types.Document
+	for rows.Next() {
+		var doc types.Document
+		var parentUUID sql.NullString
+		var createdUnix, updatedUnix int64
+
+		err := rows.Scan(
+			&doc.UUID,
+			&doc.UserFacingID,
+			&doc.Title,
+			&doc.Body,
+			&doc.Status,
+			&parentUUID,
+			&createdUnix,
+			&updatedUnix,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan document: %w", err)
+		}
+
+		// Convert nullable parent UUID
+		if parentUUID.Valid {
+			doc.ParentUUID = &parentUUID.String
+		}
+
+		// Convert Unix timestamps to time.Time
+		doc.CreatedAt = time.Unix(createdUnix, 0)
+		doc.UpdatedAt = time.Unix(updatedUnix, 0)
+
+		results = append(results, doc)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating results: %w", err)
 	}
 
 	return results, nil
