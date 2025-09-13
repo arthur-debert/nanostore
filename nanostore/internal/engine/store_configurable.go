@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/Masterminds/squirrel"
 	"github.com/arthur-debert/nanostore/nanostore/types"
 	"github.com/google/uuid"
 	_ "github.com/mattn/go-sqlite3"
@@ -16,6 +17,7 @@ type configurableStore struct {
 	config       types.Config
 	idParser     *IDParser
 	queryBuilder *QueryBuilder
+	sqlBuilder   *SQLBuilder
 }
 
 // NewConfigurable creates a new store instance with custom dimension configuration
@@ -41,6 +43,7 @@ func NewConfigurable(dbPath string, config types.Config) (*configurableStore, er
 		config:       config,
 		idParser:     NewIDParser(config),
 		queryBuilder: NewQueryBuilder(config),
+		sqlBuilder:   NewSQLBuilder(),
 	}
 
 	// Run base migrations
@@ -199,31 +202,28 @@ func (s *configurableStore) AddWithDimensions(title string, dimensionValues map[
 	// Build dynamic INSERT statement
 	columns := []string{"uuid", "title", "body", "created_at", "updated_at"}
 	values := []interface{}{id, title, "", now, now}
-	placeholders := []string{"?", "?", "?", "?", "?"}
 
 	// Add dimension columns
 	for _, dim := range s.config.Dimensions {
 		if val, exists := dimensionValues[dim.Name]; exists {
 			columns = append(columns, dim.Name)
 			values = append(values, val)
-			placeholders = append(placeholders, "?")
 		} else if dim.Type == types.Hierarchical {
 			// For hierarchical dimensions, check RefField
 			if val, exists := dimensionValues[dim.RefField]; exists {
 				columns = append(columns, dim.RefField)
 				values = append(values, val)
-				placeholders = append(placeholders, "?")
 			}
 		}
 	}
 
-	query := fmt.Sprintf(
-		"INSERT INTO documents (%s) VALUES (%s)",
-		joinStrings(columns, ", "),
-		joinStrings(placeholders, ", "),
-	)
+	// Use SQL builder for safe query construction
+	query, args, err := s.sqlBuilder.BuildInsert("documents", columns, values)
+	if err != nil {
+		return "", fmt.Errorf("failed to build insert query: %w", err)
+	}
 
-	_, err = tx.Exec(query, values...)
+	_, err = tx.Exec(query, args...)
 	if err != nil {
 		return "", fmt.Errorf("failed to insert document: %w", err)
 	}
@@ -283,17 +283,17 @@ func (s *configurableStore) Update(id string, updates types.UpdateRequest) error
 	}
 
 	// Build dynamic UPDATE statement
-	setClauses := []string{"updated_at = ?"}
-	args := []interface{}{time.Now().Unix()}
+	columns := []string{"updated_at"}
+	values := []interface{}{time.Now().Unix()}
 
 	if updates.Title != nil {
-		setClauses = append(setClauses, "title = ?")
-		args = append(args, *updates.Title)
+		columns = append(columns, "title")
+		values = append(values, *updates.Title)
 	}
 
 	if updates.Body != nil {
-		setClauses = append(setClauses, "body = ?")
-		args = append(args, *updates.Body)
+		columns = append(columns, "body")
+		values = append(values, *updates.Body)
 	}
 
 	// Handle parent update for hierarchical dimension
@@ -301,10 +301,11 @@ func (s *configurableStore) Update(id string, updates types.UpdateRequest) error
 		hierDim := s.findHierarchicalDimension()
 		if hierDim != nil {
 			if *updates.ParentID == "" {
-				setClauses = append(setClauses, fmt.Sprintf("%s = NULL", hierDim.RefField))
+				columns = append(columns, hierDim.RefField)
+				values = append(values, nil)
 			} else {
-				setClauses = append(setClauses, fmt.Sprintf("%s = ?", hierDim.RefField))
-				args = append(args, *updates.ParentID)
+				columns = append(columns, hierDim.RefField)
+				values = append(values, *updates.ParentID)
 			}
 		}
 	}
@@ -328,8 +329,8 @@ func (s *configurableStore) Update(id string, updates types.UpdateRequest) error
 					if !validValue {
 						return fmt.Errorf("invalid value '%s' for dimension '%s'", dimValue, dimName)
 					}
-					setClauses = append(setClauses, fmt.Sprintf("%s = ?", dimName))
-					args = append(args, dimValue)
+					columns = append(columns, dimName)
+					values = append(values, dimValue)
 					break
 				}
 			}
@@ -339,13 +340,11 @@ func (s *configurableStore) Update(id string, updates types.UpdateRequest) error
 		}
 	}
 
-	// Add UUID as last argument
-	args = append(args, id)
-
-	query := fmt.Sprintf(
-		"UPDATE documents SET %s WHERE uuid = ?",
-		joinStrings(setClauses, ", "),
-	)
+	// Use SQL builder for safe query construction
+	query, args, err := s.sqlBuilder.BuildDynamicUpdate(columns, values, id)
+	if err != nil {
+		return fmt.Errorf("failed to build update query: %w", err)
+	}
 
 	result, err := tx.Exec(query, args...)
 	if err != nil {
@@ -504,11 +503,12 @@ func (s *configurableStore) Delete(id string, cascade bool) error {
 		hierDim := s.findHierarchicalDimension()
 		if hierDim != nil {
 			var hasChildren int
-			checkQuery := fmt.Sprintf(
-				"SELECT COUNT(*) FROM documents WHERE %s = ?",
-				hierDim.RefField,
-			)
-			err = tx.QueryRow(checkQuery, id).Scan(&hasChildren)
+			// Use SQL builder for count query
+			query, args, err := s.sqlBuilder.BuildSelectCount("documents", squirrel.Eq{hierDim.RefField: id})
+			if err != nil {
+				return fmt.Errorf("failed to build count query: %w", err)
+			}
+			err = tx.QueryRow(query, args...).Scan(&hasChildren)
 			if err != nil {
 				return fmt.Errorf("failed to check for children: %w", err)
 			}
@@ -648,17 +648,6 @@ func isColumnExistsError(err error) bool {
 func contains(s, substr string) bool {
 	return len(s) >= len(substr) && s[:len(substr)] == substr ||
 		len(s) >= len(substr) && contains(s[1:], substr)
-}
-
-func joinStrings(strs []string, sep string) string {
-	if len(strs) == 0 {
-		return ""
-	}
-	result := strs[0]
-	for i := 1; i < len(strs); i++ {
-		result += sep + strs[i]
-	}
-	return result
 }
 
 // validateConfigInternal validates the configuration
