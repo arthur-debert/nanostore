@@ -9,7 +9,7 @@ import (
 
 func TestNewWithInvalidPath(t *testing.T) {
 	// Try to create store with invalid database path
-	_, err := nanostore.New("/root/nonexistent/invalid.db")
+	_, err := nanostore.NewTestStore("/root/nonexistent/invalid.db")
 	if err == nil {
 		t.Error("expected error when creating store with invalid path")
 	}
@@ -30,14 +30,14 @@ func TestNewWithReadOnlyDirectory(t *testing.T) {
 
 	// Try to create database in read-only directory
 	dbPath := tmpDir + "/test.db"
-	_, err := nanostore.New(dbPath)
+	_, err := nanostore.NewTestStore(dbPath)
 	if err == nil {
 		t.Error("expected error when creating store in read-only directory")
 	}
 }
 
 func TestSetStatusTransactionFailure(t *testing.T) {
-	store, err := nanostore.New(":memory:")
+	store, err := nanostore.NewTestStore(":memory:")
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
@@ -60,7 +60,7 @@ func TestSetStatusTransactionFailure(t *testing.T) {
 }
 
 func TestListWithComplexFilterCombinations(t *testing.T) {
-	store, err := nanostore.New(":memory:")
+	store, err := nanostore.NewTestStore(":memory:")
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
@@ -126,7 +126,7 @@ func TestAddWithExtremelyLongParentChain(t *testing.T) {
 		t.Skip("skipping long parent chain test in short mode")
 	}
 
-	store, err := nanostore.New(":memory:")
+	store, err := nanostore.NewTestStore(":memory:")
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
@@ -158,7 +158,7 @@ func TestAddWithExtremelyLongParentChain(t *testing.T) {
 }
 
 func TestUpdateWithNonExistentParent(t *testing.T) {
-	store, err := nanostore.New(":memory:")
+	store, err := nanostore.NewTestStore(":memory:")
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
@@ -181,7 +181,7 @@ func TestUpdateWithNonExistentParent(t *testing.T) {
 }
 
 func TestResolveUUIDWithMalformedInput(t *testing.T) {
-	store, err := nanostore.New(":memory:")
+	store, err := nanostore.NewTestStore(":memory:")
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
@@ -220,7 +220,7 @@ func TestConcurrentCircularReferenceCheck(t *testing.T) {
 	}
 
 	tmpFile := t.TempDir() + "/concurrent.db"
-	store, err := nanostore.New(tmpFile)
+	store, err := nanostore.NewTestStore(tmpFile)
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
@@ -238,7 +238,7 @@ func TestConcurrentCircularReferenceCheck(t *testing.T) {
 
 	// Goroutine 1: Try to make A child of C
 	go func() {
-		s, err := nanostore.New(tmpFile)
+		s, err := nanostore.NewTestStore(tmpFile)
 		if err != nil {
 			errChan <- err
 			return
@@ -253,7 +253,7 @@ func TestConcurrentCircularReferenceCheck(t *testing.T) {
 
 	// Goroutine 2: Try to make B child of C (also creates circle)
 	go func() {
-		s, err := nanostore.New(tmpFile)
+		s, err := nanostore.NewTestStore(tmpFile)
 		if err != nil {
 			errChan <- err
 			return

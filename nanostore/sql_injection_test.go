@@ -8,7 +8,7 @@ import (
 )
 
 func TestSQLInjectionInAdd(t *testing.T) {
-	store, err := nanostore.New(":memory:")
+	store, err := nanostore.NewTestStore(":memory:")
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
@@ -70,7 +70,7 @@ func TestSQLInjectionInAdd(t *testing.T) {
 }
 
 func TestSQLInjectionInUpdate(t *testing.T) {
-	store, err := nanostore.New(":memory:")
+	store, err := nanostore.NewTestStore(":memory:")
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
@@ -124,7 +124,7 @@ func TestSQLInjectionInUpdate(t *testing.T) {
 }
 
 func TestSQLInjectionInResolveUUID(t *testing.T) {
-	store, err := nanostore.New(":memory:")
+	store, err := nanostore.NewTestStore(":memory:")
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
@@ -189,7 +189,7 @@ func TestSQLInjectionInResolveUUID(t *testing.T) {
 }
 
 func TestSQLInjectionInHierarchicalID(t *testing.T) {
-	store, err := nanostore.New(":memory:")
+	store, err := nanostore.NewTestStore(":memory:")
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
@@ -257,7 +257,7 @@ func TestSQLInjectionInHierarchicalID(t *testing.T) {
 }
 
 func TestSQLInjectionWithNullBytes(t *testing.T) {
-	store, err := nanostore.New(":memory:")
+	store, err := nanostore.NewTestStore(":memory:")
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
@@ -300,7 +300,7 @@ func TestSQLInjectionWithNullBytes(t *testing.T) {
 }
 
 func TestSQLInjectionInParentID(t *testing.T) {
-	store, err := nanostore.New(":memory:")
+	store, err := nanostore.NewTestStore(":memory:")
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}

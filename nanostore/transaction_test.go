@@ -16,7 +16,7 @@ func TestTransactionRollback(t *testing.T) {
 	// Currently, each operation is auto-committed
 	// Future enhancement: Add transaction support to Store interface
 
-	store, err := nanostore.New(":memory:")
+	store, err := nanostore.NewTestStore(":memory:")
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
@@ -44,7 +44,7 @@ func TestDatabaseConsistencyAfterPanic(t *testing.T) {
 	dbPath := filepath.Join(tmpDir, "panic_test.db")
 
 	// Initial setup
-	store1, err := nanostore.New(dbPath)
+	store1, err := nanostore.NewTestStore(dbPath)
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
@@ -90,7 +90,7 @@ func TestDatabaseConsistencyAfterPanic(t *testing.T) {
 	_ = db.Close()
 
 	// Reopen with nanostore
-	store2, err := nanostore.New(dbPath)
+	store2, err := nanostore.NewTestStore(dbPath)
 	if err != nil {
 		t.Fatalf("failed to reopen store: %v", err)
 	}
@@ -133,7 +133,7 @@ func TestConcurrentTransactionIsolation(t *testing.T) {
 	// SQLite uses database-level locking, so concurrent writes will serialize
 	// This is acceptable for the nanostore use case
 
-	store, err := nanostore.New(":memory:")
+	store, err := nanostore.NewTestStore(":memory:")
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
@@ -147,7 +147,7 @@ func TestConcurrentTransactionIsolation(t *testing.T) {
 }
 
 func TestRollbackOnConstraintViolation(t *testing.T) {
-	store, err := nanostore.New(":memory:")
+	store, err := nanostore.NewTestStore(":memory:")
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}

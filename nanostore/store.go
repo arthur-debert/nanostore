@@ -29,15 +29,6 @@ type storeAdapter struct {
 	engine Engine // Using the local Engine interface
 }
 
-// newStore creates a new store instance (internal constructor)
-func newStore(dbPath string) (Store, error) {
-	eng, err := engine.New(dbPath)
-	if err != nil {
-		return nil, err
-	}
-	return &storeAdapter{engine: eng}, nil
-}
-
 // newStoreWithConfig creates a new store instance with custom configuration
 func newStoreWithConfig(dbPath string, config Config) (Store, error) {
 	// Convert public Config to internal types.Config
@@ -56,7 +47,7 @@ func newStoreWithConfig(dbPath string, config Config) (Store, error) {
 		}
 	}
 
-	eng, err := engine.NewConfigurable(dbPath, internalConfig)
+	eng, err := engine.New(dbPath, internalConfig)
 	if err != nil {
 		return nil, err
 	}

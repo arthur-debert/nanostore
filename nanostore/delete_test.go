@@ -8,7 +8,7 @@ import (
 
 func TestDelete(t *testing.T) {
 	t.Run("delete single document without children", func(t *testing.T) {
-		store, err := nanostore.New(":memory:")
+		store, err := nanostore.NewTestStore(":memory:")
 		if err != nil {
 			t.Fatalf("failed to create store: %v", err)
 		}
@@ -37,7 +37,7 @@ func TestDelete(t *testing.T) {
 	})
 
 	t.Run("delete non-existent document", func(t *testing.T) {
-		store, err := nanostore.New(":memory:")
+		store, err := nanostore.NewTestStore(":memory:")
 		if err != nil {
 			t.Fatalf("failed to create store: %v", err)
 		}
@@ -54,7 +54,7 @@ func TestDelete(t *testing.T) {
 	})
 
 	t.Run("delete document with children (cascade=false)", func(t *testing.T) {
-		store, err := nanostore.New(":memory:")
+		store, err := nanostore.NewTestStore(":memory:")
 		if err != nil {
 			t.Fatalf("failed to create store: %v", err)
 		}
@@ -91,7 +91,7 @@ func TestDelete(t *testing.T) {
 	})
 
 	t.Run("delete document with children (cascade=true)", func(t *testing.T) {
-		store, err := nanostore.New(":memory:")
+		store, err := nanostore.NewTestStore(":memory:")
 		if err != nil {
 			t.Fatalf("failed to create store: %v", err)
 		}
@@ -140,7 +140,7 @@ func TestDelete(t *testing.T) {
 	})
 
 	t.Run("delete middle node with cascade", func(t *testing.T) {
-		store, err := nanostore.New(":memory:")
+		store, err := nanostore.NewTestStore(":memory:")
 		if err != nil {
 			t.Fatalf("failed to create store: %v", err)
 		}
@@ -206,7 +206,7 @@ func TestDelete(t *testing.T) {
 	})
 
 	t.Run("delete leaf node", func(t *testing.T) {
-		store, err := nanostore.New(":memory:")
+		store, err := nanostore.NewTestStore(":memory:")
 		if err != nil {
 			t.Fatalf("failed to create store: %v", err)
 		}
@@ -243,7 +243,7 @@ func TestDelete(t *testing.T) {
 	})
 
 	t.Run("delete with mixed statuses", func(t *testing.T) {
-		store, err := nanostore.New(":memory:")
+		store, err := nanostore.NewTestStore(":memory:")
 		if err != nil {
 			t.Fatalf("failed to create store: %v", err)
 		}
@@ -292,7 +292,7 @@ func TestDeleteConcurrent(t *testing.T) {
 	// SQLite has database-level locking, so concurrent deletes from different
 	// connections will result in lock contention. This test verifies that
 	// concurrent deletes from the same connection work correctly.
-	store, err := nanostore.New(":memory:")
+	store, err := nanostore.NewTestStore(":memory:")
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
@@ -328,7 +328,7 @@ func TestDeleteConcurrent(t *testing.T) {
 
 func TestDeleteEdgeCases(t *testing.T) {
 	t.Run("delete with SQL injection attempt", func(t *testing.T) {
-		store, err := nanostore.New(":memory:")
+		store, err := nanostore.NewTestStore(":memory:")
 		if err != nil {
 			t.Fatalf("failed to create store: %v", err)
 		}
@@ -342,7 +342,7 @@ func TestDeleteEdgeCases(t *testing.T) {
 	})
 
 	t.Run("delete empty string ID", func(t *testing.T) {
-		store, err := nanostore.New(":memory:")
+		store, err := nanostore.NewTestStore(":memory:")
 		if err != nil {
 			t.Fatalf("failed to create store: %v", err)
 		}
@@ -355,7 +355,7 @@ func TestDeleteEdgeCases(t *testing.T) {
 	})
 
 	t.Run("delete very deep hierarchy", func(t *testing.T) {
-		store, err := nanostore.New(":memory:")
+		store, err := nanostore.NewTestStore(":memory:")
 		if err != nil {
 			t.Fatalf("failed to create store: %v", err)
 		}

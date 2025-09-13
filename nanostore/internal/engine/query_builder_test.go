@@ -212,8 +212,10 @@ func TestQueryBuilder_GenerateListQuery(t *testing.T) {
 			}
 
 			// Basic SQL syntax validation
-			if !strings.HasPrefix(strings.TrimSpace(query), "WITH RECURSIVE") {
-				t.Error("query should start with WITH RECURSIVE")
+			// Queries either start with WITH RECURSIVE (hierarchical) or SELECT (flat/filtered)
+			trimmedQuery := strings.TrimSpace(query)
+			if !strings.HasPrefix(trimmedQuery, "WITH RECURSIVE") && !strings.HasPrefix(trimmedQuery, "SELECT") {
+				t.Error("query should start with WITH RECURSIVE or SELECT")
 			}
 
 			if !strings.Contains(query, "SELECT") {

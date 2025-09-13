@@ -7,7 +7,7 @@ import (
 )
 
 func TestResolveUUID(t *testing.T) {
-	store, err := nanostore.New(":memory:")
+	store, err := nanostore.NewTestStore(":memory:")
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
@@ -46,7 +46,7 @@ func TestResolveUUID(t *testing.T) {
 }
 
 func TestResolveHierarchicalUUID(t *testing.T) {
-	store, err := nanostore.New(":memory:")
+	store, err := nanostore.NewTestStore(":memory:")
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
@@ -90,7 +90,7 @@ func TestResolveHierarchicalUUID(t *testing.T) {
 }
 
 func TestResolveInvalidID(t *testing.T) {
-	store, err := nanostore.New(":memory:")
+	store, err := nanostore.NewTestStore(":memory:")
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}

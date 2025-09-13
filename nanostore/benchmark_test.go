@@ -8,7 +8,7 @@ import (
 )
 
 func BenchmarkAdd(b *testing.B) {
-	store, err := nanostore.New(":memory:")
+	store, err := nanostore.NewTestStore(":memory:")
 	if err != nil {
 		b.Fatalf("failed to create store: %v", err)
 	}
@@ -40,7 +40,7 @@ func BenchmarkList10000(b *testing.B) {
 }
 
 func benchmarkList(b *testing.B, count int) {
-	store, err := nanostore.New(":memory:")
+	store, err := nanostore.NewTestStore(":memory:")
 	if err != nil {
 		b.Fatalf("failed to create store: %v", err)
 	}
@@ -67,7 +67,7 @@ func benchmarkList(b *testing.B, count int) {
 }
 
 func BenchmarkResolveUUID(b *testing.B) {
-	store, err := nanostore.New(":memory:")
+	store, err := nanostore.NewTestStore(":memory:")
 	if err != nil {
 		b.Fatalf("failed to create store: %v", err)
 	}
@@ -92,7 +92,7 @@ func BenchmarkResolveUUID(b *testing.B) {
 }
 
 func BenchmarkUpdate(b *testing.B) {
-	store, err := nanostore.New(":memory:")
+	store, err := nanostore.NewTestStore(":memory:")
 	if err != nil {
 		b.Fatalf("failed to create store: %v", err)
 	}
@@ -121,7 +121,7 @@ func BenchmarkUpdate(b *testing.B) {
 }
 
 func BenchmarkHierarchicalList(b *testing.B) {
-	store, err := nanostore.New(":memory:")
+	store, err := nanostore.NewTestStore(":memory:")
 	if err != nil {
 		b.Fatalf("failed to create store: %v", err)
 	}
@@ -152,7 +152,7 @@ func BenchmarkHierarchicalList(b *testing.B) {
 }
 
 func BenchmarkMixedStatusList(b *testing.B) {
-	store, err := nanostore.New(":memory:")
+	store, err := nanostore.NewTestStore(":memory:")
 	if err != nil {
 		b.Fatalf("failed to create store: %v", err)
 	}

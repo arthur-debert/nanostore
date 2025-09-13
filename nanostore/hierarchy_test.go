@@ -8,7 +8,7 @@ import (
 )
 
 func TestDeepNesting(t *testing.T) {
-	store, err := nanostore.New(":memory:")
+	store, err := nanostore.NewTestStore(":memory:")
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
@@ -66,7 +66,7 @@ func TestDeepNesting(t *testing.T) {
 }
 
 func TestMixedStatusHierarchy(t *testing.T) {
-	store, err := nanostore.New(":memory:")
+	store, err := nanostore.NewTestStore(":memory:")
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
@@ -129,7 +129,7 @@ func TestMixedStatusHierarchy(t *testing.T) {
 }
 
 func TestSiblingNumbering(t *testing.T) {
-	store, err := nanostore.New(":memory:")
+	store, err := nanostore.NewTestStore(":memory:")
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
@@ -217,7 +217,7 @@ func TestSiblingNumbering(t *testing.T) {
 }
 
 func TestDeletedParentHandling(t *testing.T) {
-	store, err := nanostore.New(":memory:")
+	store, err := nanostore.NewTestStore(":memory:")
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
@@ -279,7 +279,7 @@ func TestDeletedParentHandling(t *testing.T) {
 }
 
 func TestResolveComplexIDs(t *testing.T) {
-	store, err := nanostore.New(":memory:")
+	store, err := nanostore.NewTestStore(":memory:")
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}

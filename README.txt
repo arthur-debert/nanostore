@@ -102,10 +102,7 @@ Configuration for a project management system:
         },
     }
     
-    store, err := nanostore.NewWithConfig("tasks.db", config)
-
-For backward compatibility, nanostore.New() provides a default configuration
-with status (pending/completed) and parent dimensions.
+    store, err := nanostore.New("tasks.db", config)
 
 High-level usage:
 

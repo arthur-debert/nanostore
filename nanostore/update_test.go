@@ -7,7 +7,7 @@ import (
 )
 
 func TestUpdate(t *testing.T) {
-	store, err := nanostore.New(":memory:")
+	store, err := nanostore.NewTestStore(":memory:")
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
@@ -66,7 +66,7 @@ func TestUpdate(t *testing.T) {
 }
 
 func TestUpdateNonExistent(t *testing.T) {
-	store, err := nanostore.New(":memory:")
+	store, err := nanostore.NewTestStore(":memory:")
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
@@ -85,7 +85,7 @@ func TestUpdateNonExistent(t *testing.T) {
 
 func TestUpdateWithoutParentField(t *testing.T) {
 	// Test that existing code without ParentID field continues to work
-	store, err := nanostore.New(":memory:")
+	store, err := nanostore.NewTestStore(":memory:")
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}

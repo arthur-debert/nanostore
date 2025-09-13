@@ -25,6 +25,17 @@ func (qb *QueryBuilder) GenerateListQuery(filters map[string]interface{}) (strin
 	enumDims := GetEnumeratedDimensions(qb.config)
 	hierDim := qb.findHierarchicalDimension()
 
+	// Check if we should use flat listing (when filters are present)
+	_, hasStatusFilter := filters["status"]
+	_, hasParentFilter := filters["parent"]
+	_, hasSearchFilter := filters["search"]
+	hasFilters := hasStatusFilter || hasParentFilter || hasSearchFilter
+
+	// When we have filters, use a simpler query without hierarchy
+	if hasFilters {
+		return qb.generateFlatListQuery(enumDims, hierDim, filters)
+	}
+
 	// Build the WITH RECURSIVE clause for hierarchical + enumerated dimensions
 	var cteBuilder strings.Builder
 	cteBuilder.WriteString("WITH RECURSIVE ")
@@ -377,7 +388,8 @@ func (qb *QueryBuilder) buildWhereClausesAndArgs(filters map[string]interface{},
 		case "parent":
 			if hierDim != nil {
 				if parentID, ok := value.(*string); ok {
-					if parentID == nil {
+					if parentID == nil || *parentID == "" {
+						// Empty string or nil means root documents (NULL parent)
 						whereClauses = append(whereClauses, hierDim.RefField+" IS NULL")
 					} else {
 						whereClauses = append(whereClauses, hierDim.RefField+" = ?")
@@ -410,4 +422,45 @@ func (qb *QueryBuilder) buildWhereClausesAndArgs(filters map[string]interface{},
 	}
 
 	return whereClauses, args
+}
+
+// generateFlatListQuery creates a simple query for filtered results with flat numbering
+func (qb *QueryBuilder) generateFlatListQuery(enumDims []types.DimensionConfig, hierDim *types.DimensionConfig, filters map[string]interface{}) (string, []interface{}, error) {
+	var query strings.Builder
+	query.WriteString("SELECT uuid, title, body, created_at, updated_at,\n")
+
+	// Add dimension columns
+	for _, dim := range enumDims {
+		query.WriteString("    ")
+		query.WriteString(dim.Name)
+		query.WriteString(",\n")
+	}
+
+	// Add hierarchical dimension column if it exists
+	if hierDim != nil {
+		query.WriteString("    ")
+		query.WriteString(hierDim.RefField)
+		query.WriteString(" as ")
+		query.WriteString(hierDim.RefField)
+		query.WriteString(",\n")
+	}
+
+	// Generate ID expression with ROW_NUMBER
+	query.WriteString("    ")
+	query.WriteString(qb.generateIDExpression(enumDims, true))
+	query.WriteString(" as user_facing_id\n")
+
+	query.WriteString("FROM documents\n")
+
+	// Build WHERE clauses
+	whereClauses, args := qb.buildWhereClausesAndArgs(filters, hierDim)
+	if len(whereClauses) > 0 {
+		query.WriteString("WHERE ")
+		query.WriteString(strings.Join(whereClauses, " AND "))
+		query.WriteString("\n")
+	}
+
+	query.WriteString("ORDER BY created_at")
+
+	return query.String(), args, nil
 }

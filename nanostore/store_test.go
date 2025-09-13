@@ -7,7 +7,7 @@ import (
 )
 
 func TestNewStore(t *testing.T) {
-	store, err := nanostore.New(":memory:")
+	store, err := nanostore.NewTestStore(":memory:")
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
@@ -20,7 +20,7 @@ func TestNewStore(t *testing.T) {
 }
 
 func TestAddDocument(t *testing.T) {
-	store, err := nanostore.New(":memory:")
+	store, err := nanostore.NewTestStore(":memory:")
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
@@ -38,7 +38,7 @@ func TestAddDocument(t *testing.T) {
 }
 
 func TestSetStatus(t *testing.T) {
-	store, err := nanostore.New(":memory:")
+	store, err := nanostore.NewTestStore(":memory:")
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}

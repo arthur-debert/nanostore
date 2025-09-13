@@ -8,7 +8,7 @@ import (
 
 func TestUpdateParent(t *testing.T) {
 	t.Run("move document to new parent", func(t *testing.T) {
-		store, err := nanostore.New(":memory:")
+		store, err := nanostore.NewTestStore(":memory:")
 		if err != nil {
 			t.Fatalf("failed to create store: %v", err)
 		}
@@ -58,7 +58,7 @@ func TestUpdateParent(t *testing.T) {
 	})
 
 	t.Run("make child document a root", func(t *testing.T) {
-		store, err := nanostore.New(":memory:")
+		store, err := nanostore.NewTestStore(":memory:")
 		if err != nil {
 			t.Fatalf("failed to create store: %v", err)
 		}
@@ -104,7 +104,7 @@ func TestUpdateParent(t *testing.T) {
 	})
 
 	t.Run("make root document a child", func(t *testing.T) {
-		store, err := nanostore.New(":memory:")
+		store, err := nanostore.NewTestStore(":memory:")
 		if err != nil {
 			t.Fatalf("failed to create store: %v", err)
 		}
@@ -149,7 +149,7 @@ func TestUpdateParent(t *testing.T) {
 	})
 
 	t.Run("prevent self-parent", func(t *testing.T) {
-		store, err := nanostore.New(":memory:")
+		store, err := nanostore.NewTestStore(":memory:")
 		if err != nil {
 			t.Fatalf("failed to create store: %v", err)
 		}
@@ -174,7 +174,7 @@ func TestUpdateParent(t *testing.T) {
 	})
 
 	t.Run("prevent circular reference", func(t *testing.T) {
-		store, err := nanostore.New(":memory:")
+		store, err := nanostore.NewTestStore(":memory:")
 		if err != nil {
 			t.Fatalf("failed to create store: %v", err)
 		}
@@ -209,7 +209,7 @@ func TestUpdateParent(t *testing.T) {
 	})
 
 	t.Run("update parent with other fields", func(t *testing.T) {
-		store, err := nanostore.New(":memory:")
+		store, err := nanostore.NewTestStore(":memory:")
 		if err != nil {
 			t.Fatalf("failed to create store: %v", err)
 		}
@@ -256,7 +256,7 @@ func TestUpdateParent(t *testing.T) {
 	})
 
 	t.Run("update to non-existent parent", func(t *testing.T) {
-		store, err := nanostore.New(":memory:")
+		store, err := nanostore.NewTestStore(":memory:")
 		if err != nil {
 			t.Fatalf("failed to create store: %v", err)
 		}
@@ -279,7 +279,7 @@ func TestUpdateParent(t *testing.T) {
 	})
 
 	t.Run("nil parent means no change", func(t *testing.T) {
-		store, err := nanostore.New(":memory:")
+		store, err := nanostore.NewTestStore(":memory:")
 		if err != nil {
 			t.Fatalf("failed to create store: %v", err)
 		}
@@ -323,7 +323,7 @@ func TestUpdateParent(t *testing.T) {
 }
 
 func TestUpdateParentComplexHierarchy(t *testing.T) {
-	store, err := nanostore.New(":memory:")
+	store, err := nanostore.NewTestStore(":memory:")
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}

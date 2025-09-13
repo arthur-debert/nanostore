@@ -9,7 +9,7 @@ import (
 func TestFilterByStatus(t *testing.T) {
 	// Filtering by status is now implemented
 
-	store, err := nanostore.New(":memory:")
+	store, err := nanostore.NewTestStore(":memory:")
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
@@ -94,7 +94,7 @@ func TestFilterByStatus(t *testing.T) {
 func TestFilterByParent(t *testing.T) {
 	// Filtering by parent is now implemented
 
-	store, err := nanostore.New(":memory:")
+	store, err := nanostore.NewTestStore(":memory:")
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
@@ -192,7 +192,7 @@ func TestFilterByParent(t *testing.T) {
 func TestFilterBySearch(t *testing.T) {
 	// Text search is now implemented
 
-	store, err := nanostore.New(":memory:")
+	store, err := nanostore.NewTestStore(":memory:")
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
@@ -276,7 +276,7 @@ func TestFilterBySearch(t *testing.T) {
 func TestCombinedFilters(t *testing.T) {
 	// Combined filtering is now implemented
 
-	store, err := nanostore.New(":memory:")
+	store, err := nanostore.NewTestStore(":memory:")
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}

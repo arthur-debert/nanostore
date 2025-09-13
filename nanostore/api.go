@@ -28,14 +28,8 @@ type Store interface {
 	Close() error
 }
 
-// New creates a new Store instance connected to the given database path
+// New creates a new Store instance with the specified dimension configuration
 // Use ":memory:" for an in-memory database (useful for testing)
-func New(dbPath string) (Store, error) {
-	return newStore(dbPath)
-}
-
-// NewWithConfig creates a new Store instance with custom dimension configuration
-// This allows for configurable ID generation beyond the default status/parent dimensions
-func NewWithConfig(dbPath string, config Config) (Store, error) {
+func New(dbPath string, config Config) (Store, error) {
 	return newStoreWithConfig(dbPath, config)
 }

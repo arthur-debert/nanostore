@@ -8,7 +8,7 @@ import (
 	"github.com/arthur-debert/nanostore/nanostore"
 )
 
-func ExampleNewWithConfig() {
+func ExampleNew() {
 	// Define custom dimensions for a project management system
 	config := nanostore.Config{
 		Dimensions: []nanostore.DimensionConfig{
@@ -35,7 +35,7 @@ func ExampleNewWithConfig() {
 	}
 
 	// Create store with custom configuration
-	store, err := nanostore.NewWithConfig(":memory:", config)
+	store, err := nanostore.New(":memory:", config)
 	if err != nil {
 		log.Fatal(err)
 	}

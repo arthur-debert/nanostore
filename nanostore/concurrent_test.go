@@ -15,7 +15,7 @@ func TestConcurrentReads(t *testing.T) {
 	tmpDir := t.TempDir()
 	dbPath := filepath.Join(tmpDir, "concurrent.db")
 
-	store, err := nanostore.New(dbPath)
+	store, err := nanostore.NewTestStore(dbPath)
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
@@ -60,7 +60,7 @@ func TestConcurrentReads(t *testing.T) {
 func TestConcurrentWrites(t *testing.T) {
 	// Skip concurrent tests - SQLite in-memory database issues with concurrent connections
 	t.Skip("Skipping concurrent write test - requires shared cache mode")
-	store, err := nanostore.New(":memory:")
+	store, err := nanostore.NewTestStore(":memory:")
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
@@ -119,7 +119,7 @@ func TestConcurrentWrites(t *testing.T) {
 
 func TestConcurrentMixedOperations(t *testing.T) {
 	t.Skip("Skipping concurrent test - requires shared cache mode")
-	store, err := nanostore.New(":memory:")
+	store, err := nanostore.NewTestStore(":memory:")
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
@@ -234,7 +234,7 @@ func TestConcurrentMixedOperations(t *testing.T) {
 
 func TestConcurrentHierarchicalOperations(t *testing.T) {
 	t.Skip("Skipping concurrent test - requires shared cache mode")
-	store, err := nanostore.New(":memory:")
+	store, err := nanostore.NewTestStore(":memory:")
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}

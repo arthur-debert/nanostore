@@ -16,7 +16,7 @@ func TestResourceExhaustionLargeDocuments(t *testing.T) {
 		t.Skip("skipping resource exhaustion test in short mode")
 	}
 
-	store, err := nanostore.New(":memory:")
+	store, err := nanostore.NewTestStore(":memory:")
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
@@ -64,7 +64,7 @@ func TestResourceExhaustionDeepHierarchy(t *testing.T) {
 		t.Skip("skipping resource exhaustion test in short mode")
 	}
 
-	store, err := nanostore.New(":memory:")
+	store, err := nanostore.NewTestStore(":memory:")
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
@@ -109,7 +109,7 @@ func TestResourceExhaustionManyRoots(t *testing.T) {
 		t.Skip("skipping resource exhaustion test in short mode")
 	}
 
-	store, err := nanostore.New(":memory:")
+	store, err := nanostore.NewTestStore(":memory:")
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
@@ -157,7 +157,7 @@ func TestResourceExhaustionConcurrentOperations(t *testing.T) {
 
 	// Use file-based DB for concurrent access
 	tmpFile := t.TempDir() + "/concurrent.db"
-	store, err := nanostore.New(tmpFile)
+	store, err := nanostore.NewTestStore(tmpFile)
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
@@ -189,7 +189,7 @@ func TestResourceExhaustionConcurrentOperations(t *testing.T) {
 			defer wg.Done()
 
 			// Each goroutine creates its own connection
-			s, err := nanostore.New(tmpFile)
+			s, err := nanostore.NewTestStore(tmpFile)
 			if err != nil {
 				errors <- fmt.Errorf("worker %d: failed to open store: %v", workerID, err)
 				return
@@ -259,7 +259,7 @@ func TestResourceExhaustionComplexFilters(t *testing.T) {
 		t.Skip("skipping resource exhaustion test in short mode")
 	}
 
-	store, err := nanostore.New(":memory:")
+	store, err := nanostore.NewTestStore(":memory:")
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}

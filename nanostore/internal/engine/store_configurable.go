@@ -236,11 +236,21 @@ func (s *configurableStore) Update(id string, updates types.UpdateRequest) error
 					return fmt.Errorf("cannot set document as its own parent")
 				}
 
-				// Use existing circular reference check
-				checkQuery, err := loadQuery("queries/check_circular_reference.sql")
-				if err != nil {
-					return err
-				}
+				// Check for circular references
+				// This query traverses the parent chain to see if setting this parent would create a cycle
+				checkQuery := `
+					WITH RECURSIVE parent_chain AS (
+						-- Start with the proposed parent
+						SELECT uuid, parent_uuid FROM documents WHERE uuid = ?
+						UNION ALL
+						-- Recursively follow parent links
+						SELECT d.uuid, d.parent_uuid 
+						FROM documents d
+						JOIN parent_chain pc ON d.uuid = pc.parent_uuid
+					)
+					-- Check if the document we're updating appears in the parent chain
+					SELECT COUNT(*) FROM parent_chain WHERE uuid = ?
+				`
 
 				var cycle int
 				err = tx.QueryRow(checkQuery, *updates.ParentID, id).Scan(&cycle)
@@ -249,7 +259,7 @@ func (s *configurableStore) Update(id string, updates types.UpdateRequest) error
 				}
 
 				if cycle > 0 {
-					return fmt.Errorf("update would create a circular reference")
+					return fmt.Errorf("cannot set parent: would create circular reference")
 				}
 			}
 		}

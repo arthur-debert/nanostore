@@ -7,7 +7,7 @@ import (
 )
 
 func TestUpdateEmptyRequest(t *testing.T) {
-	store, err := nanostore.New(":memory:")
+	store, err := nanostore.NewTestStore(":memory:")
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
@@ -65,7 +65,7 @@ func TestUpdateEmptyRequest(t *testing.T) {
 }
 
 func TestUpdateEmptyRequestWithParent(t *testing.T) {
-	store, err := nanostore.New(":memory:")
+	store, err := nanostore.NewTestStore(":memory:")
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}

@@ -32,7 +32,7 @@ func TestConfigurableStore(t *testing.T) {
 			},
 		}
 
-		store, err := nanostore.NewWithConfig(":memory:", config)
+		store, err := nanostore.New(":memory:", config)
 		if err != nil {
 			t.Fatalf("failed to create configurable store: %v", err)
 		}
@@ -152,7 +152,7 @@ func TestConfigurableStore(t *testing.T) {
 			},
 		}
 
-		store, err := nanostore.NewWithConfig(":memory:", config)
+		store, err := nanostore.New(":memory:", config)
 		if err != nil {
 			t.Fatalf("failed to create store: %v", err)
 		}
@@ -180,39 +180,6 @@ func TestConfigurableStore(t *testing.T) {
 		}
 	})
 
-	t.Run("backward compatibility", func(t *testing.T) {
-		// Test that the default New() function still works
-		store, err := nanostore.New(":memory:")
-		if err != nil {
-			t.Fatalf("failed to create default store: %v", err)
-		}
-		defer func() { _ = store.Close() }()
-
-		// Should work with default status/parent dimensions
-		id, err := store.Add("Test", nil)
-		if err != nil {
-			t.Fatalf("failed to add document: %v", err)
-		}
-
-		err = store.SetStatus(id, nanostore.StatusCompleted)
-		if err != nil {
-			t.Fatalf("failed to set status: %v", err)
-		}
-
-		docs, err := store.List(nanostore.ListOptions{})
-		if err != nil {
-			t.Fatalf("failed to list documents: %v", err)
-		}
-
-		if len(docs) != 1 {
-			t.Errorf("expected 1 document, got %d", len(docs))
-		}
-
-		// Completed status should have 'c' prefix
-		if docs[0].UserFacingID != "c1" {
-			t.Errorf("expected ID 'c1' for completed status, got '%s'", docs[0].UserFacingID)
-		}
-	})
 }
 
 func TestConfigurableIDResolution(t *testing.T) {
@@ -240,7 +207,7 @@ func TestConfigurableIDResolution(t *testing.T) {
 		},
 	}
 
-	store, err := nanostore.NewWithConfig(":memory:", config)
+	store, err := nanostore.New(":memory:", config)
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}

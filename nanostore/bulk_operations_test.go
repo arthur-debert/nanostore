@@ -11,7 +11,7 @@ import (
 )
 
 func TestBulkAdd(t *testing.T) {
-	store, err := nanostore.New(":memory:")
+	store, err := nanostore.NewTestStore(":memory:")
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
@@ -55,7 +55,7 @@ func TestBulkAdd(t *testing.T) {
 }
 
 func TestBulkUpdate(t *testing.T) {
-	store, err := nanostore.New(":memory:")
+	store, err := nanostore.NewTestStore(":memory:")
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
@@ -110,7 +110,7 @@ func TestBulkUpdate(t *testing.T) {
 }
 
 func TestBulkStatusChange(t *testing.T) {
-	store, err := nanostore.New(":memory:")
+	store, err := nanostore.NewTestStore(":memory:")
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
@@ -169,7 +169,7 @@ func TestBulkStatusChange(t *testing.T) {
 }
 
 func TestBulkHierarchicalCreation(t *testing.T) {
-	store, err := nanostore.New(":memory:")
+	store, err := nanostore.NewTestStore(":memory:")
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
@@ -238,7 +238,7 @@ func TestConcurrentBulkOperations(t *testing.T) {
 	tmpDir := t.TempDir()
 	dbPath := filepath.Join(tmpDir, "concurrent_bulk.db")
 
-	store, err := nanostore.New(dbPath)
+	store, err := nanostore.NewTestStore(dbPath)
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
@@ -325,7 +325,7 @@ func TestBulkOperationMemoryUsage(t *testing.T) {
 		t.Skip("Skipping memory usage test in short mode")
 	}
 
-	store, err := nanostore.New(":memory:")
+	store, err := nanostore.NewTestStore(":memory:")
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
