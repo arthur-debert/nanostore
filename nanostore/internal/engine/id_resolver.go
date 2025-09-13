@@ -95,7 +95,10 @@ func (s *store) ResolveUUID(userFacingID string) (string, error) {
 
 	default:
 		// For deeper nesting, fall back to the original iterative approach
-		// This could be extended with more queries for 4, 5, etc. levels
+		// This is a deliberate design choice: most applications use <3 levels of hierarchy,
+		// and optimizing for this common case with single-query resolution provides better
+		// performance for the vast majority of use cases. The tradeoff of N queries for
+		// N-level deep hierarchies (where N > 3) is acceptable given their rarity.
 		return s.resolveUUIDIterative(userFacingID, parsedParts)
 	}
 
