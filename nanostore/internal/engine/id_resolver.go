@@ -9,6 +9,11 @@ import (
 // ResolveUUID converts a user-facing ID to a UUID
 // Handles hierarchical IDs like "1", "c2", "1.2", "1.c3"
 func (s *store) ResolveUUID(userFacingID string) (string, error) {
+	// Validate input doesn't contain SQL injection attempts
+	if strings.ContainsAny(userFacingID, "'\"`;\\") {
+		return "", fmt.Errorf("invalid ID format: contains illegal characters")
+	}
+
 	// Split the ID by dots to handle hierarchical IDs
 	parts := strings.Split(userFacingID, ".")
 
@@ -23,16 +28,21 @@ func (s *store) ResolveUUID(userFacingID string) (string, error) {
 
 		if strings.HasPrefix(part, "c") {
 			status = "completed"
-			_, err := fmt.Sscanf(part[1:], "%d", &number)
-			if err != nil {
+			consumed, err := fmt.Sscanf(part[1:], "%d", &number)
+			if err != nil || consumed != 1 || len(part[1:]) != len(fmt.Sprintf("%d", number)) {
 				return "", fmt.Errorf("invalid ID format: %s", part)
 			}
 		} else {
 			status = "pending"
-			_, err := fmt.Sscanf(part, "%d", &number)
-			if err != nil {
+			consumed, err := fmt.Sscanf(part, "%d", &number)
+			if err != nil || consumed != 1 || len(part) != len(fmt.Sprintf("%d", number)) {
 				return "", fmt.Errorf("invalid ID format: %s", part)
 			}
+		}
+
+		// Validate number is positive
+		if number < 1 {
+			return "", fmt.Errorf("invalid ID format: number must be positive")
 		}
 
 		// Query to find the document at this level
