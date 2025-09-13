@@ -53,6 +53,12 @@ func (s *store) Close() error {
 
 // Add creates a new document
 func (s *store) Add(title string, parentID *string) (string, error) {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return "", fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }() // Rollback is a no-op if tx has been committed
+
 	id := uuid.New().String()
 	now := time.Now().Unix()
 
@@ -61,9 +67,13 @@ func (s *store) Add(title string, parentID *string) (string, error) {
 		return "", err
 	}
 
-	_, err = s.db.Exec(query, id, title, "", "pending", parentID, now, now)
+	_, err = tx.Exec(query, id, title, "", "pending", parentID, now, now)
 	if err != nil {
 		return "", fmt.Errorf("failed to insert document: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return "", fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
 	return id, nil
@@ -71,13 +81,19 @@ func (s *store) Add(title string, parentID *string) (string, error) {
 
 // Update modifies an existing document
 func (s *store) Update(id string, updates types.UpdateRequest) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }() // Rollback is a no-op if tx has been committed
+
 	query, err := loadQuery("queries/update_document.sql")
 	if err != nil {
 		return err
 	}
 
 	// Direct access to strongly-typed fields from the public type
-	result, err := s.db.Exec(query, updates.Title, updates.Body, id)
+	result, err := tx.Exec(query, updates.Title, updates.Body, id)
 	if err != nil {
 		return fmt.Errorf("failed to update document: %w", err)
 	}
@@ -91,18 +107,28 @@ func (s *store) Update(id string, updates types.UpdateRequest) error {
 		return fmt.Errorf("document not found: %s", id)
 	}
 
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
 	return nil
 }
 
 // SetStatus changes the status of a document
 func (s *store) SetStatus(id string, status types.Status) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }() // Rollback is a no-op if tx has been committed
+
 	query, err := loadQuery("queries/set_status.sql")
 	if err != nil {
 		return err
 	}
 
 	// Convert Status to string for SQL query
-	result, err := s.db.Exec(query, string(status), id)
+	result, err := tx.Exec(query, string(status), id)
 	if err != nil {
 		return fmt.Errorf("failed to update status: %w", err)
 	}
@@ -114,6 +140,10 @@ func (s *store) SetStatus(id string, status types.Status) error {
 
 	if rows == 0 {
 		return fmt.Errorf("document not found: %s", id)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
 	return nil
