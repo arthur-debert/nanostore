@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"embed"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/arthur-debert/nanostore/nanostore/types"
@@ -120,15 +121,56 @@ func (s *store) SetStatus(id string, status types.Status) error {
 
 // List returns documents based on options
 func (s *store) List(opts types.ListOptions) ([]types.Document, error) {
-	// TODO: In the future, use opts to filter results
-	// For now, we'll implement the basic list functionality
-
-	query, err := loadQuery("queries/list.sql")
+	// Build the query with filters
+	baseQuery, err := loadQuery("queries/list.sql")
 	if err != nil {
 		return nil, err
 	}
 
-	rows, err := s.db.Query(query)
+	// Build WHERE conditions and args
+	var conditions []string
+	var args []interface{}
+
+	// Filter by status
+	if len(opts.FilterByStatus) > 0 {
+		placeholders := make([]string, len(opts.FilterByStatus))
+		for i, status := range opts.FilterByStatus {
+			placeholders[i] = "?"
+			args = append(args, string(status))
+		}
+		conditions = append(conditions, fmt.Sprintf("status IN (%s)", strings.Join(placeholders, ", ")))
+	}
+
+	// Filter by parent
+	if opts.FilterByParent != nil {
+		if *opts.FilterByParent == "" {
+			// Empty string means root documents
+			conditions = append(conditions, "parent_uuid IS NULL")
+		} else {
+			conditions = append(conditions, "parent_uuid = ?")
+			args = append(args, *opts.FilterByParent)
+		}
+	}
+
+	// Filter by search (searches in title and body)
+	if opts.FilterBySearch != "" {
+		searchPattern := "%" + opts.FilterBySearch + "%"
+		conditions = append(conditions, "(title LIKE ? OR body LIKE ?)")
+		args = append(args, searchPattern, searchPattern)
+	}
+
+	// Build the final query
+	finalQuery := baseQuery
+	if len(conditions) > 0 {
+		// We need to inject the WHERE clause into the main query, not the CTEs
+		// Replace the final SELECT with one that includes WHERE
+		finalQuery = strings.Replace(baseQuery,
+			"FROM id_tree\nORDER BY depth, created_at",
+			fmt.Sprintf("FROM id_tree\nWHERE %s\nORDER BY depth, created_at", strings.Join(conditions, " AND ")),
+			1)
+	}
+
+	rows, err := s.db.Query(finalQuery, args...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list documents: %w", err)
 	}

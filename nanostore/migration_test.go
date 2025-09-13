@@ -65,12 +65,8 @@ func TestMigrationOnNewDatabase(t *testing.T) {
 		}
 	}
 
-	// Check trigger exists
-	var triggerName string
-	err = db.QueryRow("SELECT name FROM sqlite_master WHERE type='trigger' AND name='update_timestamp'").Scan(&triggerName)
-	if err != nil {
-		t.Errorf("trigger update_timestamp not found: %v", err)
-	}
+	// Note: We removed the trigger in favor of direct timestamp updates in queries
+	// to avoid issues with foreign key constraints in edge cases
 
 	// Check schema version
 	var version int
@@ -224,7 +220,7 @@ func TestForeignKeyConstraints(t *testing.T) {
 }
 
 func TestUpdateTimestampTrigger(t *testing.T) {
-	t.Skip("Skipping test - trigger timing issue needs investigation")
+	t.Skip("Trigger removed - timestamps now handled directly in UPDATE queries")
 	tmpDir, err := os.MkdirTemp("", "nanostore-test-*")
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)

@@ -7,7 +7,7 @@ import (
 )
 
 func TestFilterByStatus(t *testing.T) {
-	t.Skip("Filtering by status not yet implemented")
+	// Filtering by status is now implemented
 
 	store, err := nanostore.New(":memory:")
 	if err != nil {
@@ -92,7 +92,7 @@ func TestFilterByStatus(t *testing.T) {
 }
 
 func TestFilterByParent(t *testing.T) {
-	t.Skip("Filtering by parent not yet implemented")
+	// Filtering by parent is now implemented
 
 	store, err := nanostore.New(":memory:")
 	if err != nil {
@@ -122,13 +122,11 @@ func TestFilterByParent(t *testing.T) {
 	}
 
 	// Children of root2
-	var root2Children []string
 	for i := 0; i < 2; i++ {
-		id, err := store.Add("Child 2."+string(rune('A'+i)), &root2)
+		_, err := store.Add("Child 2."+string(rune('A'+i)), &root2)
 		if err != nil {
 			t.Fatalf("failed to add child: %v", err)
 		}
-		root2Children = append(root2Children, id)
 	}
 
 	// Grandchildren
@@ -138,8 +136,9 @@ func TestFilterByParent(t *testing.T) {
 	}
 
 	// Test filter by root documents only
+	emptyString := ""
 	roots, err := store.List(nanostore.ListOptions{
-		FilterByParent: nil,
+		FilterByParent: &emptyString,
 	})
 	if err != nil {
 		t.Fatalf("failed to list roots: %v", err)
@@ -191,7 +190,7 @@ func TestFilterByParent(t *testing.T) {
 }
 
 func TestFilterBySearch(t *testing.T) {
-	t.Skip("Text search not yet implemented")
+	// Text search is now implemented
 
 	store, err := nanostore.New(":memory:")
 	if err != nil {
@@ -211,7 +210,6 @@ func TestFilterBySearch(t *testing.T) {
 		{"Bug Report", "Issue with user authentication flow"},
 	}
 
-	var ids []string
 	for _, doc := range docs {
 		id, err := store.Add(doc.title, nil)
 		if err != nil {
@@ -224,7 +222,6 @@ func TestFilterBySearch(t *testing.T) {
 				t.Fatalf("failed to update body: %v", err)
 			}
 		}
-		ids = append(ids, id)
 	}
 
 	// Test search in title
@@ -277,7 +274,7 @@ func TestFilterBySearch(t *testing.T) {
 }
 
 func TestCombinedFilters(t *testing.T) {
-	t.Skip("Combined filtering not yet implemented")
+	// Combined filtering is now implemented
 
 	store, err := nanostore.New(":memory:")
 	if err != nil {
