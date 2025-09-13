@@ -6,12 +6,12 @@
 --   - Non-empty string means set new parent
 UPDATE documents 
 SET 
-    title = COALESCE(?, title),
-    body = COALESCE(?, body),
+    title = COALESCE(?1, title),
+    body = COALESCE(?2, body),
     parent_uuid = CASE
-        WHEN ?4 IS NULL THEN parent_uuid  -- No change
-        WHEN ?4 = '' THEN NULL            -- Make root
-        ELSE ?4                           -- Set new parent
+        WHEN ?3 IS NULL THEN parent_uuid  -- No change
+        WHEN ?3 = '' THEN NULL            -- Make root
+        ELSE ?3                           -- Set new parent
     END,
     updated_at = strftime('%s', 'now')
-WHERE uuid = ?5
+WHERE uuid = ?4

@@ -124,8 +124,8 @@ func (s *store) Update(id string, updates types.UpdateRequest) error {
 		if err != nil {
 			return err
 		}
-		// Pass parent value as-is (nil check already done above)
-		args = []interface{}{updates.Title, updates.Body, *updates.ParentID, *updates.ParentID, id}
+		// Pass parent value for CASE statement evaluation
+		args = []interface{}{updates.Title, updates.Body, *updates.ParentID, id}
 	} else {
 		// Use the simpler query when parent is not being updated
 		query, err = loadQuery("queries/update_document.sql")
