@@ -22,6 +22,7 @@ go.work.sum
 
 # Binary output
 /nanostore
+!nanostore/
 nanostore-*
 
 # Build directories
