@@ -87,13 +87,56 @@ func (s *store) Update(id string, updates types.UpdateRequest) error {
 	}
 	defer func() { _ = tx.Rollback() }() // Rollback is a no-op if tx has been committed
 
-	query, err := loadQuery("queries/update_document.sql")
-	if err != nil {
-		return err
+	// If parent is being updated, check for circular references
+	if updates.ParentID != nil {
+		// Empty string means "make root", which is always safe
+		if *updates.ParentID != "" {
+			// First check that we're not setting a document as its own parent
+			if *updates.ParentID == id {
+				return fmt.Errorf("cannot set document as its own parent")
+			}
+
+			// Check if this would create a circular reference
+			checkQuery, err := loadQuery("queries/check_circular_reference.sql")
+			if err != nil {
+				return err
+			}
+
+			var wouldBeCircular bool
+			err = tx.QueryRow(checkQuery, *updates.ParentID, id).Scan(&wouldBeCircular)
+			if err != nil {
+				return fmt.Errorf("failed to check for circular reference: %w", err)
+			}
+
+			if wouldBeCircular {
+				return fmt.Errorf("cannot set parent: would create circular reference")
+			}
+		}
 	}
 
-	// Direct access to strongly-typed fields from the public type
-	result, err := tx.Exec(query, updates.Title, updates.Body, id)
+	// Choose the appropriate update query
+	var query string
+	var args []interface{}
+
+	if updates.ParentID != nil {
+		// Use the query that handles parent updates
+		query, err = loadQuery("queries/update_document_with_parent.sql")
+		if err != nil {
+			return err
+		}
+		// Pass parent value as-is (nil check already done above)
+		args = []interface{}{updates.Title, updates.Body, *updates.ParentID, *updates.ParentID, id}
+	} else {
+		// Use the simpler query when parent is not being updated
+		query, err = loadQuery("queries/update_document.sql")
+		if err != nil {
+			return err
+		}
+		args = []interface{}{updates.Title, updates.Body, id}
+	}
+
+	// Execute the update
+	result, err := tx.Exec(query, args...)
 	if err != nil {
 		return fmt.Errorf("failed to update document: %w", err)
 	}
