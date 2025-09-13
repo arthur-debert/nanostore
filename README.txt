@@ -106,14 +106,16 @@ Configuration for a project management system:
 
 High-level usage:
 
-    // Add tasks - they get default dimension values
-    epic, _ := store.Add("Q1 Product Launch", nil)
-    task1, _ := store.Add("Design mockups", &epic)
-    task2, _ := store.Add("Implement backend", &epic)
+    // Add tasks with dimension values
+    epic, _ := store.Add("Q1 Product Launch", nil, nil) // Uses defaults
+    task1, _ := store.Add("Design mockups", &epic, nil) // Inherits parent, uses defaults
+    task2, _ := store.Add("Implement backend", &epic, map[string]string{
+        "priority": "high",  // Set high priority
+    })
     
     // Update status - changes ID prefix
-    store.SetStatus(task1, nanostore.Status("done"))      // Now: 1.d1
-    store.SetStatus(task2, nanostore.Status("in_progress")) // Now: 1.p1
+    store.SetStatus(task1, nanostore.Status("done"))       // Now: 1.d1
+    store.SetStatus(task2, nanostore.Status("in_progress")) // Now: 1.hp1 (high priority + in_progress)
     
     // List all documents
     docs, _ := store.List(nanostore.ListOptions{})
@@ -121,15 +123,18 @@ High-level usage:
     // User sees:
     // 1. Q1 Product Launch
     //   1.d1. Design mockups (done)
-    //   1.p1. Implement backend (in_progress)
+    //   1.hp1. Implement backend (high priority, in_progress)
     
-    // Resolve any ID format
-    uuid, _ := store.ResolveUUID("1.p1")  // Backend task UUID
+    // Resolve any ID format (including permutations)
+    uuid, _ := store.ResolveUUID("1.hp1")  // Backend task UUID
+    uuid, _ := store.ResolveUUID("1.ph1")  // Same document!
     
     // Update with dimension awareness
     store.Update(uuid, nanostore.UpdateRequest{
-        Title:    stringPtr("Implement REST API"),
-        ParentID: nil,  // Move to root level
+        Title: stringPtr("Implement REST API"),
+        Dimensions: map[string]string{
+            "priority": "urgent",  // Escalate to urgent
+        },
     })
     
     // Delete with cascade
