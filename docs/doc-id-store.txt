@@ -261,24 +261,54 @@ Summary:
       }
       ```
 
-7. Configurable ID Resolution:
+7. ID Format and Resolution Rules:
 
-      ID resolution adapts to the configured dimensions and prefixes.
+      7.1. Core Design Decisions:
+      - Single-letter prefixes only: Prefixes must be exactly one lowercase letter [a-z]
+      - Numbers always represent IDs: No ambiguity between prefixes and numbers
+      - Hierarchical precedence: Hierarchy forms the backbone (1.2.3), prefixes apply at each level
+      - Alphabetical prefix ordering: Multiple prefixes always appear in alphabetical order by dimension name
+      - Dimension limit: Maximum 5-7 dimensions for performance optimization
+      - Scale assumption: Optimized for hundreds of objects, not millions
 
-      Example with configuration: status=["pending","completed","blocked"], priority=["low","high"], parent=hierarchical
+      7.2. ID Format Examples:
+      Single enumerated dimension:
+      - "1", "2", "3" (no prefix - default value)
+      - "c1", "c2" (completed items)
+      - "h1", "h2" (high priority items)
+      
+      Multiple enumerated dimensions (alphabetical ordering):
+      - "hp1" (high priority + pending) - NOT "ph1"
+      - "ch2" (completed + high priority) - NOT "hc2"
+      
+      Hierarchical with enumerated:
+      - "1.2.3" (pure hierarchy)
+      - "1.c2" (root #1, completed child #2)
+      - "hp1.c2.3" (high-priority pending root, completed child, grandchild #3)
 
-      Input ID: "h2.1.b3" (high-priority, parent.child, blocked)
+      7.3. Resolution Rules:
+      Same object accessibility: "hp1" and "ph1" resolve to the same document
+      - Generation always uses alphabetical order
+      - Resolution accepts any permutation but normalizes internally
+      
+      Parsing algorithm:
+      - Split by "." for hierarchy levels
+      - For each segment: extract leading letters as prefixes, trailing numbers as ID
+      - Map prefixes to dimension values based on configuration
+      - Execute hierarchical queries with dimension filters
 
-      Resolution process:
-      7.1.  Parse prefix "h" -> maps to priority="high" based on configuration
-      7.2.  Find root item #2 with priority="high" 
-      7.3.  Parse "1" -> find child #1 of that parent
-      7.4.  Parse prefix "b" -> maps to status="blocked"
-      7.5.  Find blocked item #3 within that parent context
-      7.6.  Return the UUID of the resolved document
-
-      The parsing logic is generated based on the dimension configuration, handling
-      arbitrary prefix combinations and hierarchical depth.
+      7.4. Example Resolution:
+      Input: "hp2.c1.b3"
+      Configuration: priority=["low","high"], status=["pending","completed","blocked"]
+      
+      Parse result:
+      - Level 1: prefixes="hp" (high,pending), id=2
+      - Level 2: prefix="c" (completed), id=1  
+      - Level 3: prefix="b" (blocked), id=3
+      
+      Query: Find root document #2 with priority="high" AND status="pending",
+             then child #1 with status="completed",
+             then grandchild #3 with status="blocked"
 
 8. Implementation Benefits:
 

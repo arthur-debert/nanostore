@@ -281,36 +281,72 @@ func (qb *QueryBuilder) generateDimensionCombinations(enumDims []types.Dimension
 		return nil
 	}
 
-	// Start with single dimension combinations
+	// Generate all possible combinations of dimension values
 	var combinations []dimensionCombination
 
-	// For now, we'll implement a simpler approach:
-	// Generate WHEN clauses for each dimension value that has a prefix
-	for _, dim := range enumDims {
-		for value, prefix := range dim.Prefixes {
+	// Helper to recursively generate combinations
+	var generate func(dimIndex int, current map[string]string)
+	generate = func(dimIndex int, current map[string]string) {
+		if dimIndex == len(enumDims) {
+			// We've assigned values to all dimensions
+			// Now build the prefix string in alphabetical order by dimension name
+			prefixParts := make([]struct {
+				dimName string
+				prefix  string
+			}, 0)
+
+			for dimName, value := range current {
+				// Find the dimension config
+				for _, dim := range enumDims {
+					if dim.Name == dimName {
+						if prefix, hasPrefix := dim.Prefixes[value]; hasPrefix && prefix != "" {
+							prefixParts = append(prefixParts, struct {
+								dimName string
+								prefix  string
+							}{dimName: dimName, prefix: prefix})
+						}
+						break
+					}
+				}
+			}
+
+			// Sort by dimension name for consistent ordering
+			sort.Slice(prefixParts, func(i, j int) bool {
+				return prefixParts[i].dimName < prefixParts[j].dimName
+			})
+
+			// Build prefix string
+			var prefix strings.Builder
+			for _, part := range prefixParts {
+				prefix.WriteString(part.prefix)
+			}
+
+			// Create combination
 			combo := dimensionCombination{
-				values: map[string]string{dim.Name: value},
-				prefix: prefix,
+				values: make(map[string]string),
+				prefix: prefix.String(),
+			}
+			for k, v := range current {
+				combo.values[k] = v
 			}
 			combinations = append(combinations, combo)
+			return
 		}
 
-		// Also add default values (no prefix)
-		defaultValue := dim.DefaultValue
-		if defaultValue == "" && len(dim.Values) > 0 {
-			defaultValue = dim.Values[0]
-		}
-		if defaultValue != "" && dim.Prefixes[defaultValue] == "" {
-			combo := dimensionCombination{
-				values: map[string]string{dim.Name: defaultValue},
-				prefix: "",
+		// Try each value for the current dimension
+		dim := enumDims[dimIndex]
+		for _, value := range dim.Values {
+			newCurrent := make(map[string]string)
+			for k, v := range current {
+				newCurrent[k] = v
 			}
-			combinations = append(combinations, combo)
+			newCurrent[dim.Name] = value
+			generate(dimIndex+1, newCurrent)
 		}
 	}
 
-	// TODO: In the future, handle multiple dimension combinations
-	// For now, keep it simple with single-dimension prefixes
+	// Start generation
+	generate(0, make(map[string]string))
 
 	return combinations
 }

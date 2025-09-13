@@ -33,3 +33,9 @@ type Store interface {
 func New(dbPath string) (Store, error) {
 	return newStore(dbPath)
 }
+
+// NewWithConfig creates a new Store instance with custom dimension configuration
+// This allows for configurable ID generation beyond the default status/parent dimensions
+func NewWithConfig(dbPath string, config Config) (Store, error) {
+	return newStoreWithConfig(dbPath, config)
+}

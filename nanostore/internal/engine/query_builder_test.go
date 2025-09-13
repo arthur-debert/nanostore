@@ -174,9 +174,10 @@ func TestQueryBuilder_GenerateListQuery(t *testing.T) {
 			filters: map[string]interface{}{},
 			shouldContain: []string{
 				"PARTITION BY status, priority",
-				"WHEN status = 'completed'",
-				"WHEN status = 'pending'",
+				"WHEN priority = 'low' AND status = 'completed'",
+				"WHEN priority = 'high' AND status = 'pending'",
 				"'c' || CAST",
+				"'hc' || CAST", // high priority + completed
 			},
 		},
 	}
