@@ -1,0 +1,138 @@
+b1 code review -all
+ Here is my review of the nanostore codebase:
+
+  High Priority
+
+   * H1: Refactor to Eliminate `interface{}`: The most critical issue is the
+     pervasive use of interface{} in the engine's public-facing methods (List,
+     Update) and the storeAdapter. This completely undermines Go's type system,
+     leading to fragile, error-prone code that relies on runtime type assertions.
+       * Recommendation: The engine's methods should use the concrete types defined
+         in nanostore/types.go (e.g., ListOptions, UpdateRequest, Document). The
+         storeAdapter will then become a simple pass-through, and the ugly type
+         assertions can be removed. This will improve type safety, readability, and
+         performance.
+
+   * H2: Unimplemented Filtering in `List`: The List function in the engine
+     currently ignores all filtering options from ListOptions. The SQL query in
+     list.sql is static and always returns all documents. This means a core piece
+     of functionality is missing.
+       * Recommendation: The List function needs to dynamically build the SQL query
+         based on the ListOptions. This should be done carefully to avoid SQL
+         injection vulnerabilities. Use query parameters (?) for all user-provided
+         values. The list.sql file should be a template, or you should build the
+         query in Go using a library like squirrel to safely construct the WHERE
+         clause.
+
+  Medium Priority
+
+   * M1: Inefficient `ResolveUUID`: The ResolveUUID function makes a separate SQL
+     query for each part of a hierarchical ID (e.g., "1.2.3" requires 3 queries).
+     This is inefficient and will lead to performance problems as the hierarchy
+     deepens.
+       * Recommendation: This can be solved with a single, more complex recursive
+         CTE query, similar to the one in list.sql. This would be a significant
+         performance improvement.
+
+   * M2: Lack of Transactional Integrity: The write operations (Add, Update,
+     SetStatus) are not wrapped in transactions. While single queries are atomic in
+     SQLite, more complex operations in the future might require transactions to
+     ensure data consistency.
+       * Recommendation: Wrap all write operations in transactions. This is a good
+         practice for ensuring data integrity.
+
+  Low Priority
+
+   * L1: Redundant `storeAdapter`: The storeAdapter adds a layer of indirection
+     without providing much value, especially if the interface{} issue is fixed.
+     The engine could directly implement the Store interface.
+       * Recommendation: Consider merging the storeAdapter and the engine.store.
+         This would simplify the code. The public API can be exposed from the
+         nanostore package, while the implementation resides in the internal/engine
+         package.
+
+   * L2: Missing `docs/dev/testing.txt`: The user mentioned a docs/dev/testing.txt
+     file with testing guidelines, but I don't see it in the file tree.
+       * Recommendation: If this file exists, I should review it to ensure the
+         tests align with the guidelines. If it doesn't exist, this point can be
+         ignored.
+
+  Test Quality
+
+  I haven't reviewed the tests yet. I will do that now to assess their quality
+  and coverage. I'll start by listing the test files.I've reviewed the SQL and
+  have a full codebase picture. My findings: High-priority issues are the
+  dangerous interface{} usage and unimplemented List filtering. Medium-priority
+  is the inefficient ResolveUUID and lack of transactions. Low-priority includes
+  a redundant storeAdapter and a missing testing.txt file. I'll now review the
+  tests for quality and coverage, starting with a file listing.
+ ╭───────────────────────────────────────────────────────────────────────────────╮
+ │ ✓  ReadFolder nanostore                                                       │
+ │                                                                               │
+ │    Listed 15 item(s).                                                         │
+ ╰───────────────────────────────────────────────────────────────────────────────╯
+✦ Test files exist. Good. I'll read them all for a full picture.
+ ╭───────────────────────────────────────────────────────────────────────────────╮
+ │ ✓  ReadManyFiles Will attempt to read and concatenate files using patterns:…  │
+ │                                                                               │
+ │                                                                               │
+ │    ### ReadManyFiles Result (Target Dir: `/Users/adebert/h/nanostore`)        │
+ │                                                                               │
+ │    Successfully read and concatenated content from **10 file(s)**.            │
+ │                                                                               │
+ │    **Processed Files:**                                                       │
+ │    - `nanostore/benchmark_test.go`                                            │
+ │    - `nanostore/concurrent_test.go`                                           │
+ │    - `nanostore/edge_cases_test.go`                                           │
+ │    - `nanostore/error_test.go`                                                │
+ │    - `nanostore/hierarchy_test.go`                                            │
+ │    - `nanostore/list_test.go`                                                 │
+ │    - `nanostore/migration_test.go`                                            │
+ │    - `nanostore/resolve_test.go`                                              │
+ │    - `nanostore/store_test.go`                                                │
+ │    - `nanostore/update_test.go`                                               │
+ ╰───────────────────────────────────────────────────────────────────────────────╯
+✦ I have reviewed the tests. Here's my assessment:
+
+  Test Quality Assessment
+
+  The test suite is extensive and covers a wide range of scenarios. This is
+  excellent for a project at this stage.
+
+   * Comprehensiveness: The tests cover basic CRUD, hierarchical structures, ID
+     resolution, edge cases (empty/long titles, special characters), error
+     handling, and even concurrency and benchmarks. This is very thorough.
+   * Correctness: The tests appear to be correct and are validating the right
+     things. They correctly check for expected outcomes and handle errors.
+   * Design Quality: The tests are well-structured, with separate files for
+     different areas of functionality. The use of t.Run for sub-tests is good
+     practice. The benchmark tests are a great addition for performance tracking.
+   * Adherence to Guidelines: Since I don't have docs/dev/testing.txt, I can't
+     assess adherence to it. However, the tests follow common Go testing practices.
+
+  Issues and Recommendations for Tests
+
+   * T1: Skipped Concurrency Tests: The concurrency tests in concurrent_test.go are
+     skipped. The reason given is that the in-memory SQLite database doesn't support
+      concurrent connections.
+       * Recommendation (Medium Priority): These tests are important for ensuring
+         the library is safe for concurrent use. The tests should be enabled and
+         run against a file-based database in a temporary directory, which is what
+         the TestConcurrentReads test already does. This will provide a much
+         stronger guarantee of correctness.
+
+   * T2: Missing Tests for Filtering: There are no tests for the filtering
+     functionality of the List method (e.g., FilterByStatus, FilterByParent,
+     FilterBySearch). This is because the functionality itself is not implemented
+     (see H2 in the code review).
+       * Recommendation (High Priority): Once the filtering logic is implemented, a
+         comprehensive set of tests should be written to cover all filtering
+         scenarios.
+
+   * T3: `TestManyDocuments` ID check is simplified: The test TestManyDocuments in
+     edge_cases_test.go has a comment saying // This is simplified - real test 
+     would handle multi-digit IDs properly. This means the test is not correctly
+     validating the user-facing IDs for numbers greater than 9.
+       * Recommendation (Low Priority): The ID generation logic in this test should
+         be fixed to correctly handle multi-digit numbers, so it can properly
+         validate the output.

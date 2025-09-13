@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/arthur-debert/nanostore/nanostore/types"
 	"github.com/google/uuid"
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -18,10 +19,10 @@ type store struct {
 	db *sql.DB
 }
 
-// New creates a new store instance that implements the Engine interface.
-// This function returns the Engine interface to ensure proper abstraction
-// and prevent direct access to the concrete store implementation.
-func New(dbPath string) (Engine, error) {
+// New creates a new store instance.
+// Returns the concrete store type since we can't import the Engine interface
+// from the parent package (would cause circular dependency).
+func New(dbPath string) (*store, error) {
 	db, err := sql.Open("sqlite3", dbPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
@@ -68,14 +69,13 @@ func (s *store) Add(title string, parentID *string) (string, error) {
 }
 
 // Update modifies an existing document
-func (s *store) Update(id string, updates UpdateRequest) error {
-	// No more type assertions needed - we have concrete types!
+func (s *store) Update(id string, updates types.UpdateRequest) error {
 	query, err := loadQuery("queries/update_document.sql")
 	if err != nil {
 		return err
 	}
 
-	// Direct access to strongly-typed fields
+	// Direct access to strongly-typed fields from the public type
 	result, err := s.db.Exec(query, updates.Title, updates.Body, id)
 	if err != nil {
 		return fmt.Errorf("failed to update document: %w", err)
@@ -94,13 +94,14 @@ func (s *store) Update(id string, updates UpdateRequest) error {
 }
 
 // SetStatus changes the status of a document
-func (s *store) SetStatus(id string, status string) error {
+func (s *store) SetStatus(id string, status types.Status) error {
 	query, err := loadQuery("queries/set_status.sql")
 	if err != nil {
 		return err
 	}
 
-	result, err := s.db.Exec(query, status, id)
+	// Convert Status to string for SQL query
+	result, err := s.db.Exec(query, string(status), id)
 	if err != nil {
 		return fmt.Errorf("failed to update status: %w", err)
 	}
@@ -118,7 +119,7 @@ func (s *store) SetStatus(id string, status string) error {
 }
 
 // List returns documents based on options
-func (s *store) List(opts ListOptions) ([]Document, error) {
+func (s *store) List(opts types.ListOptions) ([]types.Document, error) {
 	// TODO: In the future, use opts to filter results
 	// For now, we'll implement the basic list functionality
 
@@ -133,8 +134,8 @@ func (s *store) List(opts ListOptions) ([]Document, error) {
 	}
 	defer func() { _ = rows.Close() }()
 
-	// Using concrete Document type instead of interface{}
-	var results []Document
+	// Using the shared Document type
+	var results []types.Document
 	for rows.Next() {
 		var (
 			uuid         string
@@ -152,13 +153,13 @@ func (s *store) List(opts ListOptions) ([]Document, error) {
 			return nil, fmt.Errorf("failed to scan row: %w", err)
 		}
 
-		// Build strongly-typed Document
-		doc := Document{
+		// Build Document using the shared type
+		doc := types.Document{
 			UUID:         uuid,
 			UserFacingID: userFacingID,
 			Title:        title,
 			Body:         body,
-			Status:       status,
+			Status:       types.Status(status), // Convert string to Status type
 			CreatedAt:    time.Unix(createdAt, 0),
 			UpdatedAt:    time.Unix(updatedAt, 0),
 		}
