@@ -6,9 +6,11 @@ type Store interface {
 	// The returned documents include generated user-facing IDs
 	List(opts ListOptions) ([]Document, error)
 
-	// Add creates a new document with the given title and optional parent
+	// Add creates a new document with the given title, optional parent, and dimension values
+	// The dimensions map allows setting custom dimension values (e.g., "priority": "high")
+	// Dimensions not specified will use their default values from the configuration
 	// Returns the UUID of the created document
-	Add(title string, parentID *string) (string, error)
+	Add(title string, parentID *string, dimensions map[string]string) (string, error)
 
 	// Update modifies an existing document
 	Update(id string, updates UpdateRequest) error

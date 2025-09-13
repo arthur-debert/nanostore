@@ -28,7 +28,7 @@ func TestResourceExhaustionLargeDocuments(t *testing.T) {
 	// Test adding large documents
 	for i := 0; i < 10; i++ {
 		title := fmt.Sprintf("Large Doc %d: %s", i, largeString[:100])
-		_, err := store.Add(title, nil)
+		_, err := store.Add(title, nil, nil)
 		if err != nil {
 			t.Errorf("failed to add large document %d: %v", i, err)
 		}
@@ -76,7 +76,7 @@ func TestResourceExhaustionDeepHierarchy(t *testing.T) {
 
 	for i := 0; i < maxDepth; i++ {
 		title := fmt.Sprintf("Level %d", i)
-		id, err := store.Add(title, parentID)
+		id, err := store.Add(title, parentID, nil)
 		if err != nil {
 			t.Fatalf("failed to add level %d: %v", i, err)
 		}
@@ -120,7 +120,7 @@ func TestResourceExhaustionManyRoots(t *testing.T) {
 
 	start := time.Now()
 	for i := 0; i < numRoots; i++ {
-		_, err := store.Add(fmt.Sprintf("Root %d", i), nil)
+		_, err := store.Add(fmt.Sprintf("Root %d", i), nil, nil)
 		if err != nil {
 			t.Fatalf("failed to add root %d: %v", i, err)
 		}
@@ -166,7 +166,7 @@ func TestResourceExhaustionConcurrentOperations(t *testing.T) {
 	// Create some initial documents
 	var docIDs []string
 	for i := 0; i < 100; i++ {
-		id, err := store.Add(fmt.Sprintf("Doc %d", i), nil)
+		id, err := store.Add(fmt.Sprintf("Doc %d", i), nil, nil)
 		if err != nil {
 			t.Fatalf("failed to add document: %v", err)
 		}
@@ -200,7 +200,7 @@ func TestResourceExhaustionConcurrentOperations(t *testing.T) {
 				// Mix of operations
 				switch j % 3 {
 				case 0: // Add
-					_, err := s.Add(fmt.Sprintf("Worker %d Doc %d", workerID, j), nil)
+					_, err := s.Add(fmt.Sprintf("Worker %d Doc %d", workerID, j), nil, nil)
 					if err != nil {
 						errors <- fmt.Errorf("worker %d: add failed: %v", workerID, err)
 					}
@@ -268,7 +268,7 @@ func TestResourceExhaustionComplexFilters(t *testing.T) {
 	// Create many documents with various attributes
 	for i := 0; i < 1000; i++ {
 		title := fmt.Sprintf("Document %d", i)
-		id, err := store.Add(title, nil)
+		id, err := store.Add(title, nil, nil)
 		if err != nil {
 			t.Fatalf("failed to add document: %v", err)
 		}

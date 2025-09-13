@@ -15,7 +15,7 @@ func TestDelete(t *testing.T) {
 		defer func() { _ = store.Close() }()
 
 		// Create a document
-		id, err := store.Add("Test Document", nil)
+		id, err := store.Add("Test Document", nil, nil)
 		if err != nil {
 			t.Fatalf("failed to add document: %v", err)
 		}
@@ -61,12 +61,12 @@ func TestDelete(t *testing.T) {
 		defer func() { _ = store.Close() }()
 
 		// Create parent and child
-		parentID, err := store.Add("Parent", nil)
+		parentID, err := store.Add("Parent", nil, nil)
 		if err != nil {
 			t.Fatalf("failed to add parent: %v", err)
 		}
 
-		_, err = store.Add("Child", &parentID)
+		_, err = store.Add("Child", &parentID, nil)
 		if err != nil {
 			t.Fatalf("failed to add child: %v", err)
 		}
@@ -98,27 +98,27 @@ func TestDelete(t *testing.T) {
 		defer func() { _ = store.Close() }()
 
 		// Create parent with multiple children and grandchildren
-		parentID, err := store.Add("Parent", nil)
+		parentID, err := store.Add("Parent", nil, nil)
 		if err != nil {
 			t.Fatalf("failed to add parent: %v", err)
 		}
 
-		child1ID, err := store.Add("Child 1", &parentID)
+		child1ID, err := store.Add("Child 1", &parentID, nil)
 		if err != nil {
 			t.Fatalf("failed to add child 1: %v", err)
 		}
 
-		child2ID, err := store.Add("Child 2", &parentID)
+		child2ID, err := store.Add("Child 2", &parentID, nil)
 		if err != nil {
 			t.Fatalf("failed to add child 2: %v", err)
 		}
 
-		_, err = store.Add("Grandchild 1", &child1ID)
+		_, err = store.Add("Grandchild 1", &child1ID, nil)
 		if err != nil {
 			t.Fatalf("failed to add grandchild 1: %v", err)
 		}
 
-		_, err = store.Add("Grandchild 2", &child2ID)
+		_, err = store.Add("Grandchild 2", &child2ID, nil)
 		if err != nil {
 			t.Fatalf("failed to add grandchild 2: %v", err)
 		}
@@ -147,23 +147,23 @@ func TestDelete(t *testing.T) {
 		defer func() { _ = store.Close() }()
 
 		// Create grandparent -> parent -> child hierarchy
-		grandparentID, err := store.Add("Grandparent", nil)
+		grandparentID, err := store.Add("Grandparent", nil, nil)
 		if err != nil {
 			t.Fatalf("failed to add grandparent: %v", err)
 		}
 
-		parentID, err := store.Add("Parent", &grandparentID)
+		parentID, err := store.Add("Parent", &grandparentID, nil)
 		if err != nil {
 			t.Fatalf("failed to add parent: %v", err)
 		}
 
-		childID, err := store.Add("Child", &parentID)
+		childID, err := store.Add("Child", &parentID, nil)
 		if err != nil {
 			t.Fatalf("failed to add child: %v", err)
 		}
 
 		// Also add a sibling to the parent
-		_, err = store.Add("Sibling", &grandparentID)
+		_, err = store.Add("Sibling", &grandparentID, nil)
 		if err != nil {
 			t.Fatalf("failed to add sibling: %v", err)
 		}
@@ -213,12 +213,12 @@ func TestDelete(t *testing.T) {
 		defer func() { _ = store.Close() }()
 
 		// Create parent -> child hierarchy
-		parentID, err := store.Add("Parent", nil)
+		parentID, err := store.Add("Parent", nil, nil)
 		if err != nil {
 			t.Fatalf("failed to add parent: %v", err)
 		}
 
-		childID, err := store.Add("Child", &parentID)
+		childID, err := store.Add("Child", &parentID, nil)
 		if err != nil {
 			t.Fatalf("failed to add child: %v", err)
 		}
@@ -250,17 +250,17 @@ func TestDelete(t *testing.T) {
 		defer func() { _ = store.Close() }()
 
 		// Create parent with children of different statuses
-		parentID, err := store.Add("Parent", nil)
+		parentID, err := store.Add("Parent", nil, nil)
 		if err != nil {
 			t.Fatalf("failed to add parent: %v", err)
 		}
 
-		_, err = store.Add("Pending Child", &parentID)
+		_, err = store.Add("Pending Child", &parentID, nil)
 		if err != nil {
 			t.Fatalf("failed to add child 1: %v", err)
 		}
 
-		child2ID, err := store.Add("Completed Child", &parentID)
+		child2ID, err := store.Add("Completed Child", &parentID, nil)
 		if err != nil {
 			t.Fatalf("failed to add child 2: %v", err)
 		}
@@ -301,7 +301,7 @@ func TestDeleteConcurrent(t *testing.T) {
 	// Create multiple documents
 	var ids []string
 	for i := 0; i < 10; i++ {
-		id, err := store.Add("Document", nil)
+		id, err := store.Add("Document", nil, nil)
 		if err != nil {
 			t.Fatalf("failed to add document: %v", err)
 		}
@@ -368,7 +368,7 @@ func TestDeleteEdgeCases(t *testing.T) {
 			if currentParentID != "" {
 				parentID = &currentParentID
 			}
-			id, err := store.Add("Level", parentID)
+			id, err := store.Add("Level", parentID, nil)
 			if err != nil {
 				t.Fatalf("failed to add level %d: %v", i, err)
 			}

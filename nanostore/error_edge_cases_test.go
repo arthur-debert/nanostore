@@ -44,7 +44,7 @@ func TestSetStatusTransactionFailure(t *testing.T) {
 	defer func() { _ = store.Close() }()
 
 	// Create a document
-	docID, err := store.Add("Test Document", nil)
+	docID, err := store.Add("Test Document", nil, nil)
 	if err != nil {
 		t.Fatalf("failed to add document: %v", err)
 	}
@@ -67,8 +67,8 @@ func TestListWithComplexFilterCombinations(t *testing.T) {
 	defer func() { _ = store.Close() }()
 
 	// Create test documents
-	parentID, _ := store.Add("Parent", nil)
-	childID, _ := store.Add("Child with searchable content", &parentID)
+	parentID, _ := store.Add("Parent", nil, nil)
+	childID, _ := store.Add("Child with searchable content", &parentID, nil)
 	_ = store.SetStatus(childID, nanostore.StatusCompleted)
 
 	// Test complex filter combinations that might expose edge cases
@@ -138,7 +138,7 @@ func TestAddWithExtremelyLongParentChain(t *testing.T) {
 	const chainLength = 1000
 
 	for i := 0; i < chainLength; i++ {
-		id, err := store.Add("Deep", parentID)
+		id, err := store.Add("Deep", parentID, nil)
 		if err != nil {
 			t.Fatalf("failed to add document %d: %v", i, err)
 		}
@@ -165,7 +165,7 @@ func TestUpdateWithNonExistentParent(t *testing.T) {
 	defer func() { _ = store.Close() }()
 
 	// Create a document
-	docID, err := store.Add("Test Document", nil)
+	docID, err := store.Add("Test Document", nil, nil)
 	if err != nil {
 		t.Fatalf("failed to add document: %v", err)
 	}
@@ -226,9 +226,9 @@ func TestConcurrentCircularReferenceCheck(t *testing.T) {
 	}
 
 	// Create a simple hierarchy: A -> B -> C
-	aID, _ := store.Add("A", nil)
-	bID, _ := store.Add("B", &aID)
-	cID, _ := store.Add("C", &bID)
+	aID, _ := store.Add("A", nil, nil)
+	bID, _ := store.Add("B", &aID, nil)
+	cID, _ := store.Add("C", &bID, nil)
 
 	_ = store.Close()
 

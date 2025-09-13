@@ -11,7 +11,7 @@ import (
 // circular imports while still maintaining type safety.
 type Engine interface {
 	List(opts ListOptions) ([]Document, error)
-	Add(title string, parentID *string) (string, error)
+	Add(title string, parentID *string, dimensions map[string]string) (string, error)
 	Update(id string, updates UpdateRequest) error
 	SetStatus(id string, status Status) error
 	ResolveUUID(userFacingID string) (string, error)
@@ -62,8 +62,8 @@ func (s *storeAdapter) List(opts ListOptions) ([]Document, error) {
 }
 
 // Add creates a new document
-func (s *storeAdapter) Add(title string, parentID *string) (string, error) {
-	return s.engine.Add(title, parentID)
+func (s *storeAdapter) Add(title string, parentID *string, dimensions map[string]string) (string, error) {
+	return s.engine.Add(title, parentID, dimensions)
 }
 
 // Update modifies an existing document

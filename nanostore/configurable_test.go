@@ -39,12 +39,12 @@ func TestConfigurableStore(t *testing.T) {
 		defer func() { _ = store.Close() }()
 
 		// Add some documents with default dimensions
-		doc1, err := store.Add("First Task", nil)
+		doc1, err := store.Add("First Task", nil, nil)
 		if err != nil {
 			t.Fatalf("failed to add document: %v", err)
 		}
 
-		doc2, err := store.Add("Second Task", nil)
+		doc2, err := store.Add("Second Task", nil, nil)
 		if err != nil {
 			t.Fatalf("failed to add document: %v", err)
 		}
@@ -95,7 +95,7 @@ func TestConfigurableStore(t *testing.T) {
 		}
 
 		// Test hierarchical IDs
-		child1, err := store.Add("Subtask", &doc2)
+		child1, err := store.Add("Subtask", &doc2, nil)
 		if err != nil {
 			t.Fatalf("failed to add child: %v", err)
 		}
@@ -160,7 +160,7 @@ func TestConfigurableStore(t *testing.T) {
 
 		// Add documents - will use AddWithDimensions when available
 		// For now, just test basic functionality
-		_, err = store.Add("Normal priority task", nil)
+		_, err = store.Add("Normal priority task", nil, nil)
 		if err != nil {
 			t.Fatalf("failed to add document: %v", err)
 		}
@@ -214,7 +214,7 @@ func TestConfigurableIDResolution(t *testing.T) {
 	defer func() { _ = store.Close() }()
 
 	// Create documents to test ID resolution
-	root1, err := store.Add("Root 1", nil)
+	root1, err := store.Add("Root 1", nil, nil)
 	if err != nil {
 		t.Fatalf("failed to add root: %v", err)
 	}

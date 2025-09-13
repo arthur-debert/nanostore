@@ -18,7 +18,7 @@ func TestFilterByStatus(t *testing.T) {
 	// Create documents with different statuses
 	pendingIDs := make([]string, 5)
 	for i := 0; i < 5; i++ {
-		id, err := store.Add("Pending "+string(rune('A'+i)), nil)
+		id, err := store.Add("Pending "+string(rune('A'+i)), nil, nil)
 		if err != nil {
 			t.Fatalf("failed to add pending document: %v", err)
 		}
@@ -27,7 +27,7 @@ func TestFilterByStatus(t *testing.T) {
 
 	completedIDs := make([]string, 3)
 	for i := 0; i < 3; i++ {
-		id, err := store.Add("Completed "+string(rune('A'+i)), nil)
+		id, err := store.Add("Completed "+string(rune('A'+i)), nil, nil)
 		if err != nil {
 			t.Fatalf("failed to add document: %v", err)
 		}
@@ -101,12 +101,12 @@ func TestFilterByParent(t *testing.T) {
 	defer func() { _ = store.Close() }()
 
 	// Create hierarchy
-	root1, err := store.Add("Root 1", nil)
+	root1, err := store.Add("Root 1", nil, nil)
 	if err != nil {
 		t.Fatalf("failed to add root 1: %v", err)
 	}
 
-	root2, err := store.Add("Root 2", nil)
+	root2, err := store.Add("Root 2", nil, nil)
 	if err != nil {
 		t.Fatalf("failed to add root 2: %v", err)
 	}
@@ -114,7 +114,7 @@ func TestFilterByParent(t *testing.T) {
 	// Children of root1
 	var root1Children []string
 	for i := 0; i < 3; i++ {
-		id, err := store.Add("Child 1."+string(rune('A'+i)), &root1)
+		id, err := store.Add("Child 1."+string(rune('A'+i)), &root1, nil)
 		if err != nil {
 			t.Fatalf("failed to add child: %v", err)
 		}
@@ -123,14 +123,14 @@ func TestFilterByParent(t *testing.T) {
 
 	// Children of root2
 	for i := 0; i < 2; i++ {
-		_, err := store.Add("Child 2."+string(rune('A'+i)), &root2)
+		_, err := store.Add("Child 2."+string(rune('A'+i)), &root2, nil)
 		if err != nil {
 			t.Fatalf("failed to add child: %v", err)
 		}
 	}
 
 	// Grandchildren
-	grandchild, err := store.Add("Grandchild", &root1Children[0])
+	grandchild, err := store.Add("Grandchild", &root1Children[0], nil)
 	if err != nil {
 		t.Fatalf("failed to add grandchild: %v", err)
 	}
@@ -211,7 +211,7 @@ func TestFilterBySearch(t *testing.T) {
 	}
 
 	for _, doc := range docs {
-		id, err := store.Add(doc.title, nil)
+		id, err := store.Add(doc.title, nil, nil)
 		if err != nil {
 			t.Fatalf("failed to add document: %v", err)
 		}
@@ -283,16 +283,16 @@ func TestCombinedFilters(t *testing.T) {
 	defer func() { _ = store.Close() }()
 
 	// Create hierarchy with mixed statuses
-	root1, _ := store.Add("Project Alpha", nil)
-	root2, _ := store.Add("Project Beta", nil)
+	root1, _ := store.Add("Project Alpha", nil, nil)
+	root2, _ := store.Add("Project Beta", nil, nil)
 
 	// Add children with different statuses
-	_, _ = store.Add("Design Phase", &root1)
-	task2, _ := store.Add("Implementation", &root1)
+	_, _ = store.Add("Design Phase", &root1, nil)
+	task2, _ := store.Add("Implementation", &root1, nil)
 	_ = store.SetStatus(task2, nanostore.StatusCompleted)
 
-	task3, _ := store.Add("Testing Phase", &root2)
-	deployTask, _ := store.Add("Deployment", &root2)
+	task3, _ := store.Add("Testing Phase", &root2, nil)
+	deployTask, _ := store.Add("Deployment", &root2, nil)
 	_ = store.SetStatus(deployTask, nanostore.StatusCompleted)
 
 	// Test: Filter by parent AND status

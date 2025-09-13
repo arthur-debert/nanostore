@@ -25,3 +25,8 @@ func DefaultTestConfig() Config {
 func NewTestStore(dbPath string) (Store, error) {
 	return New(dbPath, DefaultTestConfig())
 }
+
+// TestAdd is a convenience method for tests that adds a document with default dimensions
+func TestAdd(store Store, title string, parentID *string) (string, error) {
+	return store.Add(title, parentID, nil)
+}

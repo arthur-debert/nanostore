@@ -83,7 +83,7 @@ func TestInvalidInputs(t *testing.T) {
 
 	t.Run("InvalidParentUUID", func(t *testing.T) {
 		invalidParent := "invalid-uuid"
-		_, err := store.Add("Child", &invalidParent)
+		_, err := store.Add("Child", &invalidParent, nil)
 		if err == nil {
 			t.Fatal("expected error adding document with invalid parent")
 		}
@@ -131,7 +131,7 @@ func TestDatabaseIntegrityErrors(t *testing.T) {
 	t.Run("SelfReferencingDocument", func(t *testing.T) {
 		// The API doesn't allow setting a document as its own parent
 		// This is more of a schema validation
-		id, err := store.Add("Test", nil)
+		id, err := store.Add("Test", nil, nil)
 		if err != nil {
 			t.Fatalf("failed to add document: %v", err)
 		}
@@ -168,7 +168,7 @@ func TestConcurrentDatabaseAccess(t *testing.T) {
 	// Each store adds documents
 	for i, store := range stores {
 		for j := 0; j < 10; j++ {
-			_, err := store.Add(strings.Repeat("A", i*10+j), nil)
+			_, err := store.Add(strings.Repeat("A", i*10+j), nil, nil)
 			if err != nil {
 				t.Errorf("store %d failed to add document %d: %v", i, j, err)
 			}
@@ -201,7 +201,7 @@ func TestClosedStoreErrors(t *testing.T) {
 
 	// Try to use closed store
 	t.Run("AddAfterClose", func(t *testing.T) {
-		_, err := store.Add("Test", nil)
+		_, err := store.Add("Test", nil, nil)
 		if err == nil {
 			t.Fatal("expected error using closed store")
 		}

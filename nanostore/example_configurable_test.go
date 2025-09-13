@@ -42,9 +42,9 @@ func ExampleNew() {
 	defer func() { _ = store.Close() }()
 
 	// Add some tasks
-	epic, _ := store.Add("Q1 Product Launch", nil)
-	task1, _ := store.Add("Design mockups", &epic)
-	task2, _ := store.Add("Implement backend", &epic)
+	epic, _ := store.Add("Q1 Product Launch", nil, nil)
+	task1, _ := store.Add("Design mockups", &epic, nil)
+	task2, _ := store.Add("Implement backend", &epic, nil)
 
 	// Update statuses
 	_ = store.SetStatus(task1, nanostore.Status("done"))

@@ -40,12 +40,12 @@ func TestConfigurableIntegration(t *testing.T) {
 	defer func() { _ = store.Close() }()
 
 	// Create some todos
-	personalTodo, err := store.Add("Buy groceries", nil)
+	personalTodo, err := store.Add("Buy groceries", nil, nil)
 	if err != nil {
 		t.Fatalf("failed to add personal todo: %v", err)
 	}
 
-	_, err = store.Add("Finish report", nil)
+	_, err = store.Add("Finish report", nil, nil)
 	if err != nil {
 		t.Fatalf("failed to add work todo: %v", err)
 	}
@@ -55,12 +55,12 @@ func TestConfigurableIntegration(t *testing.T) {
 	// In a real implementation, we'd have SetDimension(id, dimensionName, value)
 
 	// Add subtasks
-	_, err = store.Add("Buy milk", &personalTodo)
+	_, err = store.Add("Buy milk", &personalTodo, nil)
 	if err != nil {
 		t.Fatalf("failed to add subtask: %v", err)
 	}
 
-	_, err = store.Add("Buy bread", &personalTodo)
+	_, err = store.Add("Buy bread", &personalTodo, nil)
 	if err != nil {
 		t.Fatalf("failed to add subtask: %v", err)
 	}
@@ -148,7 +148,7 @@ func TestMultiplePrefixCombinations(t *testing.T) {
 	// low + closed = "c1" (c prefix from status)
 	// high + closed = "hc1" (both prefixes, alphabetically ordered)
 
-	doc1, _ := store.Add("Low priority, open", nil)
+	doc1, _ := store.Add("Low priority, open", nil, nil)
 
 	docs, _ := store.List(nanostore.ListOptions{})
 	if len(docs) != 1 {

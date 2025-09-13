@@ -144,17 +144,34 @@ func (s *configurableStore) List(opts types.ListOptions) ([]types.Document, erro
 }
 
 // Add creates a new document with dimension values
-func (s *configurableStore) Add(title string, parentID *string) (string, error) {
-	// For backward compatibility, use default dimension values
+func (s *configurableStore) Add(title string, parentID *string, dimensions map[string]string) (string, error) {
+	// Convert string dimensions to interface{} and merge with defaults
 	dimensionValues := make(map[string]interface{})
 
 	// Set default values for enumerated dimensions
 	for _, dim := range s.config.Dimensions {
 		if dim.Type == types.Enumerated {
-			if dim.DefaultValue != "" {
-				dimensionValues[dim.Name] = dim.DefaultValue
-			} else if len(dim.Values) > 0 {
-				dimensionValues[dim.Name] = dim.Values[0]
+			// Check if user provided a value
+			if val, ok := dimensions[dim.Name]; ok {
+				// Validate the provided value
+				validValue := false
+				for _, allowedVal := range dim.Values {
+					if val == allowedVal {
+						validValue = true
+						break
+					}
+				}
+				if !validValue {
+					return "", fmt.Errorf("invalid value '%s' for dimension '%s'", val, dim.Name)
+				}
+				dimensionValues[dim.Name] = val
+			} else {
+				// Use default value
+				if dim.DefaultValue != "" {
+					dimensionValues[dim.Name] = dim.DefaultValue
+				} else if len(dim.Values) > 0 {
+					dimensionValues[dim.Name] = dim.Values[0]
+				}
 			}
 		}
 	}
@@ -288,6 +305,36 @@ func (s *configurableStore) Update(id string, updates types.UpdateRequest) error
 			} else {
 				setClauses = append(setClauses, fmt.Sprintf("%s = ?", hierDim.RefField))
 				args = append(args, *updates.ParentID)
+			}
+		}
+	}
+
+	// Handle dimension updates
+	if updates.Dimensions != nil {
+		for dimName, dimValue := range updates.Dimensions {
+			// Validate dimension exists and value is valid
+			dimFound := false
+			for _, dim := range s.config.Dimensions {
+				if dim.Name == dimName && dim.Type == types.Enumerated {
+					dimFound = true
+					// Validate the value
+					validValue := false
+					for _, allowedVal := range dim.Values {
+						if dimValue == allowedVal {
+							validValue = true
+							break
+						}
+					}
+					if !validValue {
+						return fmt.Errorf("invalid value '%s' for dimension '%s'", dimValue, dimName)
+					}
+					setClauses = append(setClauses, fmt.Sprintf("%s = ?", dimName))
+					args = append(args, dimValue)
+					break
+				}
+			}
+			if !dimFound {
+				return fmt.Errorf("unknown dimension '%s'", dimName)
 			}
 		}
 	}

@@ -23,7 +23,7 @@ func TestBulkAdd(t *testing.T) {
 
 	ids := make([]string, count)
 	for i := 0; i < count; i++ {
-		id, err := store.Add(fmt.Sprintf("Bulk Document %d", i), nil)
+		id, err := store.Add(fmt.Sprintf("Bulk Document %d", i), nil, nil)
 		if err != nil {
 			t.Fatalf("failed to add document %d: %v", i, err)
 		}
@@ -65,7 +65,7 @@ func TestBulkUpdate(t *testing.T) {
 	count := 500
 	ids := make([]string, count)
 	for i := 0; i < count; i++ {
-		id, err := store.Add(fmt.Sprintf("Original %d", i), nil)
+		id, err := store.Add(fmt.Sprintf("Original %d", i), nil, nil)
 		if err != nil {
 			t.Fatalf("failed to add document %d: %v", i, err)
 		}
@@ -120,7 +120,7 @@ func TestBulkStatusChange(t *testing.T) {
 	count := 500
 	ids := make([]string, count)
 	for i := 0; i < count; i++ {
-		id, err := store.Add(fmt.Sprintf("Task %d", i), nil)
+		id, err := store.Add(fmt.Sprintf("Task %d", i), nil, nil)
 		if err != nil {
 			t.Fatalf("failed to add document %d: %v", i, err)
 		}
@@ -183,14 +183,14 @@ func TestBulkHierarchicalCreation(t *testing.T) {
 	totalDocs := 0
 
 	for i := 0; i < rootCount; i++ {
-		rootID, err := store.Add(fmt.Sprintf("Project %d", i), nil)
+		rootID, err := store.Add(fmt.Sprintf("Project %d", i), nil, nil)
 		if err != nil {
 			t.Fatalf("failed to add root %d: %v", i, err)
 		}
 		totalDocs++
 
 		for j := 0; j < childrenPerRoot; j++ {
-			_, err := store.Add(fmt.Sprintf("Task %d.%d", i, j), &rootID)
+			_, err := store.Add(fmt.Sprintf("Task %d.%d", i, j), &rootID, nil)
 			if err != nil {
 				t.Fatalf("failed to add child %d.%d: %v", i, j, err)
 			}
@@ -247,7 +247,7 @@ func TestConcurrentBulkOperations(t *testing.T) {
 	// Create initial documents
 	baseCount := 100
 	for i := 0; i < baseCount; i++ {
-		_, err := store.Add(fmt.Sprintf("Base %d", i), nil)
+		_, err := store.Add(fmt.Sprintf("Base %d", i), nil, nil)
 		if err != nil {
 			t.Fatalf("failed to add base document %d: %v", i, err)
 		}
@@ -262,7 +262,7 @@ func TestConcurrentBulkOperations(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		for i := 0; i < 100; i++ {
-			_, err := store.Add(fmt.Sprintf("Concurrent Add %d", i), nil)
+			_, err := store.Add(fmt.Sprintf("Concurrent Add %d", i), nil, nil)
 			if err != nil {
 				errors <- fmt.Errorf("add error: %v", err)
 			}
@@ -336,7 +336,7 @@ func TestBulkOperationMemoryUsage(t *testing.T) {
 	count := 10000
 
 	for i := 0; i < count; i++ {
-		_, err := store.Add(fmt.Sprintf("Memory Test Document %d with some content to make it non-trivial", i), nil)
+		_, err := store.Add(fmt.Sprintf("Memory Test Document %d with some content to make it non-trivial", i), nil, nil)
 		if err != nil {
 			t.Fatalf("failed at document %d: %v", i, err)
 		}

@@ -42,9 +42,10 @@ type ListOptions struct {
 
 // UpdateRequest specifies fields to update on a document
 type UpdateRequest struct {
-	Title    *string
-	Body     *string
-	ParentID *string // Optional: new parent UUID (nil = no change, empty string = make root)
+	Title      *string
+	Body       *string
+	ParentID   *string           // Optional: new parent UUID (nil = no change, empty string = make root)
+	Dimensions map[string]string // Optional: dimension values to update (e.g., "priority": "high")
 }
 
 // DimensionType defines the type of dimension for ID partitioning

@@ -26,8 +26,8 @@ func TestTransactionRollback(t *testing.T) {
 	// tx, err := store.BeginTx()
 	// defer tx.Rollback()
 	//
-	// id1, err := tx.Add("Document 1", nil)
-	// id2, err := tx.Add("Document 2", nil)
+	// id1, err := tx.Add("Document 1", nil, nil)
+	// id2, err := tx.Add("Document 2", nil, nil)
 	//
 	// // Simulate error condition
 	// if someError {
@@ -50,12 +50,12 @@ func TestDatabaseConsistencyAfterPanic(t *testing.T) {
 	}
 
 	// Add some documents
-	id1, err := store1.Add("Before Panic 1", nil)
+	id1, err := store1.Add("Before Panic 1", nil, nil)
 	if err != nil {
 		t.Fatalf("failed to add document: %v", err)
 	}
 
-	id2, err := store1.Add("Before Panic 2", nil)
+	id2, err := store1.Add("Before Panic 2", nil, nil)
 	if err != nil {
 		t.Fatalf("failed to add document: %v", err)
 	}
@@ -154,7 +154,7 @@ func TestRollbackOnConstraintViolation(t *testing.T) {
 	defer func() { _ = store.Close() }()
 
 	// Create a parent document
-	parentID, err := store.Add("Parent", nil)
+	parentID, err := store.Add("Parent", nil, nil)
 	if err != nil {
 		t.Fatalf("failed to add parent: %v", err)
 	}
@@ -162,7 +162,7 @@ func TestRollbackOnConstraintViolation(t *testing.T) {
 	// Try to add a child with invalid parent UUID
 	// This should fail and not leave partial data
 	invalidParent := "invalid-uuid-that-does-not-exist"
-	_, err = store.Add("Orphan Child", &invalidParent)
+	_, err = store.Add("Orphan Child", &invalidParent, nil)
 
 	if err == nil {
 		t.Error("expected foreign key constraint error")
@@ -189,8 +189,8 @@ func TestAtomicBatchOperations(t *testing.T) {
 	// Future enhancement: Add batch operations that execute in a single transaction
 	// Example API:
 	// batch := store.NewBatch()
-	// batch.Add("Doc 1", nil)
-	// batch.Add("Doc 2", nil)
+	// batch.Add("Doc 1", nil, nil)
+	// batch.Add("Doc 2", nil, nil)
 	// batch.SetStatus(id, nanostore.StatusCompleted)
 	// err := batch.Execute() // All or nothing
 }
