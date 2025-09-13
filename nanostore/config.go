@@ -34,6 +34,12 @@ func ValidateConfig(c types.Config) error {
 		return fmt.Errorf("at least one dimension must be configured")
 	}
 
+	// Enforce dimension limit for performance
+	const maxDimensions = 7
+	if len(c.Dimensions) > maxDimensions {
+		return fmt.Errorf("too many dimensions: %d (maximum %d)", len(c.Dimensions), maxDimensions)
+	}
+
 	// Track dimension names to check for duplicates
 	namesSeen := make(map[string]bool)
 

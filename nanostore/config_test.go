@@ -76,6 +76,23 @@ func TestConfigValidation(t *testing.T) {
 			errorMsg:  "at least one dimension must be configured",
 		},
 		{
+			name: "too many dimensions",
+			config: types.Config{
+				Dimensions: []types.DimensionConfig{
+					{Name: "d1", Type: types.Enumerated, Values: []string{"v1"}},
+					{Name: "d2", Type: types.Enumerated, Values: []string{"v1"}},
+					{Name: "d3", Type: types.Enumerated, Values: []string{"v1"}},
+					{Name: "d4", Type: types.Enumerated, Values: []string{"v1"}},
+					{Name: "d5", Type: types.Enumerated, Values: []string{"v1"}},
+					{Name: "d6", Type: types.Enumerated, Values: []string{"v1"}},
+					{Name: "d7", Type: types.Enumerated, Values: []string{"v1"}},
+					{Name: "d8", Type: types.Enumerated, Values: []string{"v1"}},
+				},
+			},
+			shouldErr: true,
+			errorMsg:  "too many dimensions: 8 (maximum 7)",
+		},
+		{
 			name: "empty dimension name",
 			config: types.Config{
 				Dimensions: []types.DimensionConfig{
