@@ -3,6 +3,7 @@ package engine
 import (
 	"database/sql"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/Masterminds/squirrel"
@@ -426,23 +427,106 @@ func (s *configurableStore) SetStatus(id string, status types.Status) error {
 	return nil
 }
 
-// ResolveUUID converts a user-facing ID to a UUID
+// ResolveUUID converts a user-facing ID to a UUID with prefix normalization
 func (s *configurableStore) ResolveUUID(userFacingID string) (string, error) {
-	// Use a simpler approach: get all documents and find the one with matching ID
-	// This is less efficient but more reliable for now
+	// Normalize the input ID to handle different prefix orders
+	normalizedID, err := s.normalizeUserFacingID(userFacingID)
+	if err != nil {
+		return "", fmt.Errorf("failed to normalize ID: %w", err)
+	}
+
+	// Get all documents and find matches
 	allDocs, err := s.List(types.ListOptions{})
 	if err != nil {
 		return "", fmt.Errorf("failed to list documents: %w", err)
 	}
 
-	// Find the document with the matching user-facing ID
+	// Find the document with the matching user-facing ID (original or normalized)
 	for _, doc := range allDocs {
 		if doc.UserFacingID == userFacingID {
+			return doc.UUID, nil
+		}
+		// Also check if the document's ID matches our normalized version
+		if doc.UserFacingID == normalizedID {
 			return doc.UUID, nil
 		}
 	}
 
 	return "", fmt.Errorf("document not found: %s", userFacingID)
+}
+
+// normalizeUserFacingID normalizes prefix ordering in a user-facing ID
+func (s *configurableStore) normalizeUserFacingID(userFacingID string) (string, error) {
+	// Split by dots for hierarchical levels
+	levels := strings.Split(userFacingID, ".")
+	normalizedLevels := make([]string, len(levels))
+
+	for i, level := range levels {
+		normalizedLevel, err := s.normalizeLevelID(level)
+		if err != nil {
+			return "", fmt.Errorf("failed to normalize level %d: %w", i+1, err)
+		}
+		normalizedLevels[i] = normalizedLevel
+	}
+
+	return joinStringArray(normalizedLevels, "."), nil
+}
+
+// normalizeLevelID normalizes a single level of an ID (e.g., "ph1" -> "hp1")
+func (s *configurableStore) normalizeLevelID(levelID string) (string, error) {
+	if levelID == "" {
+		return "", fmt.Errorf("empty level ID")
+	}
+
+	// Extract prefixes (consecutive lowercase letters at the start)
+	prefixEnd := 0
+	for i, r := range levelID {
+		if r >= 'a' && r <= 'z' {
+			prefixEnd = i + 1
+		} else {
+			break
+		}
+	}
+
+	// If no prefixes, return as-is
+	if prefixEnd == 0 {
+		return levelID, nil
+	}
+
+	prefixes := levelID[:prefixEnd]
+	numberPart := levelID[prefixEnd:]
+
+	// Validate all prefixes are known before normalizing
+	seenDimensions := make(map[string]bool)
+	for _, r := range prefixes {
+		prefix := string(r)
+		mapping, found := s.idParser.prefixMap[prefix]
+		if !found {
+			return "", fmt.Errorf("unknown prefix: %s", prefix)
+		}
+		// Check for duplicate dimension
+		if seenDimensions[mapping.dimension] {
+			return "", fmt.Errorf("duplicate dimension prefix for %s", mapping.dimension)
+		}
+		seenDimensions[mapping.dimension] = true
+	}
+
+	// Normalize the prefixes using the ID parser
+	normalizedPrefixes := s.idParser.NormalizePrefixes(prefixes)
+
+	return normalizedPrefixes + numberPart, nil
+}
+
+// joinStringArray joins a slice of strings with a separator
+func joinStringArray(strs []string, sep string) string {
+	if len(strs) == 0 {
+		return ""
+	}
+	result := strs[0]
+	for i := 1; i < len(strs); i++ {
+		result += sep + strs[i]
+	}
+	return result
 }
 
 // Delete removes a document and optionally its children

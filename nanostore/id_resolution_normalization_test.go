@@ -7,7 +7,6 @@ import (
 )
 
 func TestIDResolutionNormalization(t *testing.T) {
-	t.Skip("Skipping test - ID resolution normalization not yet implemented")
 	t.Run("two prefixes normalization", func(t *testing.T) {
 		config := nanostore.Config{
 			Dimensions: []nanostore.DimensionConfig{
