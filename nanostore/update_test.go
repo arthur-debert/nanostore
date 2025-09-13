@@ -82,3 +82,50 @@ func TestUpdateNonExistent(t *testing.T) {
 		t.Fatal("expected error when updating non-existent document")
 	}
 }
+
+func TestUpdateWithoutParentField(t *testing.T) {
+	// Test that existing code without ParentID field continues to work
+	store, err := nanostore.New(":memory:")
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer func() { _ = store.Close() }()
+
+	// Create parent and child
+	parentID, err := store.Add("Parent", nil)
+	if err != nil {
+		t.Fatalf("failed to add parent: %v", err)
+	}
+
+	childID, err := store.Add("Child", &parentID)
+	if err != nil {
+		t.Fatalf("failed to add child: %v", err)
+	}
+
+	// Update without specifying ParentID (backward compatibility)
+	newTitle := "Updated Child"
+	err = store.Update(childID, nanostore.UpdateRequest{
+		Title: &newTitle,
+		// ParentID not specified - should remain unchanged
+	})
+	if err != nil {
+		t.Errorf("failed to update: %v", err)
+	}
+
+	// Verify parent relationship unchanged
+	docs, err := store.List(nanostore.ListOptions{})
+	if err != nil {
+		t.Fatalf("failed to list documents: %v", err)
+	}
+
+	for _, doc := range docs {
+		if doc.UUID == childID {
+			if doc.Title != newTitle {
+				t.Errorf("title not updated")
+			}
+			if doc.ParentUUID == nil || *doc.ParentUUID != parentID {
+				t.Error("parent relationship changed when it shouldn't have")
+			}
+		}
+	}
+}

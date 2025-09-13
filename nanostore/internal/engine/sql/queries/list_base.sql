@@ -1,5 +1,14 @@
 -- Base list query template with placeholders for filtering
 -- Uses a multi-step approach to handle SQLite's limitations with window functions in recursive CTEs
+-- 
+-- This query works around SQLite's restriction that prevents window functions from being used
+-- directly in recursive CTEs. We solve this by:
+-- 1. Pre-calculating IDs for root documents (with window functions)
+-- 2. Pre-calculating local IDs for all child documents (with window functions) 
+-- 3. Using a recursive CTE to build the hierarchy without window functions
+--
+-- Placeholders ROOT_WHERE_CLAUSE and CHILD_WHERE_CLAUSE are replaced at runtime
+-- with appropriate filter conditions
 WITH RECURSIVE 
 -- Step 1: Number root documents by status
 root_docs AS (

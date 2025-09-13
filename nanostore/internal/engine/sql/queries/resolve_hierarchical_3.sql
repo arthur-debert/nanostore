@@ -1,5 +1,13 @@
 -- Resolve a 3-part hierarchical ID (e.g., "1.2.c1") in a single query
 -- Parameters: root_status, root_offset, child1_status, child1_offset, child2_status, child2_offset
+--
+-- This query efficiently resolves deep hierarchical IDs by chaining CTEs that progressively
+-- narrow down the search space. Each CTE:
+-- 1. Finds documents at a specific level (root, child1, child2)
+-- 2. Uses ROW_NUMBER() to match the positional offset within that level
+-- 3. Filters by parent relationship from the previous level
+--
+-- The -1 offset converts from 1-based user IDs to 0-based row numbers
 WITH root_doc AS (
     SELECT 
         uuid,

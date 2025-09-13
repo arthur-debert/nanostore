@@ -42,6 +42,7 @@ type ListOptions struct {
 
 // UpdateRequest specifies fields to update on a document
 type UpdateRequest struct {
-	Title *string
-	Body  *string
+	Title    *string
+	Body     *string
+	ParentID *string // Optional: new parent UUID (nil = no change, empty string = make root)
 }

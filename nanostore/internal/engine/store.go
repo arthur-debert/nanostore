@@ -87,13 +87,56 @@ func (s *store) Update(id string, updates types.UpdateRequest) error {
 	}
 	defer func() { _ = tx.Rollback() }() // Rollback is a no-op if tx has been committed
 
-	query, err := loadQuery("queries/update_document.sql")
-	if err != nil {
-		return err
+	// If parent is being updated, check for circular references
+	if updates.ParentID != nil {
+		// Empty string means "make root", which is always safe
+		if *updates.ParentID != "" {
+			// First check that we're not setting a document as its own parent
+			if *updates.ParentID == id {
+				return fmt.Errorf("cannot set document as its own parent")
+			}
+
+			// Check if this would create a circular reference
+			checkQuery, err := loadQuery("queries/check_circular_reference.sql")
+			if err != nil {
+				return err
+			}
+
+			var wouldBeCircular bool
+			err = tx.QueryRow(checkQuery, *updates.ParentID, id).Scan(&wouldBeCircular)
+			if err != nil {
+				return fmt.Errorf("failed to check for circular reference: %w", err)
+			}
+
+			if wouldBeCircular {
+				return fmt.Errorf("cannot set parent: would create circular reference")
+			}
+		}
 	}
 
-	// Direct access to strongly-typed fields from the public type
-	result, err := tx.Exec(query, updates.Title, updates.Body, id)
+	// Choose the appropriate update query
+	var query string
+	var args []interface{}
+
+	if updates.ParentID != nil {
+		// Use the query that handles parent updates
+		query, err = loadQuery("queries/update_document_with_parent.sql")
+		if err != nil {
+			return err
+		}
+		// Pass parent value for CASE statement evaluation
+		args = []interface{}{updates.Title, updates.Body, *updates.ParentID, id}
+	} else {
+		// Use the simpler query when parent is not being updated
+		query, err = loadQuery("queries/update_document.sql")
+		if err != nil {
+			return err
+		}
+		args = []interface{}{updates.Title, updates.Body, id}
+	}
+
+	// Execute the update
+	result, err := tx.Exec(query, args...)
 	if err != nil {
 		return fmt.Errorf("failed to update document: %w", err)
 	}
@@ -504,4 +547,69 @@ func (s *store) listSimpleFiltered(opts types.ListOptions) ([]types.Document, er
 	}
 
 	return results, nil
+}
+
+// Delete removes a document and optionally its children
+func (s *store) Delete(id string, cascade bool) error {
+	// Start a transaction
+	tx, err := s.db.Begin()
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	// If not cascading, check if the document has children
+	if !cascade {
+		checkQuery, err := loadQuery("queries/check_has_children.sql")
+		if err != nil {
+			return err
+		}
+
+		var hasChildren bool
+		err = tx.QueryRow(checkQuery, id).Scan(&hasChildren)
+		if err != nil {
+			return fmt.Errorf("failed to check for children: %w", err)
+		}
+
+		if hasChildren {
+			return fmt.Errorf("cannot delete document with children unless cascade is true")
+		}
+	}
+
+	// Load the appropriate delete query
+	var deleteQuery string
+	if cascade {
+		deleteQuery, err = loadQuery("queries/delete_cascade.sql")
+		if err != nil {
+			return err
+		}
+	} else {
+		deleteQuery, err = loadQuery("queries/delete_document.sql")
+		if err != nil {
+			return err
+		}
+	}
+
+	// Execute the delete
+	result, err := tx.Exec(deleteQuery, id)
+	if err != nil {
+		return fmt.Errorf("failed to delete document: %w", err)
+	}
+
+	// Check if any rows were affected
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %w", err)
+	}
+
+	if rowsAffected == 0 {
+		return fmt.Errorf("document not found: %s", id)
+	}
+
+	// Commit the transaction
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	return nil
 }

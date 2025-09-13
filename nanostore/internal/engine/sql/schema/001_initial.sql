@@ -5,8 +5,8 @@ CREATE TABLE IF NOT EXISTS documents (
     body TEXT DEFAULT '',
     status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'completed')),
     parent_uuid TEXT,
-    created_at INTEGER NOT NULL,
-    updated_at INTEGER NOT NULL,
+    created_at INTEGER NOT NULL,  -- Unix timestamp for consistent ordering
+    updated_at INTEGER NOT NULL,  -- Unix timestamp, updated on modifications
     FOREIGN KEY (parent_uuid) REFERENCES documents(uuid) ON DELETE CASCADE
 );
 
