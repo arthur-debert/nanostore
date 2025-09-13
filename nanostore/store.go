@@ -2,7 +2,6 @@ package nanostore
 
 import (
 	"github.com/arthur-debert/nanostore/nanostore/internal/engine"
-	"github.com/arthur-debert/nanostore/nanostore/types"
 )
 
 // Engine defines the internal storage engine interface.
@@ -31,23 +30,8 @@ type storeAdapter struct {
 
 // newStoreWithConfig creates a new store instance with custom configuration
 func newStoreWithConfig(dbPath string, config Config) (Store, error) {
-	// Convert public Config to internal types.Config
-	internalConfig := types.Config{
-		Dimensions: make([]types.DimensionConfig, len(config.Dimensions)),
-	}
-
-	for i, dim := range config.Dimensions {
-		internalConfig.Dimensions[i] = types.DimensionConfig{
-			Name:         dim.Name,
-			Type:         dim.Type,
-			Values:       dim.Values,
-			Prefixes:     dim.Prefixes,
-			RefField:     dim.RefField,
-			DefaultValue: dim.DefaultValue,
-		}
-	}
-
-	eng, err := engine.New(dbPath, internalConfig)
+	// Create a new configurable store with the provided configuration
+	eng, err := engine.New(dbPath, config)
 	if err != nil {
 		return nil, err
 	}
