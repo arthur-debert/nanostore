@@ -6,6 +6,19 @@ Nanostore is a document and ID store library that replaces pkg/idm and parts of 
 
 ## Development Guidelines
 
+### Branching Strategy - CRITICAL
+
+1. **NEVER work directly on main** for non-trivial changes
+2. **ALWAYS create a feature branch** for:
+   - Architectural changes (type system, interfaces)
+   - New features or significant refactoring
+   - Any work requiring multiple commits
+3. **Sequential PR workflow**:
+   - Complete and merge PR before starting dependent work
+   - If new work depends on unmerged PR, WAIT or work on something else
+   - DO NOT create multiple overlapping PRs
+4. **Branch naming**: `<type>/<description>` (e.g., `fix/sql-injection`, `refactor/type-safety`)
+
 ### Git Commit Practices
 
 1. **Granular Commits**: Make small, focused commits for each logical change
