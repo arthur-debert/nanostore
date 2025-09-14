@@ -420,24 +420,151 @@ func (s *configurableStore) ResolveUUID(userFacingID string) (string, error) {
 		return "", fmt.Errorf("failed to normalize ID: %w", err)
 	}
 
-	// Get all documents and find matches
-	allDocs, err := s.List(types.ListOptions{})
+	// Parse the normalized ID to extract hierarchy and filters
+	parsedID, err := s.idParser.ParseID(normalizedID)
 	if err != nil {
-		return "", fmt.Errorf("failed to list documents: %w", err)
+		return "", fmt.Errorf("failed to parse ID: %w", err)
 	}
 
-	// Find the document with the matching user-facing ID (original or normalized)
-	for _, doc := range allDocs {
-		if doc.UserFacingID == userFacingID {
-			return doc.UUID, nil
-		}
-		// Also check if the document's ID matches our normalized version
-		if doc.UserFacingID == normalizedID {
-			return doc.UUID, nil
+	// Use optimized SQL-based resolution for single level IDs
+	if len(parsedID.Levels) == 1 {
+		return s.resolveUUIDFlat(parsedID.Levels[0])
+	}
+
+	// For multi-level hierarchical IDs, resolve level by level
+	return s.resolveUUIDHierarchical(parsedID)
+}
+
+// resolveUUIDFlat efficiently resolves a single-level ID using direct SQL
+func (s *configurableStore) resolveUUIDFlat(level ParsedLevel) (string, error) {
+	// Build SQL query with ROW_NUMBER() partitioning
+	var whereClauses []string
+	var args []interface{}
+
+	// Add dimension filters
+	enumDims := s.config.GetEnumeratedDimensions()
+	var partitionCols []string
+
+	for _, dim := range enumDims {
+		if filterValue, hasFilter := level.DimensionFilters[dim.Name]; hasFilter {
+			whereClauses = append(whereClauses, fmt.Sprintf("%s = ?", dim.Name))
+			args = append(args, filterValue)
+			partitionCols = append(partitionCols, dim.Name)
+		} else {
+			// Use default value if no specific filter
+			whereClauses = append(whereClauses, fmt.Sprintf("%s = ?", dim.Name))
+			args = append(args, dim.DefaultValue)
+			partitionCols = append(partitionCols, dim.Name)
 		}
 	}
 
-	return "", fmt.Errorf("document not found: %s", userFacingID)
+	// Handle hierarchical dimension (should be NULL for root level)
+	hierDims := s.config.GetHierarchicalDimensions()
+	for _, dim := range hierDims {
+		whereClauses = append(whereClauses, fmt.Sprintf("%s IS NULL", dim.RefField))
+		partitionCols = append(partitionCols, dim.RefField)
+	}
+
+	// Build the query
+	partitionBy := strings.Join(partitionCols, ", ")
+	whereClause := strings.Join(whereClauses, " AND ")
+
+	query := fmt.Sprintf(`
+		WITH numbered_docs AS (
+			SELECT uuid, ROW_NUMBER() OVER (PARTITION BY %s ORDER BY created_at) as row_num
+			FROM documents 
+			WHERE %s
+		)
+		SELECT uuid FROM numbered_docs WHERE row_num = ?`,
+		partitionBy, whereClause)
+
+	args = append(args, level.Offset+1) // Convert 0-based to 1-based
+
+	var uuid string
+	err := s.db.QueryRow(query, args...).Scan(&uuid)
+	if err != nil {
+		return "", fmt.Errorf("document not found")
+	}
+
+	return uuid, nil
+}
+
+// resolveUUIDHierarchical resolves multi-level hierarchical IDs level by level
+func (s *configurableStore) resolveUUIDHierarchical(parsedID *ParsedID) (string, error) {
+	// Start with the root level
+	currentUUID, err := s.resolveUUIDFlat(parsedID.Levels[0])
+	if err != nil {
+		return "", fmt.Errorf("failed to resolve root level: %w", err)
+	}
+
+	// Resolve each subsequent level
+	for i := 1; i < len(parsedID.Levels); i++ {
+		currentUUID, err = s.resolveChildUUID(currentUUID, parsedID.Levels[i])
+		if err != nil {
+			return "", fmt.Errorf("failed to resolve level %d: %w", i+1, err)
+		}
+	}
+
+	return currentUUID, nil
+}
+
+// resolveChildUUID finds a child document given parent UUID and level constraints
+func (s *configurableStore) resolveChildUUID(parentUUID string, level ParsedLevel) (string, error) {
+	// Get hierarchical dimension
+	hierDims := s.config.GetHierarchicalDimensions()
+	if len(hierDims) == 0 {
+		return "", fmt.Errorf("no hierarchical dimension configured")
+	}
+	hierDim := hierDims[0] // Use first hierarchical dimension
+
+	// Build WHERE clauses for this level
+	var whereClauses []string
+	var args []interface{}
+
+	// Must be child of parent
+	whereClauses = append(whereClauses, fmt.Sprintf("%s = ?", hierDim.RefField))
+	args = append(args, parentUUID)
+
+	// Add dimension filters
+	enumDims := s.config.GetEnumeratedDimensions()
+	var partitionCols []string
+
+	partitionCols = append(partitionCols, hierDim.RefField) // Partition by parent
+
+	for _, dim := range enumDims {
+		if filterValue, hasFilter := level.DimensionFilters[dim.Name]; hasFilter {
+			whereClauses = append(whereClauses, fmt.Sprintf("%s = ?", dim.Name))
+			args = append(args, filterValue)
+		} else {
+			// Use default value if no specific filter
+			whereClauses = append(whereClauses, fmt.Sprintf("%s = ?", dim.Name))
+			args = append(args, dim.DefaultValue)
+		}
+		partitionCols = append(partitionCols, dim.Name)
+	}
+
+	// Build the query
+	partitionBy := strings.Join(partitionCols, ", ")
+	whereClause := strings.Join(whereClauses, " AND ")
+
+	query := fmt.Sprintf(`
+		WITH numbered_docs AS (
+			SELECT uuid, ROW_NUMBER() OVER (PARTITION BY %s ORDER BY created_at) as row_num
+			FROM documents 
+			WHERE %s
+		)
+		SELECT uuid FROM numbered_docs WHERE row_num = ?`,
+		partitionBy, whereClause)
+
+	args = append(args, level.Offset+1) // Convert 0-based to 1-based
+
+	var uuid string
+	err := s.db.QueryRow(query, args...).Scan(&uuid)
+	if err != nil {
+		return "", fmt.Errorf("child document not found")
+	}
+
+	return uuid, nil
 }
 
 // normalizeUserFacingID normalizes prefix ordering in a user-facing ID
