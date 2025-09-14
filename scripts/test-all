@@ -10,12 +10,24 @@ cd "$PROJECT_ROOT"
 
 # Check if gotestsum is available
 if command -v gotestsum &> /dev/null; then
-    echo "Using gotestsum to run all tests..."
-    gotestsum --raw-command -- ./.gotestsum.sh
+    echo "Using gotestsum..."
+    
+    # Run nanostore tests
+    echo "Running nanostore tests..."
+    gotestsum --format testname -- ./... -v
+    
+    # Run todo app tests
+    echo -e "\nRunning todo app tests..."
+    cd "$PROJECT_ROOT/examples/apps/todo"
+    gotestsum --format testname -- ./... -v
 else
+    echo "gotestsum not found, using go test..."
+    
+    # Run nanostore tests
     echo "Running nanostore tests..."
     go test ./... -v
     
+    # Run todo app tests  
     echo -e "\nRunning todo app tests..."
     cd "$PROJECT_ROOT/examples/apps/todo"
     go test ./... -v
