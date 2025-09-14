@@ -23,7 +23,7 @@ func TestBulkAdd(t *testing.T) {
 
 	ids := make([]string, count)
 	for i := 0; i < count; i++ {
-		id, err := store.Add(fmt.Sprintf("Bulk Document %d", i), nil, nil)
+		id, err := store.Add(fmt.Sprintf("Bulk Document %d", i), nil)
 		if err != nil {
 			t.Fatalf("failed to add document %d: %v", i, err)
 		}
@@ -65,7 +65,7 @@ func TestBulkUpdate(t *testing.T) {
 	count := 500
 	ids := make([]string, count)
 	for i := 0; i < count; i++ {
-		id, err := store.Add(fmt.Sprintf("Original %d", i), nil, nil)
+		id, err := store.Add(fmt.Sprintf("Original %d", i), nil)
 		if err != nil {
 			t.Fatalf("failed to add document %d: %v", i, err)
 		}
@@ -120,7 +120,7 @@ func TestBulkStatusChange(t *testing.T) {
 	count := 500
 	ids := make([]string, count)
 	for i := 0; i < count; i++ {
-		id, err := store.Add(fmt.Sprintf("Task %d", i), nil, nil)
+		id, err := store.Add(fmt.Sprintf("Task %d", i), nil)
 		if err != nil {
 			t.Fatalf("failed to add document %d: %v", i, err)
 		}
@@ -132,7 +132,7 @@ func TestBulkStatusChange(t *testing.T) {
 	statusChanges := 0
 	for i, id := range ids {
 		if i%2 == 0 {
-			err := store.SetStatus(id, nanostore.StatusCompleted)
+			err := nanostore.SetStatus(store, id, "completed")
 			if err != nil {
 				t.Fatalf("failed to set status for document %d: %v", i, err)
 			}
@@ -152,10 +152,10 @@ func TestBulkStatusChange(t *testing.T) {
 	pendingCount := 0
 	completedCount := 0
 	for _, doc := range docs {
-		switch doc.Status {
-		case nanostore.StatusPending:
+		switch doc.GetStatus() {
+		case "pending":
 			pendingCount++
-		case nanostore.StatusCompleted:
+		case "completed":
 			completedCount++
 		}
 	}
@@ -183,14 +183,14 @@ func TestBulkHierarchicalCreation(t *testing.T) {
 	totalDocs := 0
 
 	for i := 0; i < rootCount; i++ {
-		rootID, err := store.Add(fmt.Sprintf("Project %d", i), nil, nil)
+		rootID, err := store.Add(fmt.Sprintf("Project %d", i), nil)
 		if err != nil {
 			t.Fatalf("failed to add root %d: %v", i, err)
 		}
 		totalDocs++
 
 		for j := 0; j < childrenPerRoot; j++ {
-			_, err := store.Add(fmt.Sprintf("Task %d.%d", i, j), &rootID, nil)
+			_, err := store.Add(fmt.Sprintf("Task %d.%d", i, j), map[string]interface{}{"parent_uuid": rootID})
 			if err != nil {
 				t.Fatalf("failed to add child %d.%d: %v", i, j, err)
 			}
@@ -216,7 +216,7 @@ func TestBulkHierarchicalCreation(t *testing.T) {
 	roots := 0
 	children := 0
 	for _, doc := range docs {
-		if doc.ParentUUID == nil {
+		if doc.GetParentUUID() == nil {
 			roots++
 		} else {
 			children++
@@ -247,7 +247,7 @@ func TestConcurrentBulkOperations(t *testing.T) {
 	// Create initial documents
 	baseCount := 100
 	for i := 0; i < baseCount; i++ {
-		_, err := store.Add(fmt.Sprintf("Base %d", i), nil, nil)
+		_, err := store.Add(fmt.Sprintf("Base %d", i), nil)
 		if err != nil {
 			t.Fatalf("failed to add base document %d: %v", i, err)
 		}
@@ -262,7 +262,7 @@ func TestConcurrentBulkOperations(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		for i := 0; i < 100; i++ {
-			_, err := store.Add(fmt.Sprintf("Concurrent Add %d", i), nil, nil)
+			_, err := store.Add(fmt.Sprintf("Concurrent Add %d", i), nil)
 			if err != nil {
 				errors <- fmt.Errorf("add error: %v", err)
 			}
@@ -336,7 +336,7 @@ func TestBulkOperationMemoryUsage(t *testing.T) {
 	count := 10000
 
 	for i := 0; i < count; i++ {
-		_, err := store.Add(fmt.Sprintf("Memory Test Document %d with some content to make it non-trivial", i), nil, nil)
+		_, err := store.Add(fmt.Sprintf("Memory Test Document %d with some content to make it non-trivial", i), nil)
 		if err != nil {
 			t.Fatalf("failed at document %d: %v", i, err)
 		}

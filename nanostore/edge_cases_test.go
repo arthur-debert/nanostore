@@ -15,7 +15,7 @@ func TestEmptyTitle(t *testing.T) {
 	defer func() { _ = store.Close() }()
 
 	// Empty title should be allowed
-	id, err := store.Add("", nil, nil)
+	id, err := store.Add("", nil)
 	if err != nil {
 		t.Fatalf("failed to add document with empty title: %v", err)
 	}
@@ -43,7 +43,7 @@ func TestVeryLongTitle(t *testing.T) {
 	// Create a very long title
 	longTitle := strings.Repeat("A very long title ", 1000)
 
-	id, err := store.Add(longTitle, nil, nil)
+	id, err := store.Add(longTitle, nil)
 	if err != nil {
 		t.Fatalf("failed to add document with long title: %v", err)
 	}
@@ -79,7 +79,7 @@ func TestSpecialCharactersInTitle(t *testing.T) {
 	}
 
 	for i, title := range specialTitles {
-		id, err := store.Add(title, nil, nil)
+		id, err := store.Add(title, nil)
 		if err != nil {
 			t.Errorf("failed to add document with special title %d: %v", i, err)
 			continue
@@ -126,7 +126,7 @@ func TestManyDocuments(t *testing.T) {
 
 	// Add many documents
 	for i := 0; i < count; i++ {
-		id, err := store.Add(string(rune('A'+i%26)), nil, nil)
+		id, err := store.Add(string(rune('A'+i%26)), nil)
 		if err != nil {
 			t.Fatalf("failed to add document %d: %v", i, err)
 		}
@@ -164,7 +164,7 @@ func TestCircularReference(t *testing.T) {
 	defer func() { _ = store.Close() }()
 
 	// Create a document
-	_, err = store.Add("Document 1", nil, nil)
+	_, err = store.Add("Document 1", nil)
 	if err != nil {
 		t.Fatalf("failed to add document: %v", err)
 	}
@@ -183,7 +183,7 @@ func TestNullValues(t *testing.T) {
 	defer func() { _ = store.Close() }()
 
 	// Add document
-	id, err := store.Add("Test", nil, nil)
+	id, err := store.Add("Test", nil)
 	if err != nil {
 		t.Fatalf("failed to add document: %v", err)
 	}
@@ -216,7 +216,7 @@ func TestUpdateToEmptyString(t *testing.T) {
 	defer func() { _ = store.Close() }()
 
 	// Add document with content
-	id, err := store.Add("Original Title", nil, nil)
+	id, err := store.Add("Original Title", nil)
 	if err != nil {
 		t.Fatalf("failed to add document: %v", err)
 	}
@@ -281,7 +281,7 @@ func TestListWithMixedStatuses(t *testing.T) {
 	// Create documents with different statuses
 	pendingIDs := make([]string, 5)
 	for i := 0; i < 5; i++ {
-		id, err := store.Add("Pending "+string(rune('A'+i)), nil, nil)
+		id, err := store.Add("Pending "+string(rune('A'+i)), nil)
 		if err != nil {
 			t.Fatalf("failed to add pending document %d: %v", i, err)
 		}
@@ -290,11 +290,11 @@ func TestListWithMixedStatuses(t *testing.T) {
 
 	completedIDs := make([]string, 3)
 	for i := 0; i < 3; i++ {
-		id, err := store.Add("Completed "+string(rune('A'+i)), nil, nil)
+		id, err := store.Add("Completed "+string(rune('A'+i)), nil)
 		if err != nil {
 			t.Fatalf("failed to add completed document %d: %v", i, err)
 		}
-		err = store.SetStatus(id, nanostore.StatusCompleted)
+		err = nanostore.SetStatus(store, id, "completed")
 		if err != nil {
 			t.Fatalf("failed to set status: %v", err)
 		}
@@ -315,14 +315,14 @@ func TestListWithMixedStatuses(t *testing.T) {
 	pendingCount := 0
 	completedCount := 0
 	for _, doc := range allDocs {
-		switch doc.Status {
-		case nanostore.StatusPending:
+		switch doc.GetStatus() {
+		case "pending":
 			pendingCount++
 			// Pending docs should have numeric IDs: 1, 2, 3, 4, 5
 			if len(doc.UserFacingID) > 1 || doc.UserFacingID[0] < '1' || doc.UserFacingID[0] > '5' {
 				t.Errorf("unexpected pending doc ID: %s", doc.UserFacingID)
 			}
-		case nanostore.StatusCompleted:
+		case "completed":
 			completedCount++
 			// Completed docs should have c-prefixed IDs: c1, c2, c3
 			if !strings.HasPrefix(doc.UserFacingID, "c") {
@@ -347,19 +347,19 @@ func TestListLargeHierarchy(t *testing.T) {
 	defer func() { _ = store.Close() }()
 
 	// Create a document tree with many siblings at each level
-	root1, err := store.Add("Root 1", nil, nil)
+	root1, err := store.Add("Root 1", nil)
 	if err != nil {
 		t.Fatalf("failed to add root 1: %v", err)
 	}
 
-	root2, err := store.Add("Root 2", nil, nil)
+	root2, err := store.Add("Root 2", nil)
 	if err != nil {
 		t.Fatalf("failed to add root 2: %v", err)
 	}
 
 	// Add many children to root1
 	for i := 0; i < 20; i++ {
-		_, err := store.Add("Child 1."+string(rune('A'+i)), &root1, nil)
+		_, err := store.Add("Child 1."+string(rune('A'+i)), map[string]interface{}{"parent_uuid": root1})
 		if err != nil {
 			t.Fatalf("failed to add child %d: %v", i, err)
 		}
@@ -367,7 +367,7 @@ func TestListLargeHierarchy(t *testing.T) {
 
 	// Add children to root2
 	for i := 0; i < 15; i++ {
-		_, err := store.Add("Child 2."+string(rune('A'+i)), &root2, nil)
+		_, err := store.Add("Child 2."+string(rune('A'+i)), map[string]interface{}{"parent_uuid": root2})
 		if err != nil {
 			t.Fatalf("failed to add child to root2 %d: %v", i, err)
 		}
@@ -391,19 +391,19 @@ func TestListLargeHierarchy(t *testing.T) {
 	}
 
 	for _, doc := range docs {
-		if doc.ParentUUID == nil {
+		if doc.GetParentUUID() == nil {
 			idCounts["root"]++
 			// Root IDs should be 1, 2
 			if doc.UserFacingID != "1" && doc.UserFacingID != "2" {
 				t.Errorf("unexpected root ID: %s", doc.UserFacingID)
 			}
-		} else if *doc.ParentUUID == root1 {
+		} else if *doc.GetParentUUID() == root1 {
 			idCounts["child1"]++
 			// Children of root1 should be 1.1, 1.2, ..., 1.20
 			if !strings.HasPrefix(doc.UserFacingID, "1.") {
 				t.Errorf("child of root1 should have 1. prefix, got: %s", doc.UserFacingID)
 			}
-		} else if *doc.ParentUUID == root2 {
+		} else if *doc.GetParentUUID() == root2 {
 			idCounts["child2"]++
 			// Children of root2 should be 2.1, 2.2, ..., 2.15
 			if !strings.HasPrefix(doc.UserFacingID, "2.") {
@@ -433,7 +433,7 @@ func TestListOrderStability(t *testing.T) {
 	// Add documents
 	ids := make([]string, 10)
 	for i := 0; i < 10; i++ {
-		id, err := store.Add("Doc "+string(rune('A'+i)), nil, nil)
+		id, err := store.Add("Doc "+string(rune('A'+i)), nil)
 		if err != nil {
 			t.Fatalf("failed to add document %d: %v", i, err)
 		}

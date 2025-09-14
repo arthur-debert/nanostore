@@ -16,7 +16,7 @@ func BenchmarkAdd(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_, err := store.Add(fmt.Sprintf("Document %d", i), nil, nil)
+		_, err := store.Add(fmt.Sprintf("Document %d", i), nil)
 		if err != nil {
 			b.Fatalf("failed to add document: %v", err)
 		}
@@ -48,7 +48,7 @@ func benchmarkList(b *testing.B, count int) {
 
 	// Add documents
 	for i := 0; i < count; i++ {
-		_, err := store.Add(fmt.Sprintf("Document %d", i), nil, nil)
+		_, err := store.Add(fmt.Sprintf("Document %d", i), nil)
 		if err != nil {
 			b.Fatalf("failed to add document: %v", err)
 		}
@@ -74,10 +74,10 @@ func BenchmarkResolveUUID(b *testing.B) {
 	defer func() { _ = store.Close() }()
 
 	// Create hierarchy
-	root, _ := store.Add("Root", nil, nil)
+	root, _ := store.Add("Root", nil)
 	parent := root
 	for i := 0; i < 5; i++ {
-		child, _ := store.Add(fmt.Sprintf("Level %d", i), &parent, nil)
+		child, _ := store.Add(fmt.Sprintf("Level %d", i), map[string]interface{}{"parent_uuid": parent})
 		parent = child
 	}
 
@@ -101,7 +101,7 @@ func BenchmarkUpdate(b *testing.B) {
 	// Create documents
 	ids := make([]string, 100)
 	for i := 0; i < 100; i++ {
-		id, err := store.Add(fmt.Sprintf("Document %d", i), nil, nil)
+		id, err := store.Add(fmt.Sprintf("Document %d", i), nil)
 		if err != nil {
 			b.Fatalf("failed to add document: %v", err)
 		}
@@ -130,11 +130,11 @@ func BenchmarkHierarchicalList(b *testing.B) {
 	// Create hierarchical structure
 	// 10 roots, each with 10 children, each child with 10 grandchildren = 1110 docs
 	for i := 0; i < 10; i++ {
-		root, _ := store.Add(fmt.Sprintf("Root %d", i), nil, nil)
+		root, _ := store.Add(fmt.Sprintf("Root %d", i), nil)
 		for j := 0; j < 10; j++ {
-			child, _ := store.Add(fmt.Sprintf("Child %d.%d", i, j), &root, nil)
+			child, _ := store.Add(fmt.Sprintf("Child %d.%d", i, j), map[string]interface{}{"parent_uuid": root})
 			for k := 0; k < 10; k++ {
-				_, _ = store.Add(fmt.Sprintf("Grandchild %d.%d.%d", i, j, k), &child, nil)
+				_, _ = store.Add(fmt.Sprintf("Grandchild %d.%d.%d", i, j, k), map[string]interface{}{"parent_uuid": child})
 			}
 		}
 	}
@@ -160,13 +160,13 @@ func BenchmarkMixedStatusList(b *testing.B) {
 
 	// Create documents with mixed status
 	for i := 0; i < 1000; i++ {
-		id, err := store.Add(fmt.Sprintf("Document %d", i), nil, nil)
+		id, err := store.Add(fmt.Sprintf("Document %d", i), nil)
 		if err != nil {
 			b.Fatalf("failed to add document: %v", err)
 		}
 		// Mark every third as completed
 		if i%3 == 0 {
-			_ = store.SetStatus(id, nanostore.StatusCompleted)
+			_ = nanostore.SetStatus(store, id, "completed")
 		}
 	}
 

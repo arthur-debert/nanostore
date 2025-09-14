@@ -18,7 +18,7 @@ func TestFilterByStatus(t *testing.T) {
 	// Create documents with different statuses
 	pendingIDs := make([]string, 5)
 	for i := 0; i < 5; i++ {
-		id, err := store.Add("Pending "+string(rune('A'+i)), nil, nil)
+		id, err := store.Add("Pending "+string(rune('A'+i)), nil)
 		if err != nil {
 			t.Fatalf("failed to add pending document: %v", err)
 		}
@@ -27,11 +27,11 @@ func TestFilterByStatus(t *testing.T) {
 
 	completedIDs := make([]string, 3)
 	for i := 0; i < 3; i++ {
-		id, err := store.Add("Completed "+string(rune('A'+i)), nil, nil)
+		id, err := store.Add("Completed "+string(rune('A'+i)), nil)
 		if err != nil {
 			t.Fatalf("failed to add document: %v", err)
 		}
-		err = store.SetStatus(id, nanostore.StatusCompleted)
+		err = nanostore.SetStatus(store, id, "completed")
 		if err != nil {
 			t.Fatalf("failed to set status: %v", err)
 		}
@@ -40,7 +40,7 @@ func TestFilterByStatus(t *testing.T) {
 
 	// Test filter by pending status
 	pendingDocs, err := store.List(nanostore.ListOptions{
-		FilterByStatus: []nanostore.Status{nanostore.StatusPending},
+		Filters: map[string]interface{}{"status": "pending"},
 	})
 	if err != nil {
 		t.Fatalf("failed to list pending: %v", err)
@@ -51,14 +51,14 @@ func TestFilterByStatus(t *testing.T) {
 	}
 
 	for _, doc := range pendingDocs {
-		if doc.Status != nanostore.StatusPending {
-			t.Errorf("expected pending status, got %s", doc.Status)
+		if doc.GetStatus() != "pending" {
+			t.Errorf("expected pending status, got %s", doc.GetStatus())
 		}
 	}
 
 	// Test filter by completed status
 	completedDocs, err := store.List(nanostore.ListOptions{
-		FilterByStatus: []nanostore.Status{nanostore.StatusCompleted},
+		Filters: map[string]interface{}{"status": "completed"},
 	})
 	if err != nil {
 		t.Fatalf("failed to list completed: %v", err)
@@ -70,7 +70,7 @@ func TestFilterByStatus(t *testing.T) {
 
 	// Test filter by multiple statuses
 	allDocs, err := store.List(nanostore.ListOptions{
-		FilterByStatus: []nanostore.Status{nanostore.StatusPending, nanostore.StatusCompleted},
+		Filters: map[string]interface{}{"status": []string{"pending", "completed"}},
 	})
 	if err != nil {
 		t.Fatalf("failed to list all: %v", err)
@@ -101,12 +101,12 @@ func TestFilterByParent(t *testing.T) {
 	defer func() { _ = store.Close() }()
 
 	// Create hierarchy
-	root1, err := store.Add("Root 1", nil, nil)
+	root1, err := store.Add("Root 1", nil)
 	if err != nil {
 		t.Fatalf("failed to add root 1: %v", err)
 	}
 
-	root2, err := store.Add("Root 2", nil, nil)
+	root2, err := store.Add("Root 2", nil)
 	if err != nil {
 		t.Fatalf("failed to add root 2: %v", err)
 	}
@@ -114,7 +114,7 @@ func TestFilterByParent(t *testing.T) {
 	// Children of root1
 	var root1Children []string
 	for i := 0; i < 3; i++ {
-		id, err := store.Add("Child 1."+string(rune('A'+i)), &root1, nil)
+		id, err := store.Add("Child 1."+string(rune('A'+i)), map[string]interface{}{"parent_uuid": root1})
 		if err != nil {
 			t.Fatalf("failed to add child: %v", err)
 		}
@@ -123,22 +123,21 @@ func TestFilterByParent(t *testing.T) {
 
 	// Children of root2
 	for i := 0; i < 2; i++ {
-		_, err := store.Add("Child 2."+string(rune('A'+i)), &root2, nil)
+		_, err := store.Add("Child 2."+string(rune('A'+i)), map[string]interface{}{"parent_uuid": root2})
 		if err != nil {
 			t.Fatalf("failed to add child: %v", err)
 		}
 	}
 
 	// Grandchildren
-	grandchild, err := store.Add("Grandchild", &root1Children[0], nil)
+	grandchild, err := store.Add("Grandchild", map[string]interface{}{"parent_uuid": root1Children[0]})
 	if err != nil {
 		t.Fatalf("failed to add grandchild: %v", err)
 	}
 
 	// Test filter by root documents only
-	emptyString := ""
 	roots, err := store.List(nanostore.ListOptions{
-		FilterByParent: &emptyString,
+		Filters: map[string]interface{}{"parent_uuid": ""},
 	})
 	if err != nil {
 		t.Fatalf("failed to list roots: %v", err)
@@ -150,7 +149,7 @@ func TestFilterByParent(t *testing.T) {
 
 	// Test filter by specific parent
 	root1Kids, err := store.List(nanostore.ListOptions{
-		FilterByParent: &root1,
+		Filters: map[string]interface{}{"parent_uuid": root1},
 	})
 	if err != nil {
 		t.Fatalf("failed to list root1 children: %v", err)
@@ -162,7 +161,7 @@ func TestFilterByParent(t *testing.T) {
 
 	// Test filter by different parent
 	root2Kids, err := store.List(nanostore.ListOptions{
-		FilterByParent: &root2,
+		Filters: map[string]interface{}{"parent_uuid": root2},
 	})
 	if err != nil {
 		t.Fatalf("failed to list root2 children: %v", err)
@@ -174,7 +173,7 @@ func TestFilterByParent(t *testing.T) {
 
 	// Test grandchildren
 	grandchildren, err := store.List(nanostore.ListOptions{
-		FilterByParent: &root1Children[0],
+		Filters: map[string]interface{}{"parent_uuid": root1Children[0]},
 	})
 	if err != nil {
 		t.Fatalf("failed to list grandchildren: %v", err)
@@ -211,7 +210,7 @@ func TestFilterBySearch(t *testing.T) {
 	}
 
 	for _, doc := range docs {
-		id, err := store.Add(doc.title, nil, nil)
+		id, err := store.Add(doc.title, nil)
 		if err != nil {
 			t.Fatalf("failed to add document: %v", err)
 		}
@@ -283,22 +282,24 @@ func TestCombinedFilters(t *testing.T) {
 	defer func() { _ = store.Close() }()
 
 	// Create hierarchy with mixed statuses
-	root1, _ := store.Add("Project Alpha", nil, nil)
-	root2, _ := store.Add("Project Beta", nil, nil)
+	root1, _ := store.Add("Project Alpha", nil)
+	root2, _ := store.Add("Project Beta", nil)
 
 	// Add children with different statuses
-	_, _ = store.Add("Design Phase", &root1, nil)
-	task2, _ := store.Add("Implementation", &root1, nil)
-	_ = store.SetStatus(task2, nanostore.StatusCompleted)
+	_, _ = store.Add("Design Phase", map[string]interface{}{"parent_uuid": root1})
+	task2, _ := store.Add("Implementation", map[string]interface{}{"parent_uuid": root1})
+	_ = nanostore.SetStatus(store, task2, "completed")
 
-	task3, _ := store.Add("Testing Phase", &root2, nil)
-	deployTask, _ := store.Add("Deployment", &root2, nil)
-	_ = store.SetStatus(deployTask, nanostore.StatusCompleted)
+	task3, _ := store.Add("Testing Phase", map[string]interface{}{"parent_uuid": root2})
+	deployTask, _ := store.Add("Deployment", map[string]interface{}{"parent_uuid": root2})
+	_ = nanostore.SetStatus(store, deployTask, "completed")
 
 	// Test: Filter by parent AND status
 	results, err := store.List(nanostore.ListOptions{
-		FilterByParent: &root1,
-		FilterByStatus: []nanostore.Status{nanostore.StatusCompleted},
+		Filters: map[string]interface{}{
+			"parent_uuid": root1,
+			"status":      "completed",
+		},
 	})
 	if err != nil {
 		t.Fatalf("failed to filter: %v", err)
@@ -314,7 +315,7 @@ func TestCombinedFilters(t *testing.T) {
 
 	// Test: Filter by status AND search
 	results, err = store.List(nanostore.ListOptions{
-		FilterByStatus: []nanostore.Status{nanostore.StatusPending},
+		Filters:        map[string]interface{}{"status": "pending"},
 		FilterBySearch: "Phase",
 	})
 	if err != nil {
@@ -327,8 +328,10 @@ func TestCombinedFilters(t *testing.T) {
 
 	// Test: All three filters
 	results, err = store.List(nanostore.ListOptions{
-		FilterByParent: &root2,
-		FilterByStatus: []nanostore.Status{nanostore.StatusPending},
+		Filters: map[string]interface{}{
+			"parent_uuid": root2,
+			"status":      "pending",
+		},
 		FilterBySearch: "Test",
 	})
 	if err != nil {

@@ -32,7 +32,7 @@ func TestSQLInjectionInAdd(t *testing.T) {
 
 	// All of these should be safely handled as data, not SQL
 	for i, attempt := range injectionAttempts {
-		id, err := store.Add(attempt, nil, nil)
+		id, err := store.Add(attempt, nil)
 		if err != nil {
 			t.Errorf("failed to add document with injection attempt %d: %v", i, err)
 			continue
@@ -77,12 +77,12 @@ func TestSQLInjectionInUpdate(t *testing.T) {
 	defer func() { _ = store.Close() }()
 
 	// Create test documents
-	id1, err := store.Add("Document 1", nil, nil)
+	id1, err := store.Add("Document 1", nil)
 	if err != nil {
 		t.Fatalf("failed to add document 1: %v", err)
 	}
 
-	id2, err := store.Add("Document 2", nil, nil)
+	id2, err := store.Add("Document 2", nil)
 	if err != nil {
 		t.Fatalf("failed to add document 2: %v", err)
 	}
@@ -131,7 +131,7 @@ func TestSQLInjectionInResolveUUID(t *testing.T) {
 	defer func() { _ = store.Close() }()
 
 	// Add a document
-	id, err := store.Add("Test", nil, nil)
+	id, err := store.Add("Test", nil)
 	if err != nil {
 		t.Fatalf("failed to add document: %v", err)
 	}
@@ -196,12 +196,12 @@ func TestSQLInjectionInHierarchicalID(t *testing.T) {
 	defer func() { _ = store.Close() }()
 
 	// Create parent and child
-	parent, err := store.Add("Parent", nil, nil)
+	parent, err := store.Add("Parent", nil)
 	if err != nil {
 		t.Fatalf("failed to add parent: %v", err)
 	}
 
-	_, err = store.Add("Child", &parent, nil)
+	_, err = store.Add("Child", map[string]interface{}{"parent_uuid": parent})
 	if err != nil {
 		t.Fatalf("failed to add child: %v", err)
 	}
@@ -272,7 +272,7 @@ func TestSQLInjectionWithNullBytes(t *testing.T) {
 	}
 
 	for i, attempt := range injectionAttempts {
-		id, err := store.Add(attempt, nil, nil)
+		id, err := store.Add(attempt, nil)
 		if err != nil {
 			t.Errorf("failed to add with null byte attempt %d: %v", i, err)
 			continue
@@ -307,7 +307,7 @@ func TestSQLInjectionInParentID(t *testing.T) {
 	defer func() { _ = store.Close() }()
 
 	// Create a valid parent
-	parent, err := store.Add("Parent", nil, nil)
+	parent, err := store.Add("Parent", nil)
 	if err != nil {
 		t.Fatalf("failed to add parent: %v", err)
 	}
@@ -323,7 +323,7 @@ func TestSQLInjectionInParentID(t *testing.T) {
 
 	for i, attempt := range injectionAttempts {
 		// These should fail with foreign key constraint or invalid UUID
-		_, err := store.Add("Child", &attempt, nil)
+		_, err := store.Add("Child", map[string]interface{}{"parent_uuid": attempt})
 		if err == nil {
 			t.Errorf("parent ID injection attempt %d succeeded when it should have failed", i)
 		}

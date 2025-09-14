@@ -33,11 +33,11 @@ func TestDeleteByDimension(t *testing.T) {
 	defer func() { _ = store.Close() }()
 
 	// Create test documents with different statuses
-	_, _ = store.Add("Task 1", nil, map[string]string{"status": "pending", "priority": "high"})
-	_, _ = store.Add("Task 2", nil, map[string]string{"status": "completed", "priority": "low"})
-	_, _ = store.Add("Task 3", nil, map[string]string{"status": "archived", "priority": "medium"})
-	_, _ = store.Add("Task 4", nil, map[string]string{"status": "completed", "priority": "high"})
-	_, _ = store.Add("Task 5", nil, map[string]string{"status": "pending", "priority": "low"})
+	_, _ = store.Add("Task 1", map[string]interface{}{"status": "pending", "priority": "high"})
+	_, _ = store.Add("Task 2", map[string]interface{}{"status": "completed", "priority": "low"})
+	_, _ = store.Add("Task 3", map[string]interface{}{"status": "archived", "priority": "medium"})
+	_, _ = store.Add("Task 4", map[string]interface{}{"status": "completed", "priority": "high"})
+	_, _ = store.Add("Task 5", map[string]interface{}{"status": "pending", "priority": "low"})
 
 	t.Run("delete by status dimension", func(t *testing.T) {
 		// Delete all completed items
@@ -62,7 +62,7 @@ func TestDeleteByDimension(t *testing.T) {
 
 		// Check that no completed items remain
 		for _, doc := range docs {
-			if doc.Status == "completed" {
+			if doc.GetStatus() == "completed" {
 				t.Errorf("found completed document that should have been deleted: %s", doc.Title)
 			}
 		}
@@ -122,7 +122,7 @@ func TestDeleteByDimension(t *testing.T) {
 	})
 }
 
-func TestDeleteCompleted(t *testing.T) {
+func TestDeleteCompletedUsingDeleteByDimension(t *testing.T) {
 	store, err := nanostore.NewTestStore(":memory:")
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
@@ -130,20 +130,20 @@ func TestDeleteCompleted(t *testing.T) {
 	defer func() { _ = store.Close() }()
 
 	// Create mix of pending and completed items
-	_, _ = store.Add("Pending 1", nil, nil)
-	_, _ = store.Add("Pending 2", nil, nil)
+	_, _ = store.Add("Pending 1", nil)
+	_, _ = store.Add("Pending 2", nil)
 
-	uuid1, _ := store.Add("To Complete 1", nil, nil)
-	uuid2, _ := store.Add("To Complete 2", nil, nil)
-	uuid3, _ := store.Add("To Complete 3", nil, nil)
+	uuid1, _ := store.Add("To Complete 1", nil)
+	uuid2, _ := store.Add("To Complete 2", nil)
+	uuid3, _ := store.Add("To Complete 3", nil)
 
 	// Complete some items
-	_ = store.SetStatus(uuid1, nanostore.StatusCompleted)
-	_ = store.SetStatus(uuid2, nanostore.StatusCompleted)
-	_ = store.SetStatus(uuid3, nanostore.StatusCompleted)
+	_ = nanostore.SetStatus(store, uuid1, "completed")
+	_ = nanostore.SetStatus(store, uuid2, "completed")
+	_ = nanostore.SetStatus(store, uuid3, "completed")
 
-	// Delete all completed
-	deleted, err := store.DeleteCompleted()
+	// Delete all completed using DeleteByDimension
+	deleted, err := store.DeleteByDimension("status", "completed")
 	if err != nil {
 		t.Fatalf("failed to delete completed: %v", err)
 	}
@@ -163,8 +163,8 @@ func TestDeleteCompleted(t *testing.T) {
 	}
 
 	for _, doc := range docs {
-		if doc.Status != nanostore.StatusPending {
-			t.Errorf("expected only pending items, found status: %s", doc.Status)
+		if doc.GetStatus() != "pending" {
+			t.Errorf("expected only pending items, found status: %s", doc.GetStatus())
 		}
 	}
 }
@@ -194,18 +194,18 @@ func TestDeleteByDimensionWithHierarchy(t *testing.T) {
 	defer func() { _ = store.Close() }()
 
 	// Create hierarchical structure
-	parent1, _ := store.Add("Parent 1", nil, map[string]string{"status": "active"})
-	child1, _ := store.Add("Child 1.1", &parent1, map[string]string{"status": "inactive"})
-	_, _ = store.Add("Child 1.1.1", &child1, map[string]string{"status": "active"})
+	parent1, _ := store.Add("Parent 1", map[string]interface{}{"status": "active"})
+	child1, _ := store.Add("Child 1.1", map[string]interface{}{"parent_uuid": parent1, "status": "inactive"})
+	_, _ = store.Add("Child 1.1.1", map[string]interface{}{"parent_uuid": child1, "status": "active"})
 
-	parent2, _ := store.Add("Parent 2", nil, map[string]string{"status": "inactive"})
-	_, _ = store.Add("Child 2.1", &parent2, map[string]string{"status": "inactive"})
+	parent2, _ := store.Add("Parent 2", map[string]interface{}{"status": "inactive"})
+	_, _ = store.Add("Child 2.1", map[string]interface{}{"parent_uuid": parent2, "status": "inactive"})
 
 	// List all before deletion to understand structure
 	allBefore, _ := store.List(nanostore.ListOptions{})
 	t.Logf("Documents before deletion: %d", len(allBefore))
 	for _, doc := range allBefore {
-		t.Logf("  %s: %s (status: %v)", doc.UserFacingID, doc.Title, doc.Status)
+		t.Logf("  %s: %s (status: %v)", doc.UserFacingID, doc.Title, doc.GetStatus())
 	}
 
 	// Delete all inactive items
@@ -224,7 +224,7 @@ func TestDeleteByDimensionWithHierarchy(t *testing.T) {
 
 	t.Logf("Documents after deletion: %d", len(docs))
 	for _, doc := range docs {
-		t.Logf("  %s: %s (status: %v)", doc.UserFacingID, doc.Title, doc.Status)
+		t.Logf("  %s: %s (status: %v)", doc.UserFacingID, doc.Title, doc.GetStatus())
 	}
 
 	// The cascade delete behavior may affect the count
@@ -266,12 +266,12 @@ func TestDeleteWhere(t *testing.T) {
 	defer func() { _ = store.Close() }()
 
 	// Create test documents
-	_, _ = store.Add("Task 1", nil, map[string]string{"status": "pending", "priority": "high"})
-	_, _ = store.Add("Task 2", nil, map[string]string{"status": "completed", "priority": "low"})
-	_, _ = store.Add("Task 3", nil, map[string]string{"status": "archived", "priority": "low"})
-	_, _ = store.Add("Task 4", nil, map[string]string{"status": "completed", "priority": "high"})
-	_, _ = store.Add("Task 5", nil, map[string]string{"status": "pending", "priority": "low"})
-	_, _ = store.Add("Task 6", nil, map[string]string{"status": "archived", "priority": "high"})
+	_, _ = store.Add("Task 1", map[string]interface{}{"status": "pending", "priority": "high"})
+	_, _ = store.Add("Task 2", map[string]interface{}{"status": "completed", "priority": "low"})
+	_, _ = store.Add("Task 3", map[string]interface{}{"status": "archived", "priority": "low"})
+	_, _ = store.Add("Task 4", map[string]interface{}{"status": "completed", "priority": "high"})
+	_, _ = store.Add("Task 5", map[string]interface{}{"status": "pending", "priority": "low"})
+	_, _ = store.Add("Task 6", map[string]interface{}{"status": "archived", "priority": "high"})
 
 	t.Run("delete with simple condition", func(t *testing.T) {
 		// Delete all low priority items
@@ -313,7 +313,7 @@ func TestDeleteWhere(t *testing.T) {
 		if len(docs) != 0 {
 			t.Errorf("expected 0 remaining documents, got %d", len(docs))
 			for _, doc := range docs {
-				t.Logf("  Remaining: %s (status: %v)", doc.Title, doc.Status)
+				t.Logf("  Remaining: %s (status: %v)", doc.Title, doc.GetStatus())
 			}
 		}
 	})
@@ -352,12 +352,12 @@ func TestDeleteWhereWithPatterns(t *testing.T) {
 	defer func() { _ = store.Close() }()
 
 	// Create documents with various patterns
-	_, _ = store.Add("Work Meeting Notes", nil, map[string]string{"category": "work", "status": "active"})
-	_, _ = store.Add("Personal TODO", nil, map[string]string{"category": "personal", "status": "active"})
-	_, _ = store.Add("Old Project Docs", nil, map[string]string{"category": "archive", "status": "inactive"})
-	_, _ = store.Add("Draft Proposal", nil, map[string]string{"category": "work", "status": "draft"})
-	_, _ = store.Add("Archived Reports", nil, map[string]string{"category": "archive", "status": "inactive"})
-	_, _ = store.Add("Shopping List", nil, map[string]string{"category": "personal", "status": "active"})
+	_, _ = store.Add("Work Meeting Notes", map[string]interface{}{"category": "work", "status": "active"})
+	_, _ = store.Add("Personal TODO", map[string]interface{}{"category": "personal", "status": "active"})
+	_, _ = store.Add("Old Project Docs", map[string]interface{}{"category": "archive", "status": "inactive"})
+	_, _ = store.Add("Draft Proposal", map[string]interface{}{"category": "work", "status": "draft"})
+	_, _ = store.Add("Archived Reports", map[string]interface{}{"category": "archive", "status": "inactive"})
+	_, _ = store.Add("Shopping List", map[string]interface{}{"category": "personal", "status": "active"})
 
 	t.Run("delete with LIKE pattern", func(t *testing.T) {
 		// Delete all documents with "Archive" in the title

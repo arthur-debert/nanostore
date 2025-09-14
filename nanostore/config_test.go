@@ -6,8 +6,8 @@ import (
 	"github.com/arthur-debert/nanostore/nanostore"
 )
 
-func TestDefaultConfig(t *testing.T) {
-	config := nanostore.DefaultConfig()
+func TestTodoConfig(t *testing.T) {
+	config := nanostore.TodoConfig()
 
 	// Should have exactly 2 dimensions
 	if len(config.Dimensions) != 2 {

@@ -33,7 +33,7 @@ func TestUpdateWithDimensions(t *testing.T) {
 	defer func() { _ = store.Close() }()
 
 	// Create a document with default dimensions
-	docID, err := store.Add("My Task", nil, nil)
+	docID, err := store.Add("My Task", nil)
 	if err != nil {
 		t.Fatalf("failed to add document: %v", err)
 	}

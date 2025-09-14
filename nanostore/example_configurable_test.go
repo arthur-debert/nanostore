@@ -42,13 +42,13 @@ func ExampleNew() {
 	defer func() { _ = store.Close() }()
 
 	// Add some tasks
-	epic, _ := store.Add("Q1 Product Launch", nil, nil)
-	task1, _ := store.Add("Design mockups", &epic, nil)
-	task2, _ := store.Add("Implement backend", &epic, nil)
+	epic, _ := store.Add("Q1 Product Launch", nil)
+	task1, _ := store.Add("Design mockups", map[string]interface{}{"parent_uuid": epic})
+	task2, _ := store.Add("Implement backend", map[string]interface{}{"parent_uuid": epic})
 
 	// Update statuses
-	_ = store.SetStatus(task1, nanostore.Status("done"))
-	_ = store.SetStatus(task2, nanostore.Status("in_progress"))
+	_ = nanostore.SetStatus(store, task1, "done")
+	_ = nanostore.SetStatus(store, task2, "in_progress")
 
 	// List all documents
 	docs, _ := store.List(nanostore.ListOptions{})

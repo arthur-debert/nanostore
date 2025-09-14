@@ -141,27 +141,41 @@ func (s *store) List(opts ListOptions) ([]Document, error) {
 }
 
 // Add creates a new document with dimension values
-func (s *store) Add(title string, parentID *string, dimensions map[string]string) (string, error) {
-	// Convert string dimensions to interface{} and merge with defaults
+func (s *store) Add(title string, dimensions map[string]interface{}) (string, error) {
+	// Merge provided dimensions with defaults
 	dimensionValues := make(map[string]interface{})
 
-	// Set default values for enumerated dimensions
+	// Copy provided dimensions
+	for k, v := range dimensions {
+		dimensionValues[k] = v
+	}
+
+	// Set default values for enumerated dimensions not provided
 	for _, dim := range s.config.Dimensions {
 		if dim.Type == Enumerated {
-			// Check if user provided a value
-			if val, ok := dimensions[dim.Name]; ok {
+			// Check if user provided a value (either by dimension name or for hierarchical ref field)
+			provided := false
+			var val interface{}
+
+			if v, ok := dimensionValues[dim.Name]; ok {
+				provided = true
+				val = v
+			}
+
+			if provided {
 				// Validate the provided value
+				strVal := fmt.Sprintf("%v", val)
 				validValue := false
 				for _, allowedVal := range dim.Values {
-					if val == allowedVal {
+					if strVal == allowedVal {
 						validValue = true
 						break
 					}
 				}
 				if !validValue {
-					return "", fmt.Errorf("invalid value '%s' for dimension '%s'", val, dim.Name)
+					return "", fmt.Errorf("invalid value '%s' for dimension '%s'", strVal, dim.Name)
 				}
-				dimensionValues[dim.Name] = val
+				dimensionValues[dim.Name] = strVal
 			} else {
 				// Use default value
 				if dim.DefaultValue != "" {
@@ -173,10 +187,19 @@ func (s *store) Add(title string, parentID *string, dimensions map[string]string
 		}
 	}
 
-	// Set hierarchical dimension if parentID provided
+	// Handle hierarchical dimension - check if parent_uuid was provided
 	hierDim := s.findHierarchicalDimension()
-	if hierDim != nil && parentID != nil {
-		dimensionValues[hierDim.RefField] = *parentID
+	if hierDim != nil {
+		// Check if parent_uuid was provided (common convention)
+		if parentVal, ok := dimensionValues["parent_uuid"]; ok && hierDim.RefField != "parent_uuid" {
+			// Move the value to the actual ref field if different
+			dimensionValues[hierDim.RefField] = parentVal
+			delete(dimensionValues, "parent_uuid")
+		} else if parentVal, ok := dimensionValues[hierDim.Name]; ok && hierDim.Name != hierDim.RefField {
+			// Check by dimension name if different from ref field
+			dimensionValues[hierDim.RefField] = parentVal
+			delete(dimensionValues, hierDim.Name)
+		}
 	}
 
 	return s.addWithDimensions(title, dimensionValues)
@@ -237,19 +260,18 @@ func (s *store) Update(id string, updates UpdateRequest) error {
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	// Handle parent update if hierarchical dimension exists
-	if updates.ParentID != nil {
-		hierDim := s.findHierarchicalDimension()
-		if hierDim != nil {
-			// Check for circular references
-			if *updates.ParentID != "" {
-				if *updates.ParentID == id {
+	// Check for circular references if updating parent through hierarchical dimension
+	hierDim := s.findHierarchicalDimension()
+	if hierDim != nil && updates.Dimensions != nil {
+		if parentValue, hasParent := updates.Dimensions[hierDim.RefField]; hasParent {
+			if parentValue != "" {
+				if parentValue == id {
 					return fmt.Errorf("cannot set document as its own parent")
 				}
 
 				// Check for circular references using embedded SQL
 				var cycle int
-				err = tx.QueryRow(checkCircularReferenceSQL, *updates.ParentID, id).Scan(&cycle)
+				err = tx.QueryRow(checkCircularReferenceSQL, parentValue, id).Scan(&cycle)
 				if err != nil {
 					return fmt.Errorf("failed to check for circular reference: %w", err)
 				}
@@ -275,24 +297,21 @@ func (s *store) Update(id string, updates UpdateRequest) error {
 		values = append(values, *updates.Body)
 	}
 
-	// Handle parent update for hierarchical dimension
-	if updates.ParentID != nil {
-		hierDim := s.findHierarchicalDimension()
-		if hierDim != nil {
-			if *updates.ParentID == "" {
-				columns = append(columns, hierDim.RefField)
-				values = append(values, nil)
-			} else {
-				columns = append(columns, hierDim.RefField)
-				values = append(values, *updates.ParentID)
-			}
-		}
-	}
-
 	// Handle dimension updates
 	if updates.Dimensions != nil {
 		for dimName, dimValue := range updates.Dimensions {
-			// Validate dimension exists and value is valid
+			// Handle hierarchical dimensions (parent updates)
+			if hierDim != nil && dimName == hierDim.RefField {
+				columns = append(columns, dimName)
+				if dimValue == "" {
+					values = append(values, nil)
+				} else {
+					values = append(values, dimValue)
+				}
+				continue
+			}
+
+			// Handle enumerated dimensions
 			dimFound := false
 			for _, dim := range s.config.Dimensions {
 				if dim.Name == dimName && dim.Type == Enumerated {
@@ -341,55 +360,6 @@ func (s *store) Update(id string, updates UpdateRequest) error {
 
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("failed to commit transaction: %w", err)
-	}
-
-	return nil
-}
-
-// SetStatus changes the status of a document
-func (s *store) SetStatus(id string, status Status) error {
-	// Find status dimension
-	var statusDim *DimensionConfig
-	for _, dim := range s.config.Dimensions {
-		if dim.Name == "status" && dim.Type == Enumerated {
-			statusDim = &dim
-			break
-		}
-	}
-
-	if statusDim == nil {
-		return fmt.Errorf("no status dimension configured")
-	}
-
-	// For custom configs, status might be a string not Status
-	statusStr := string(status)
-
-	// Validate status value
-	validStatus := false
-	for _, val := range statusDim.Values {
-		if val == statusStr {
-			validStatus = true
-			break
-		}
-	}
-	if !validStatus {
-		return fmt.Errorf("invalid status value '%s' for configured values: %v", status, statusDim.Values)
-	}
-
-	query := "UPDATE documents SET status = ?, updated_at = ? WHERE uuid = ?"
-
-	result, err := s.db.Exec(query, statusStr, time.Now().Unix(), id)
-	if err != nil {
-		return fmt.Errorf("failed to update status: %w", err)
-	}
-
-	rowsAffected, err := result.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("failed to get rows affected: %w", err)
-	}
-
-	if rowsAffected == 0 {
-		return fmt.Errorf("document not found: %s", id)
 	}
 
 	return nil
@@ -504,12 +474,6 @@ func (s *store) Delete(id string, cascade bool) error {
 	return nil
 }
 
-// DeleteCompleted removes all documents with completed status
-func (s *store) DeleteCompleted() (int, error) {
-	// Use the more general DeleteByDimension method
-	return s.DeleteByDimension("status", "completed")
-}
-
 // DeleteByDimension removes all documents matching a specific dimension value
 func (s *store) DeleteByDimension(dimension string, value string) (int, error) {
 	// Validate that the dimension exists in the configuration
@@ -616,24 +580,11 @@ func (s *store) findHierarchicalDimension() *DimensionConfig {
 func (s *store) convertListOptionsToFilters(opts ListOptions) map[string]interface{} {
 	filters := make(map[string]interface{})
 
-	// Convert status filter
-	if len(opts.FilterByStatus) > 0 {
-		// Check if we have a status dimension
-		for _, dim := range s.config.Dimensions {
-			if dim.Name == "status" {
-				statuses := make([]string, len(opts.FilterByStatus))
-				for i, s := range opts.FilterByStatus {
-					statuses[i] = string(s)
-				}
-				filters["status"] = statuses
-				break
-			}
+	// Use the new generic Filters map
+	if opts.Filters != nil {
+		for key, value := range opts.Filters {
+			filters[key] = value
 		}
-	}
-
-	// Convert parent filter
-	if opts.FilterByParent != nil {
-		filters["parent"] = opts.FilterByParent
 	}
 
 	// Convert search filter
@@ -664,7 +615,9 @@ func (s *store) scanDocument(rows *sql.Rows) (Document, error) {
 	}
 
 	// Build document
-	doc := Document{}
+	doc := Document{
+		Dimensions: make(map[string]interface{}),
+	}
 
 	// Map values to document fields
 	for i, col := range columns {
@@ -681,18 +634,29 @@ func (s *store) scanDocument(rows *sql.Rows) (Document, error) {
 			doc.CreatedAt = time.Unix(values[i].(int64), 0)
 		case "updated_at":
 			doc.UpdatedAt = time.Unix(values[i].(int64), 0)
-		case "status":
-			// Handle status if it exists
-			if val, ok := values[i].(string); ok {
-				doc.Status = Status(val)
-			}
 		default:
-			// Check if it's a hierarchical dimension
-			hierDim := s.findHierarchicalDimension()
-			if hierDim != nil && col == hierDim.RefField {
-				if values[i] != nil {
-					parentUUID := values[i].(string)
-					doc.ParentUUID = &parentUUID
+			// Handle all dimension columns
+			dimensionFound := false
+
+			// Check enumerated dimensions
+			for _, dim := range s.config.Dimensions {
+				if dim.Name == col && dim.Type == Enumerated {
+					if values[i] != nil {
+						doc.Dimensions[col] = values[i].(string)
+					}
+					dimensionFound = true
+					break
+				}
+			}
+
+			// Check hierarchical dimension
+			if !dimensionFound {
+				hierDim := s.findHierarchicalDimension()
+				if hierDim != nil && col == hierDim.RefField {
+					if values[i] != nil {
+						doc.Dimensions[col] = values[i].(string)
+					}
+					dimensionFound = true
 				}
 			}
 		}

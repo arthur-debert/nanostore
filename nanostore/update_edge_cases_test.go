@@ -14,7 +14,7 @@ func TestUpdateEmptyRequest(t *testing.T) {
 	defer func() { _ = store.Close() }()
 
 	// Create a document
-	docID, err := store.Add("Original Title", nil, nil)
+	docID, err := store.Add("Original Title", nil)
 	if err != nil {
 		t.Fatalf("failed to add document: %v", err)
 	}
@@ -53,7 +53,7 @@ func TestUpdateEmptyRequest(t *testing.T) {
 			if doc.Body != origDoc.Body {
 				t.Errorf("body changed: was %q, now %q", origDoc.Body, doc.Body)
 			}
-			if doc.ParentUUID != origDoc.ParentUUID {
+			if doc.GetParentUUID() != origDoc.GetParentUUID() {
 				t.Error("parent changed when it shouldn't have")
 			}
 			// UpdatedAt should be newer or the same (SQLite might optimize away no-op updates)
@@ -72,21 +72,21 @@ func TestUpdateEmptyRequestWithParent(t *testing.T) {
 	defer func() { _ = store.Close() }()
 
 	// Create parent and child
-	parentID, err := store.Add("Parent", nil, nil)
+	parentID, err := store.Add("Parent", nil)
 	if err != nil {
 		t.Fatalf("failed to add parent: %v", err)
 	}
 
-	childID, err := store.Add("Child", &parentID, nil)
+	childID, err := store.Add("Child", map[string]interface{}{"parent_uuid": parentID})
 	if err != nil {
 		t.Fatalf("failed to add child: %v", err)
 	}
 
 	// Update child with empty request
 	err = store.Update(childID, nanostore.UpdateRequest{
-		Title:    nil,
-		Body:     nil,
-		ParentID: nil,
+		Title:      nil,
+		Body:       nil,
+		Dimensions: nil,
 	})
 	if err != nil {
 		t.Errorf("failed to update with empty request: %v", err)
@@ -100,7 +100,7 @@ func TestUpdateEmptyRequestWithParent(t *testing.T) {
 
 	for _, doc := range docs {
 		if doc.UUID == childID {
-			if doc.ParentUUID == nil || *doc.ParentUUID != parentID {
+			if doc.GetParentUUID() == nil || *doc.GetParentUUID() != parentID {
 				t.Error("parent relationship changed with nil ParentID")
 			}
 		}

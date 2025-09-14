@@ -40,7 +40,7 @@ func (qb *queryBuilder) GenerateListQuery(filters map[string]interface{}) (strin
 
 	// Check if we should use flat listing (when filters are present)
 	_, hasStatusFilter := filters["status"]
-	_, hasParentFilter := filters["parent"]
+	_, hasParentFilter := filters["parent_uuid"]
 	_, hasSearchFilter := filters["search"]
 	hasFilters := hasStatusFilter || hasParentFilter || hasSearchFilter
 
@@ -439,9 +439,18 @@ func (qb *queryBuilder) buildWhereClausesAndArgs(filters map[string]interface{},
 				searchPattern := "%" + searchTerm + "%"
 				args = append(args, searchPattern, searchPattern)
 			}
-		case "parent":
+		case "parent_uuid":
 			if hierDim != nil {
-				if parentID, ok := value.(*string); ok {
+				// Handle both string and *string values
+				if parentID, ok := value.(string); ok {
+					if parentID == "" {
+						// Empty string means root documents (NULL parent)
+						whereClauses = append(whereClauses, hierDim.RefField+" IS NULL")
+					} else {
+						whereClauses = append(whereClauses, hierDim.RefField+" = ?")
+						args = append(args, parentID)
+					}
+				} else if parentID, ok := value.(*string); ok {
 					if parentID == nil || *parentID == "" {
 						// Empty string or nil means root documents (NULL parent)
 						whereClauses = append(whereClauses, hierDim.RefField+" IS NULL")

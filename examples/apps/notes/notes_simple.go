@@ -1,5 +1,7 @@
 // Package notes implements a simplified note-taking application using nanostore.
-// This version works within nanostore's current limitations.
+// This demonstrates how the generic nanostore library can be easily leveraged
+// for specific applications. While nanostore is domain-agnostic, it provides
+// all the building blocks needed for a note-taking app with archiving features.
 package notes
 
 import (
@@ -15,8 +17,10 @@ type SimpleNotes struct {
 }
 
 // NewSimple creates a new SimpleNotes instance using default config
+// We use the TodoConfig here which provides "pending"/"completed" status values
+// that map well to active/archived notes
 func NewSimple(dbPath string) (*SimpleNotes, error) {
-	store, err := nanostore.New(dbPath, nanostore.DefaultTestConfig())
+	store, err := nanostore.New(dbPath, nanostore.TodoConfig())
 	if err != nil {
 		return nil, fmt.Errorf("failed to create store: %w", err)
 	}
@@ -37,7 +41,7 @@ func (n *SimpleNotes) Add(title, content string, tags []string) (string, error) 
 		body = content + "\n\n#tags: " + strings.Join(tags, ", ")
 	}
 
-	uuid, err := n.store.Add(title, nil, nil)
+	uuid, err := n.store.Add(title, nil)
 	if err != nil {
 		return "", fmt.Errorf("failed to add note: %w", err)
 	}
@@ -64,13 +68,15 @@ func (n *SimpleNotes) Add(title, content string, tags []string) (string, error) 
 }
 
 // Archive moves a note to completed status (gets 'c' prefix)
+// This leverages nanostore's dimension system - archived notes get a different
+// ID prefix making them visually distinct
 func (n *SimpleNotes) Archive(userFacingID string) error {
 	uuid, err := n.store.ResolveUUID(userFacingID)
 	if err != nil {
 		return fmt.Errorf("failed to resolve ID: %w", err)
 	}
 
-	return n.store.SetStatus(uuid, nanostore.StatusCompleted)
+	return nanostore.SetStatus(n.store, uuid, "completed")
 }
 
 // Unarchive moves a note back to pending status
@@ -80,7 +86,7 @@ func (n *SimpleNotes) Unarchive(userFacingID string) error {
 		return fmt.Errorf("failed to resolve ID: %w", err)
 	}
 
-	return n.store.SetStatus(uuid, nanostore.StatusPending)
+	return nanostore.SetStatus(n.store, uuid, "pending")
 }
 
 // Delete removes a note
@@ -101,10 +107,12 @@ type SimpleNote struct {
 }
 
 // List returns notes
+// This demonstrates filtering using nanostore's generic Filters map
 func (n *SimpleNotes) List(showArchived bool) ([]*SimpleNote, error) {
 	opts := nanostore.ListOptions{}
 	if !showArchived {
-		opts.FilterByStatus = []nanostore.Status{nanostore.StatusPending}
+		// Filter to show only active (pending) notes
+		opts.Filters = map[string]interface{}{"status": "pending"}
 	}
 
 	docs, err := n.store.List(opts)
@@ -116,7 +124,7 @@ func (n *SimpleNotes) List(showArchived bool) ([]*SimpleNote, error) {
 	for _, doc := range docs {
 		note := &SimpleNote{
 			Document:   doc,
-			IsArchived: doc.Status == nanostore.StatusCompleted,
+			IsArchived: doc.GetStatus() == "completed",
 		}
 
 		// Parse tags

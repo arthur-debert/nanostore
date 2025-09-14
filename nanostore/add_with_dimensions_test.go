@@ -33,7 +33,7 @@ func TestAddWithDimensions(t *testing.T) {
 	defer func() { _ = store.Close() }()
 
 	// Test adding with high priority
-	doc1, err := store.Add("Important Task", nil, map[string]string{
+	doc1, err := store.Add("Important Task", map[string]interface{}{
 		"priority": "high",
 	})
 	if err != nil {
@@ -41,7 +41,7 @@ func TestAddWithDimensions(t *testing.T) {
 	}
 
 	// Test adding with low priority
-	doc2, err := store.Add("Minor Task", nil, map[string]string{
+	doc2, err := store.Add("Minor Task", map[string]interface{}{
 		"priority": "low",
 	})
 	if err != nil {
@@ -49,13 +49,13 @@ func TestAddWithDimensions(t *testing.T) {
 	}
 
 	// Test adding with default (no dimensions specified)
-	doc3, err := store.Add("Regular Task", nil, nil)
+	doc3, err := store.Add("Regular Task", nil)
 	if err != nil {
 		t.Fatalf("failed to add document with defaults: %v", err)
 	}
 
 	// Test invalid dimension value
-	_, err = store.Add("Bad Task", nil, map[string]string{
+	_, err = store.Add("Bad Task", map[string]interface{}{
 		"priority": "urgent", // not in allowed values
 	})
 	if err == nil {

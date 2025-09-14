@@ -1,6 +1,6 @@
 # Notes App
 
-A note-taking application that demonstrates nanostore's dynamic ID generation with status-based prefixes.
+A note-taking application that demonstrates how nanostore's generic document store can be configured for a different domain than task management. This example shows how the same underlying system can power a notes app with archiving functionality.
 
 ## Features
 
@@ -81,12 +81,27 @@ c1. Meeting notes
 
 ## Implementation Notes
 
-### Status Configuration
+### Configuration
 
-The notes app uses nanostore's default configuration:
-- Maps "live" notes to "pending" status (no prefix)
-- Maps "archived" notes to "completed" status ("c" prefix)
-- Delete operations remove documents entirely
+The notes app uses nanostore's TodoConfig() for simplicity, demonstrating how the same configuration can be repurposed:
+- "pending" status is used for active notes (no prefix)
+- "completed" status is used for archived notes ("c" prefix)
+- No hierarchical dimension is used (flat structure)
+
+A custom configuration could define domain-specific dimensions:
+```go
+config := nanostore.Config{
+    Dimensions: []nanostore.DimensionConfig{
+        {
+            Name:         "status",
+            Type:         nanostore.Enumerated,
+            Values:       []string{"active", "archived", "pinned"},
+            Prefixes:     map[string]string{"archived": "a", "pinned": "p"},
+            DefaultValue: "active",
+        },
+    },
+}
+```
 
 ### Tag Storage
 

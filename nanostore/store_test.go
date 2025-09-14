@@ -27,7 +27,7 @@ func TestAddDocument(t *testing.T) {
 	defer func() { _ = store.Close() }()
 
 	// Add a root document
-	id, err := store.Add("Test Document", nil, nil)
+	id, err := store.Add("Test Document", nil)
 	if err != nil {
 		t.Fatalf("failed to add document: %v", err)
 	}
@@ -45,13 +45,13 @@ func TestSetStatus(t *testing.T) {
 	defer func() { _ = store.Close() }()
 
 	// Add a document
-	id, err := store.Add("Test Document", nil, nil)
+	id, err := store.Add("Test Document", nil)
 	if err != nil {
 		t.Fatalf("failed to add document: %v", err)
 	}
 
 	// Change its status
-	err = store.SetStatus(id, nanostore.StatusCompleted)
+	err = nanostore.SetStatus(store, id, "completed")
 	if err != nil {
 		t.Fatalf("failed to set status: %v", err)
 	}

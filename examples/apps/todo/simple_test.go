@@ -15,15 +15,15 @@ func TestSimpleHierarchy(t *testing.T) {
 	defer store.Close()
 
 	// Add root
-	rootID, _ := store.Add("Groceries", nil, nil)
+	rootID, _ := store.Add("Groceries", nil)
 
 	// Add children
-	store.Add("Milk", &rootID, nil)
-	store.Add("Bread", &rootID, nil)
-	store.Add("Eggs", &rootID, nil)
+	store.Add("Milk", map[string]interface{}{"parent_uuid": rootID})
+	store.Add("Bread", map[string]interface{}{"parent_uuid": rootID})
+	store.Add("Eggs", map[string]interface{}{"parent_uuid": rootID})
 
 	// Add another root
-	store.Add("Pack for Trip", nil, nil)
+	store.Add("Pack for Trip", nil)
 
 	// List all documents
 	docs, err := store.List(nanostore.ListOptions{})
@@ -34,8 +34,8 @@ func TestSimpleHierarchy(t *testing.T) {
 	t.Logf("\nDocuments from nanostore:")
 	for _, doc := range docs {
 		parentInfo := "nil"
-		if doc.ParentUUID != nil {
-			parentInfo = *doc.ParentUUID
+		if parentUUID := doc.GetParentUUID(); parentUUID != nil {
+			parentInfo = *parentUUID
 		}
 		t.Logf("  ID: %-5s Title: %-15s Parent: %s", doc.UserFacingID, doc.Title, parentInfo)
 	}
