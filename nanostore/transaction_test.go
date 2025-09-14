@@ -97,26 +97,6 @@ func TestDatabaseConsistencyAfterPanic(t *testing.T) {
 	}
 }
 
-func TestConcurrentTransactionIsolation(t *testing.T) {
-	t.Skip("SQLite has limited concurrent write support")
-
-	// This test documents expected behavior for concurrent transactions
-	// SQLite uses database-level locking, so concurrent writes will serialize
-	// This is acceptable for the nanostore use case
-
-	store, err := nanostore.NewTestStore(":memory:")
-	if err != nil {
-		t.Fatalf("failed to create store: %v", err)
-	}
-	defer func() { _ = store.Close() }()
-
-	// In a real concurrent scenario:
-	// - Multiple goroutines attempt writes
-	// - SQLite serializes them automatically
-	// - No dirty reads or phantom reads occur
-	// - Write operations may block waiting for lock
-}
-
 func TestRollbackOnConstraintViolation(t *testing.T) {
 	store, err := nanostore.NewTestStore(":memory:")
 	if err != nil {
