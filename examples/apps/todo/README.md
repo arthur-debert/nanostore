@@ -1,6 +1,6 @@
 # Todo App Example
 
-This is a hierarchical todo list application that demonstrates how nanostore's dynamic ID generation works in practice.
+This is a hierarchical todo list application that demonstrates how nanostore's dynamic ID generation works in practice. While nanostore itself is a generic document store, this example shows how it can be configured for a specific domain - in this case, task management with completion tracking.
 
 ## Features
 
@@ -97,11 +97,20 @@ go test -v
 
 ## How It Demonstrates Nanostore
 
+This todo app uses nanostore's generic features configured for task management:
+
 1. **Dynamic ID Generation**: IDs like "1.2" are generated at query time based on the current state
-2. **Status Namespacing**: Completed items get a "c" prefix (e.g., "1.c1")
-3. **Hierarchical Support**: Multi-level nesting with dot notation (e.g., "1.2.3")
-4. **Filtering**: The canonical view shows only pending items by default
+2. **Enumerated Dimension (Status)**: Configured with "pending" and "completed" values, where completed items get a "c" prefix
+3. **Hierarchical Dimension (Parent)**: Enables multi-level task nesting with dot notation (e.g., "1.2.3")
+4. **Generic Filtering**: Uses nanostore's Filters map to show only pending items by default
 5. **Search Integration**: Search respects the current filter and ID generation rules
+
+The configuration used:
+```go
+nanostore.TodoConfig() // Returns a configuration with:
+// - "status" dimension (enumerated: pending/completed)
+// - "parent" dimension (hierarchical: parent_uuid)
+```
 
 ## Key Insights
 

@@ -1,0 +1,226 @@
+MIGRATION GUIDE: Nanostore v0.2.0 to v0.3.0
+============================================
+
+This guide helps you migrate from the todo-specific v0.2.0 to the generic v0.3.0.
+
+OVERVIEW
+--------
+Nanostore v0.3.0 removes all application-specific code, making it a truly generic
+document store. The main changes involve replacing hardcoded todo concepts with
+flexible, configurable dimensions.
+
+BREAKING CHANGES
+----------------
+
+1. Document Structure
+   OLD: Document had hardcoded Status and ParentUUID fields
+   NEW: Document uses a generic Dimensions map[string]interface{}
+
+   // v0.2.0
+   doc.Status         // nanostore.Status type
+   doc.ParentUUID     // *string
+   
+   // v0.3.0
+   doc.GetStatus()    // returns string
+   doc.GetParentUUID() // returns *string
+   doc.Dimensions["status"] // direct access
+
+2. Add Method Signature
+   OLD: Add(title string, parentID *string, dimensions map[string]string)
+   NEW: Add(title string, dimensions map[string]interface{})
+
+   // v0.2.0
+   store.Add("Task", &parentID, nil)
+   store.Add("Task", nil, map[string]string{"priority": "high"})
+   
+   // v0.3.0
+   store.Add("Task", map[string]interface{}{"parent_uuid": parentID})
+   store.Add("Task", map[string]interface{}{"priority": "high"})
+
+3. SetStatus Method
+   OLD: store.SetStatus(id, status) - method on Store interface
+   NEW: nanostore.SetStatus(store, id, status) - helper function
+
+   // v0.2.0
+   store.SetStatus(uuid, "completed")
+   
+   // v0.3.0
+   nanostore.SetStatus(store, uuid, "completed")
+
+4. List Filtering
+   OLD: FilterByStatus []Status, FilterByParent *string fields
+   NEW: Filters map[string]interface{}
+
+   // v0.2.0
+   store.List(nanostore.ListOptions{
+       FilterByStatus: []nanostore.Status{nanostore.StatusPending},
+       FilterByParent: &parentID,
+   })
+   
+   // v0.3.0
+   store.List(nanostore.ListOptions{
+       Filters: map[string]interface{}{
+           "status": "pending",
+           "parent_uuid": parentID,
+       },
+   })
+
+5. Update Request
+   OLD: ParentID *string field for parent updates
+   NEW: Use Dimensions map
+
+   // v0.2.0
+   store.Update(id, nanostore.UpdateRequest{
+       ParentID: &newParentID,
+   })
+   
+   // v0.3.0
+   store.Update(id, nanostore.UpdateRequest{
+       Dimensions: map[string]string{"parent_uuid": newParentID},
+   })
+
+6. Configuration
+   OLD: DefaultConfig() returned todo-specific configuration
+   NEW: ExampleConfig() shows generic usage, TodoConfig() for compatibility
+
+   // v0.2.0
+   store, _ := nanostore.New(dbPath, nanostore.DefaultConfig())
+   
+   // v0.3.0
+   store, _ := nanostore.New(dbPath, nanostore.TodoConfig())
+   // or define your own configuration
+
+7. Status Constants
+   OLD: Hardcoded StatusPending, StatusCompleted constants
+   NEW: Use string values directly
+
+   // v0.2.0
+   if doc.Status == nanostore.StatusCompleted { ... }
+   
+   // v0.3.0
+   if doc.GetStatus() == "completed" { ... }
+
+8. DeleteCompleted Method
+   OLD: store.DeleteCompleted() - todo-specific method
+   NEW: Removed - implement in your application layer
+
+   // v0.2.0
+   store.DeleteCompleted()
+   
+   // v0.3.0
+   // Implement in your app:
+   completed, _ := store.List(nanostore.ListOptions{
+       Filters: map[string]interface{}{"status": "completed"},
+   })
+   for _, doc := range completed {
+       store.Delete(doc.UUID, false)
+   }
+
+MIGRATION HELPERS
+-----------------
+
+For easier migration, v0.3.0 provides several helpers:
+
+1. TodoConfig() - Returns a configuration matching v0.2.0 behavior
+2. SetStatus() - Helper function replacing the old method
+3. GetStatus() and GetParentUUID() - Convenience methods on Document
+4. TestAdd() - Test helper maintaining old Add signature
+
+STEP-BY-STEP MIGRATION
+----------------------
+
+1. Update imports (no changes needed)
+
+2. Replace direct field access:
+   - doc.Status -> doc.GetStatus()
+   - doc.ParentUUID -> doc.GetParentUUID()
+
+3. Update Add calls:
+   - Add parent to dimensions map instead of second parameter
+   - Change map[string]string to map[string]interface{} if needed
+
+4. Update SetStatus calls:
+   - store.SetStatus(...) -> nanostore.SetStatus(store, ...)
+
+5. Update List filtering:
+   - Convert FilterByStatus/FilterByParent to Filters map
+
+6. Update configuration:
+   - Use TodoConfig() for compatibility
+   - Or create custom configuration for your domain
+
+7. Remove any code depending on deleted methods:
+   - DeleteCompleted() - implement in application layer
+
+8. Update type assertions:
+   - Remove nanostore.Status type casts
+   - Use string comparisons directly
+
+EXAMPLE MIGRATION
+-----------------
+
+Before (v0.2.0):
+    func AddTask(store nanostore.Store, title string, parentID *string) {
+        id, _ := store.Add(title, parentID, nil)
+        
+        // List pending tasks
+        tasks, _ := store.List(nanostore.ListOptions{
+            FilterByStatus: []nanostore.Status{nanostore.StatusPending},
+        })
+        
+        // Complete a task
+        store.SetStatus(id, nanostore.StatusCompleted)
+    }
+
+After (v0.3.0):
+    func AddTask(store nanostore.Store, title string, parentID *string) {
+        dimensions := make(map[string]interface{})
+        if parentID != nil {
+            dimensions["parent_uuid"] = *parentID
+        }
+        id, _ := store.Add(title, dimensions)
+        
+        // List pending tasks
+        tasks, _ := store.List(nanostore.ListOptions{
+            Filters: map[string]interface{}{"status": "pending"},
+        })
+        
+        // Complete a task
+        nanostore.SetStatus(store, id, "completed")
+    }
+
+CUSTOM CONFIGURATIONS
+---------------------
+
+The real power of v0.3.0 is creating domain-specific configurations:
+
+    config := nanostore.Config{
+        Dimensions: []nanostore.DimensionConfig{
+            {
+                Name:     "priority",
+                Type:     nanostore.Enumerated,
+                Values:   []string{"low", "medium", "high", "urgent"},
+                Prefixes: map[string]string{"urgent": "u", "high": "h"},
+            },
+            {
+                Name:     "category",
+                Type:     nanostore.Hierarchical,
+                RefField: "category_id",
+            },
+        },
+    }
+
+This flexibility allows nanostore to work for any document-based application,
+not just todo lists.
+
+TESTING
+-------
+
+After migration:
+1. Run your test suite
+2. Verify ID generation still works as expected
+3. Check that filtering returns correct results
+4. Ensure hierarchical relationships are maintained
+
+For questions or issues, see the examples in examples/apps/ which demonstrate
+both todo and notes applications using the generic API.
