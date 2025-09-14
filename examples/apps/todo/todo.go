@@ -78,6 +78,46 @@ func (t *Todo) Complete(userFacingID string) error {
 	return nil
 }
 
+// CompleteMultiple marks multiple todo items as completed
+// This demonstrates the correct pattern for batch operations with dynamic IDs
+func (t *Todo) CompleteMultiple(userFacingIDs []string) error {
+	// IMPORTANT: Pre-resolve all IDs to UUIDs before any mutations
+	// This prevents ID shifting from affecting subsequent resolutions
+	type resolvedItem struct {
+		userID string
+		uuid   string
+	}
+
+	var items []resolvedItem
+
+	// Step 1: Resolve all IDs first
+	for _, id := range userFacingIDs {
+		uuid, err := t.store.ResolveUUID(id)
+		if err != nil {
+			// Return error with context about which ID failed
+			return fmt.Errorf("failed to resolve ID '%s': %w", id, err)
+		}
+		items = append(items, resolvedItem{userID: id, uuid: uuid})
+	}
+
+	// Step 2: Complete all items using their UUIDs
+	var completed []string
+	for _, item := range items {
+		err := t.store.SetStatus(item.uuid, nanostore.StatusCompleted)
+		if err != nil {
+			// If we fail partway through, report what was completed
+			if len(completed) > 0 {
+				return fmt.Errorf("failed to complete ID '%s' (already completed: %v): %w",
+					item.userID, completed, err)
+			}
+			return fmt.Errorf("failed to complete ID '%s': %w", item.userID, err)
+		}
+		completed = append(completed, item.userID)
+	}
+
+	return nil
+}
+
 // Reopen marks a completed todo item as pending
 func (t *Todo) Reopen(userFacingID string) error {
 	uuid, err := t.store.ResolveUUID(userFacingID)

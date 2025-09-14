@@ -504,6 +504,104 @@ func (s *store) Delete(id string, cascade bool) error {
 	return nil
 }
 
+// DeleteCompleted removes all documents with completed status
+func (s *store) DeleteCompleted() (int, error) {
+	// Use the more general DeleteByDimension method
+	return s.DeleteByDimension("status", "completed")
+}
+
+// DeleteByDimension removes all documents matching a specific dimension value
+func (s *store) DeleteByDimension(dimension string, value string) (int, error) {
+	// Validate that the dimension exists in the configuration
+	dimensionExists := false
+	for _, dim := range s.config.Dimensions {
+		if dim.Name == dimension {
+			dimensionExists = true
+			// For enumerated dimensions, validate the value
+			if dim.Type == Enumerated {
+				valueValid := false
+				for _, v := range dim.Values {
+					if v == value {
+						valueValid = true
+						break
+					}
+				}
+				if !valueValid {
+					return 0, fmt.Errorf("invalid value '%s' for dimension '%s'", value, dimension)
+				}
+			}
+			break
+		}
+	}
+
+	if !dimensionExists {
+		return 0, fmt.Errorf("dimension '%s' not found in configuration", dimension)
+	}
+
+	tx, err := s.db.Begin()
+	if err != nil {
+		return 0, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	// Build query using SQL builder
+	query, args, err := s.sqlBuilder.buildDelete("documents", squirrel.Eq{dimension: value})
+	if err != nil {
+		return 0, fmt.Errorf("failed to build delete query: %w", err)
+	}
+
+	result, err := tx.Exec(query, args...)
+	if err != nil {
+		return 0, fmt.Errorf("failed to delete documents where %s='%s': %w", dimension, value, err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("failed to get rows affected: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	return int(rowsAffected), nil
+}
+
+// DeleteWhere removes all documents matching a custom WHERE clause
+func (s *store) DeleteWhere(whereClause string, args ...interface{}) (int, error) {
+	if whereClause == "" {
+		return 0, fmt.Errorf("where clause cannot be empty")
+	}
+
+	tx, err := s.db.Begin()
+	if err != nil {
+		return 0, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	// Build the DELETE query using SQL builder
+	query, sqlArgs, err := s.sqlBuilder.buildDeleteWhere("documents", whereClause, args...)
+	if err != nil {
+		return 0, fmt.Errorf("failed to build delete query: %w", err)
+	}
+
+	result, err := tx.Exec(query, sqlArgs...)
+	if err != nil {
+		return 0, fmt.Errorf("failed to delete documents with where clause '%s': %w", whereClause, err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("failed to get rows affected: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	return int(rowsAffected), nil
+}
+
 // Helper methods
 
 func (s *store) findHierarchicalDimension() *DimensionConfig {

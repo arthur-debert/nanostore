@@ -64,7 +64,7 @@ func printUsage() {
 	fmt.Println("\nCommands:")
 	fmt.Println("  list [--all]                List todos")
 	fmt.Println("  add <title> [-p parent]     Add a new todo")
-	fmt.Println("  complete <id>               Mark todo as completed")
+	fmt.Println("  complete <id> [<id>...]     Mark todo(s) as completed")
 	fmt.Println("  reopen <id>                 Reopen completed todo")
 	fmt.Println("  search <query> [--all]      Search todos")
 	fmt.Println("  move <id> <new-parent>      Move todo to new parent")
@@ -116,17 +116,27 @@ func cmdAdd(app *todo.Todo, args []string) {
 
 func cmdComplete(app *todo.Todo, args []string) {
 	if len(args) < 1 {
-		fmt.Fprintf(os.Stderr, "Error: ID required\n")
+		fmt.Fprintf(os.Stderr, "Error: ID(s) required\n")
 		os.Exit(1)
 	}
 
-	err := app.Complete(args[0])
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error completing todo: %v\n", err)
-		os.Exit(1)
+	// Support multiple IDs for batch completion
+	if len(args) > 1 {
+		err := app.CompleteMultiple(args)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error completing todos: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Printf("Completed: %s\n", strings.Join(args, ", "))
+	} else {
+		// Single ID completion
+		err := app.Complete(args[0])
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error completing todo: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Printf("Completed: %s\n", args[0])
 	}
-
-	fmt.Printf("Completed: %s\n", args[0])
 }
 
 func cmdReopen(app *todo.Todo, args []string) {

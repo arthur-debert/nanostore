@@ -150,6 +150,22 @@ type Store interface {
 	// If cascade is false and the document has children, an error is returned
 	Delete(id string, cascade bool) error
 
+	// DeleteCompleted removes all documents with completed status
+	// Returns the number of documents deleted
+	DeleteCompleted() (int, error)
+
+	// DeleteByDimension removes all documents matching a specific dimension value
+	// For example: DeleteByDimension("status", "archived") or DeleteByDimension("priority", "low")
+	// Returns the number of documents deleted
+	DeleteByDimension(dimension string, value string) (int, error)
+
+	// DeleteWhere removes all documents matching a custom WHERE clause
+	// The where clause should not include the "WHERE" keyword itself
+	// For example: DeleteWhere("status = 'archived' AND priority = 'low'")
+	// Use with caution as it allows arbitrary SQL conditions
+	// Returns the number of documents deleted
+	DeleteWhere(whereClause string, args ...interface{}) (int, error)
+
 	// Close releases any resources held by the store
 	Close() error
 }
