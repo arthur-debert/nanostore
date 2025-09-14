@@ -2,7 +2,7 @@
 # Generate and display test coverage for nanostore
 
 # Run tests with coverage for all relevant packages
-go test -coverprofile=coverage.out -coverpkg=github.com/arthur-debert/nanostore/nanostore/internal/engine,github.com/arthur-debert/nanostore/nanostore ./nanostore
+go test -coverprofile=coverage.out -coverpkg=github.com/arthur-debert/nanostore/nanostore ./nanostore
 
 # Display coverage report, filtering out files that don't need coverage
 go tool cover -func=coverage.out | \

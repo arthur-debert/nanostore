@@ -3,25 +3,23 @@ package nanostore
 import (
 	"fmt"
 	"strings"
-
-	"github.com/arthur-debert/nanostore/nanostore/types"
 )
 
 // DefaultConfig returns a configuration that matches the original hardcoded behavior
 // This provides backward compatibility for existing applications
-func DefaultConfig() types.Config {
-	return types.Config{
-		Dimensions: []types.DimensionConfig{
+func DefaultConfig() Config {
+	return Config{
+		Dimensions: []DimensionConfig{
 			{
 				Name:         "status",
-				Type:         types.Enumerated,
+				Type:         Enumerated,
 				Values:       []string{"pending", "completed"},
 				Prefixes:     map[string]string{"completed": "c"},
 				DefaultValue: "pending",
 			},
 			{
 				Name:     "parent",
-				Type:     types.Hierarchical,
+				Type:     Hierarchical,
 				RefField: "parent_uuid",
 			},
 		},
@@ -29,7 +27,7 @@ func DefaultConfig() types.Config {
 }
 
 // ValidateConfig checks the configuration for consistency and completeness
-func ValidateConfig(c types.Config) error {
+func ValidateConfig(c Config) error {
 	if len(c.Dimensions) == 0 {
 		return fmt.Errorf("at least one dimension must be configured")
 	}
@@ -65,11 +63,11 @@ func ValidateConfig(c types.Config) error {
 
 		// Validate based on dimension type
 		switch dim.Type {
-		case types.Enumerated:
+		case Enumerated:
 			if err := validateEnumeratedDimension(dim, i, prefixesSeen); err != nil {
 				return err
 			}
-		case types.Hierarchical:
+		case Hierarchical:
 			if err := validateHierarchicalDimension(dim, i); err != nil {
 				return err
 			}
@@ -82,7 +80,7 @@ func ValidateConfig(c types.Config) error {
 }
 
 // validateEnumeratedDimension validates an enumerated dimension configuration
-func validateEnumeratedDimension(dim types.DimensionConfig, index int, prefixesSeen map[string]string) error {
+func validateEnumeratedDimension(dim DimensionConfig, index int, prefixesSeen map[string]string) error {
 	// Must have at least one value
 	if len(dim.Values) == 0 {
 		return fmt.Errorf("dimension %d (%s): enumerated dimensions must have at least one value", index, dim.Name)
@@ -140,7 +138,7 @@ func validateEnumeratedDimension(dim types.DimensionConfig, index int, prefixesS
 }
 
 // validateHierarchicalDimension validates a hierarchical dimension configuration
-func validateHierarchicalDimension(dim types.DimensionConfig, index int) error {
+func validateHierarchicalDimension(dim DimensionConfig, index int) error {
 	// Must have RefField
 	if dim.RefField == "" {
 		return fmt.Errorf("dimension %d (%s): hierarchical dimensions must specify RefField", index, dim.Name)

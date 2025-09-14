@@ -1,44 +1,31 @@
-package engine
+package nanostore
 
 import (
 	"fmt"
 	"strings"
-
-	"github.com/arthur-debert/nanostore/nanostore/types"
 )
 
 // SchemaBuilder generates SQL DDL statements based on dimension configuration
-type SchemaBuilder struct {
-	config types.Config
+type schemaBuilder struct {
+	config Config
 }
 
-// NewSchemaBuilder creates a new schema builder for the given configuration
-func NewSchemaBuilder(config types.Config) *SchemaBuilder {
-	return &SchemaBuilder{config: config}
+// newSchemaBuilder creates a new schema builder for the given configuration
+func newSchemaBuilder(config Config) *schemaBuilder {
+	return &schemaBuilder{config: config}
 }
 
-// GenerateBaseSchema creates the base documents table with core fields
-func (sb *SchemaBuilder) GenerateBaseSchema() string {
-	return `-- Base schema for document store
-CREATE TABLE IF NOT EXISTS documents (
-    uuid TEXT PRIMARY KEY,
-    title TEXT NOT NULL,
-    body TEXT DEFAULT '',
-    created_at INTEGER NOT NULL,  -- Unix timestamp for consistent ordering
-    updated_at INTEGER NOT NULL   -- Unix timestamp, updated on modifications
-);`
-}
 
-// GenerateDimensionColumns creates ALTER TABLE statements for dimension columns
-func (sb *SchemaBuilder) GenerateDimensionColumns() []string {
+// generateDimensionColumns creates ALTER TABLE statements for dimension columns
+func (sb *schemaBuilder) generateDimensionColumns() []string {
 	var statements []string
 
 	for _, dim := range sb.config.Dimensions {
 		switch dim.Type {
-		case types.Enumerated:
+		case Enumerated:
 			stmt := sb.generateEnumeratedColumn(dim)
 			statements = append(statements, stmt)
-		case types.Hierarchical:
+		case Hierarchical:
 			stmt := sb.generateHierarchicalColumn(dim)
 			statements = append(statements, stmt)
 		}
@@ -48,7 +35,7 @@ func (sb *SchemaBuilder) GenerateDimensionColumns() []string {
 }
 
 // generateEnumeratedColumn creates an ALTER TABLE statement for an enumerated dimension
-func (sb *SchemaBuilder) generateEnumeratedColumn(dim types.DimensionConfig) string {
+func (sb *schemaBuilder) generateEnumeratedColumn(dim DimensionConfig) string {
 	// Build CHECK constraint for valid values
 	quotedValues := make([]string, len(dim.Values))
 	for i, value := range dim.Values {
@@ -71,20 +58,20 @@ func (sb *SchemaBuilder) generateEnumeratedColumn(dim types.DimensionConfig) str
 }
 
 // generateHierarchicalColumn creates an ALTER TABLE statement for a hierarchical dimension
-func (sb *SchemaBuilder) generateHierarchicalColumn(dim types.DimensionConfig) string {
+func (sb *schemaBuilder) generateHierarchicalColumn(dim DimensionConfig) string {
 	return fmt.Sprintf(
 		"ALTER TABLE documents ADD COLUMN %s TEXT REFERENCES documents(uuid) ON DELETE CASCADE;",
 		dim.RefField,
 	)
 }
 
-// GenerateIndexes creates index statements for optimal query performance
-func (sb *SchemaBuilder) GenerateIndexes() []string {
+// generateIndexes creates index statements for optimal query performance
+func (sb *schemaBuilder) generateIndexes() []string {
 	var statements []string
 
 	for _, dim := range sb.config.Dimensions {
 		switch dim.Type {
-		case types.Enumerated:
+		case Enumerated:
 			// Index on dimension + created_at for efficient partitioned ordering
 			indexName := fmt.Sprintf("idx_documents_%s", dim.Name)
 			stmt := fmt.Sprintf(
@@ -92,7 +79,7 @@ func (sb *SchemaBuilder) GenerateIndexes() []string {
 				indexName, dim.Name,
 			)
 			statements = append(statements, stmt)
-		case types.Hierarchical:
+		case Hierarchical:
 			// Index on reference field + created_at for parent-child queries
 			indexName := fmt.Sprintf("idx_documents_%s", strings.TrimSuffix(dim.RefField, "_uuid"))
 			stmt := fmt.Sprintf(
@@ -110,78 +97,20 @@ func (sb *SchemaBuilder) GenerateIndexes() []string {
 	return statements
 }
 
-// GenerateFullSchema creates the complete schema including base table, columns, and indexes
-func (sb *SchemaBuilder) GenerateFullSchema() []string {
-	var statements []string
 
-	// Base table
-	statements = append(statements, sb.GenerateBaseSchema())
-
-	// Dimension columns
-	statements = append(statements, sb.GenerateDimensionColumns()...)
-
-	// Indexes
-	statements = append(statements, sb.GenerateIndexes()...)
-
-	// Schema version tracking table
-	statements = append(statements, `-- Schema version tracking
-CREATE TABLE IF NOT EXISTS schema_version (
-    version INTEGER PRIMARY KEY,
-    applied_at INTEGER NOT NULL
-);`)
-
-	return statements
-}
-
-// GenerateMigrationSQL creates SQL for migrating from one schema to another
-// This handles adding new dimensions to existing databases
-func (sb *SchemaBuilder) GenerateMigrationSQL(existingDimensions []string) []string {
-	var statements []string
-
-	// Track which dimensions already exist
-	existingMap := make(map[string]bool)
-	for _, dim := range existingDimensions {
-		existingMap[dim] = true
-	}
-
-	// Add new dimensions that don't exist yet
-	for _, dim := range sb.config.Dimensions {
-		var columnName string
-		switch dim.Type {
-		case types.Enumerated:
-			columnName = dim.Name
-		case types.Hierarchical:
-			columnName = dim.RefField
-		}
-
-		if !existingMap[columnName] {
-			switch dim.Type {
-			case types.Enumerated:
-				statements = append(statements, sb.generateEnumeratedColumn(dim))
-			case types.Hierarchical:
-				statements = append(statements, sb.generateHierarchicalColumn(dim))
-			}
-		}
-	}
-
-	// Add new indexes (CREATE INDEX IF NOT EXISTS handles duplicates)
-	statements = append(statements, sb.GenerateIndexes()...)
-
-	return statements
-}
 
 // ValidateSchemaCompatibility checks if the current config is compatible with existing schema
-func (sb *SchemaBuilder) ValidateSchemaCompatibility(existingColumns map[string]string) error {
+func (sb *schemaBuilder) ValidateSchemaCompatibility(existingColumns map[string]string) error {
 	for _, dim := range sb.config.Dimensions {
 		switch dim.Type {
-		case types.Enumerated:
+		case Enumerated:
 			if existingType, exists := existingColumns[dim.Name]; exists {
 				if existingType != "TEXT" {
 					return fmt.Errorf("dimension '%s' exists with incompatible type '%s', expected TEXT",
 						dim.Name, existingType)
 				}
 			}
-		case types.Hierarchical:
+		case Hierarchical:
 			if existingType, exists := existingColumns[dim.RefField]; exists {
 				if existingType != "TEXT" {
 					return fmt.Errorf("hierarchical dimension '%s' field '%s' exists with incompatible type '%s', expected TEXT",
@@ -195,7 +124,7 @@ func (sb *SchemaBuilder) ValidateSchemaCompatibility(existingColumns map[string]
 }
 
 // GetExpectedColumns returns the set of columns that should exist for this configuration
-func (sb *SchemaBuilder) GetExpectedColumns() map[string]string {
+func (sb *schemaBuilder) GetExpectedColumns() map[string]string {
 	columns := map[string]string{
 		"uuid":       "TEXT",
 		"title":      "TEXT",
@@ -206,9 +135,9 @@ func (sb *SchemaBuilder) GetExpectedColumns() map[string]string {
 
 	for _, dim := range sb.config.Dimensions {
 		switch dim.Type {
-		case types.Enumerated:
+		case Enumerated:
 			columns[dim.Name] = "TEXT"
-		case types.Hierarchical:
+		case Hierarchical:
 			columns[dim.RefField] = "TEXT"
 		}
 	}

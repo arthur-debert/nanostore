@@ -1,17 +1,15 @@
-package engine
+package nanostore
 
 import (
 	"fmt"
 	"sort"
 	"strconv"
 	"strings"
-
-	"github.com/arthur-debert/nanostore/nanostore/types"
 )
 
-// IDParser handles configurable ID parsing based on dimension configuration
-type IDParser struct {
-	config types.Config
+// idParser handles configurable ID parsing based on dimension configuration
+type idParser struct {
+	config Config
 	// prefixToDimension maps single-letter prefixes to dimension name and value
 	prefixMap map[string]prefixMapping
 }
@@ -22,16 +20,16 @@ type prefixMapping struct {
 	value     string
 }
 
-// NewIDParser creates a new ID parser for the given configuration
-func NewIDParser(config types.Config) *IDParser {
-	parser := &IDParser{
+// newIDParser creates a new ID parser for the given configuration
+func newIDParser(config Config) *idParser {
+	parser := &idParser{
 		config:    config,
 		prefixMap: make(map[string]prefixMapping),
 	}
 
 	// Build prefix mapping from configuration
 	for _, dim := range config.Dimensions {
-		if dim.Type == types.Enumerated {
+		if dim.Type == Enumerated {
 			for value, prefix := range dim.Prefixes {
 				if prefix != "" {
 					parser.prefixMap[prefix] = prefixMapping{
@@ -46,20 +44,20 @@ func NewIDParser(config types.Config) *IDParser {
 	return parser
 }
 
-// ParsedID represents a parsed hierarchical ID
-type ParsedID struct {
-	Levels []ParsedLevel
+// parsedID represents a parsed hierarchical ID
+type parsedID struct {
+	Levels []parsedLevel
 }
 
-// ParsedLevel represents one level in a hierarchical ID
-type ParsedLevel struct {
+// parsedLevel represents one level in a hierarchical ID
+type parsedLevel struct {
 	// DimensionFilters maps dimension name to value for this level
 	DimensionFilters map[string]string
 	// Offset is the 0-based position within the filtered set
 	Offset int
 }
 
-// ParseID parses a user-facing ID into structured components for SQL resolution.
+// parseID parses a user-facing ID into structured components for SQL resolution.
 // This reverses the ID generation process - converting "hp2.c1" back into filters and offsets.
 //
 // Parsing Algorithm:
@@ -70,12 +68,12 @@ type ParsedLevel struct {
 //   - "3"   -> prefixes: [], offset: 2
 //
 // 3. Map prefixes to dimension values using configuration
-// 4. Return structured ParsedID with filters for SQL query generation
+// 4. Return structured parsedID with filters for SQL query generation
 //
 // Example Input/Output:
 // Input: "hp2.c1"
 //
-//	Output: ParsedID{
+//	Output: parsedID{
 //	  Levels: [
 //	    {DimensionFilters: {"priority": "high", "status": "pending"}, Offset: 1},
 //	    {DimensionFilters: {"status": "completed"}, Offset: 0}
@@ -83,7 +81,7 @@ type ParsedLevel struct {
 //	}
 //
 // Security: Validates input against SQL injection patterns before processing.
-func (p *IDParser) ParseID(userFacingID string) (*ParsedID, error) {
+func (p *idParser) parseID(userFacingID string) (*parsedID, error) {
 	// Validate input doesn't contain SQL injection attempts
 	if strings.ContainsAny(userFacingID, "'\"`;\\") {
 		return nil, fmt.Errorf("invalid ID format: contains illegal characters")
@@ -92,8 +90,8 @@ func (p *IDParser) ParseID(userFacingID string) (*ParsedID, error) {
 	// Split by dots for hierarchy levels
 	parts := strings.Split(userFacingID, ".")
 
-	parsed := &ParsedID{
-		Levels: make([]ParsedLevel, len(parts)),
+	parsed := &parsedID{
+		Levels: make([]parsedLevel, len(parts)),
 	}
 
 	// Parse each level
@@ -109,12 +107,12 @@ func (p *IDParser) ParseID(userFacingID string) (*ParsedID, error) {
 }
 
 // parseLevel parses a single level of an ID (e.g., "hp2" or "c1" or "3")
-func (p *IDParser) parseLevel(part string) (ParsedLevel, error) {
+func (p *idParser) parseLevel(part string) (parsedLevel, error) {
 	if part == "" {
-		return ParsedLevel{}, fmt.Errorf("empty ID segment")
+		return parsedLevel{}, fmt.Errorf("empty ID segment")
 	}
 
-	level := ParsedLevel{
+	level := parsedLevel{
 		DimensionFilters: make(map[string]string),
 	}
 
@@ -131,16 +129,16 @@ func (p *IDParser) parseLevel(part string) (ParsedLevel, error) {
 	// Parse the numeric part
 	numberPart := part[prefixEnd:]
 	if numberPart == "" {
-		return ParsedLevel{}, fmt.Errorf("missing number in ID: %s", part)
+		return parsedLevel{}, fmt.Errorf("missing number in ID: %s", part)
 	}
 
 	number, err := strconv.Atoi(numberPart)
 	if err != nil {
-		return ParsedLevel{}, fmt.Errorf("invalid number format: %s", numberPart)
+		return parsedLevel{}, fmt.Errorf("invalid number format: %s", numberPart)
 	}
 
 	if number < 1 {
-		return ParsedLevel{}, fmt.Errorf("ID number must be positive: %d", number)
+		return parsedLevel{}, fmt.Errorf("ID number must be positive: %d", number)
 	}
 
 	level.Offset = number - 1 // Convert to 0-based offset
@@ -155,12 +153,12 @@ func (p *IDParser) parseLevel(part string) (ParsedLevel, error) {
 
 			mapping, found := p.prefixMap[prefixStr]
 			if !found {
-				return ParsedLevel{}, fmt.Errorf("unknown prefix: %s", prefixStr)
+				return parsedLevel{}, fmt.Errorf("unknown prefix: %s", prefixStr)
 			}
 
 			// Check for duplicate dimension filters
 			if _, exists := level.DimensionFilters[mapping.dimension]; exists {
-				return ParsedLevel{}, fmt.Errorf("duplicate dimension filter for %s", mapping.dimension)
+				return parsedLevel{}, fmt.Errorf("duplicate dimension filter for %s", mapping.dimension)
 			}
 
 			level.DimensionFilters[mapping.dimension] = mapping.value
@@ -174,9 +172,9 @@ func (p *IDParser) parseLevel(part string) (ParsedLevel, error) {
 }
 
 // fillDefaultValues adds default values for enumerated dimensions not specified in prefixes
-func (p *IDParser) fillDefaultValues(level *ParsedLevel) {
+func (p *idParser) fillDefaultValues(level *parsedLevel) {
 	for _, dim := range p.config.Dimensions {
-		if dim.Type == types.Enumerated {
+		if dim.Type == Enumerated {
 			// Skip if already specified via prefix
 			if _, exists := level.DimensionFilters[dim.Name]; exists {
 				continue
@@ -195,51 +193,10 @@ func (p *IDParser) fillDefaultValues(level *ParsedLevel) {
 	}
 }
 
-// GenerateID creates a user-facing ID from dimension values
-func (p *IDParser) GenerateID(dimensionValues map[string]string, offset int) string {
-	// Build a list of dimension-prefix pairs
-	type dimPrefix struct {
-		dimension string
-		prefix    string
-	}
 
-	var dimPrefixes []dimPrefix
-
-	// Collect prefixes for each dimension
-	for _, dim := range p.config.Dimensions {
-		if dim.Type == types.Enumerated {
-			value, exists := dimensionValues[dim.Name]
-			if !exists {
-				continue
-			}
-
-			// Get prefix for this value
-			if prefix, hasPrefix := dim.Prefixes[value]; hasPrefix && prefix != "" {
-				dimPrefixes = append(dimPrefixes, dimPrefix{
-					dimension: dim.Name,
-					prefix:    prefix,
-				})
-			}
-		}
-	}
-
-	// Sort by dimension name for alphabetical ordering
-	sort.Slice(dimPrefixes, func(i, j int) bool {
-		return dimPrefixes[i].dimension < dimPrefixes[j].dimension
-	})
-
-	// Build prefix string
-	var prefixStr strings.Builder
-	for _, dp := range dimPrefixes {
-		prefixStr.WriteString(dp.prefix)
-	}
-
-	return fmt.Sprintf("%s%d", prefixStr.String(), offset+1)
-}
-
-// NormalizePrefixes reorders prefixes alphabetically by dimension name
+// normalizePrefixes reorders prefixes alphabetically by dimension name
 // This allows "ph1" and "hp1" to both resolve to the same normalized form
-func (p *IDParser) NormalizePrefixes(prefixes string) string {
+func (p *idParser) normalizePrefixes(prefixes string) string {
 	if len(prefixes) == 0 {
 		return ""
 	}
@@ -283,29 +240,3 @@ func (p *IDParser) NormalizePrefixes(prefixes string) string {
 	return normalized.String()
 }
 
-// ValidateConfiguration checks if the parser configuration is valid
-func (p *IDParser) ValidateConfiguration() error {
-	// Check for prefix conflicts (same prefix used by multiple dimensions)
-	prefixUsage := make(map[string][]string)
-
-	for _, dim := range p.config.Dimensions {
-		if dim.Type == types.Enumerated {
-			for value, prefix := range dim.Prefixes {
-				if prefix != "" {
-					key := fmt.Sprintf("%s.%s", dim.Name, value)
-					prefixUsage[prefix] = append(prefixUsage[prefix], key)
-				}
-			}
-		}
-	}
-
-	// Report any conflicts
-	for prefix, usages := range prefixUsage {
-		if len(usages) > 1 {
-			return fmt.Errorf("prefix '%s' is used by multiple dimension values: %s",
-				prefix, strings.Join(usages, ", "))
-		}
-	}
-
-	return nil
-}

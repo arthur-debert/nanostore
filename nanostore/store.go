@@ -1,78 +1,803 @@
 package nanostore
 
 import (
-	"github.com/arthur-debert/nanostore/nanostore/internal/engine"
+	"database/sql"
+	_ "embed"
+	"fmt"
+	"strings"
+	"time"
+
+	"github.com/Masterminds/squirrel"
+	"github.com/google/uuid"
+	_ "github.com/mattn/go-sqlite3"
 )
 
-// Engine defines the internal storage engine interface.
-// It directly uses the public nanostore types to avoid redundant type definitions.
-// This interface is defined here rather than in the engine package to avoid
-// circular imports while still maintaining type safety.
-type Engine interface {
-	List(opts ListOptions) ([]Document, error)
-	Add(title string, parentID *string, dimensions map[string]string) (string, error)
-	Update(id string, updates UpdateRequest) error
-	SetStatus(id string, status Status) error
-	ResolveUUID(userFacingID string) (string, error)
-	Delete(id string, cascade bool) error
-	Close() error
+// Embedded SQL files
+//
+//go:embed sql/schema/base_schema.sql
+var baseSchemaSQL string
+
+//go:embed sql/queries/check_circular_reference.sql
+var checkCircularReferenceSQL string
+
+//go:embed sql/queries/delete_cascade.sql
+var deleteCascadeSQL string
+
+// store implements the Store interface with dynamic dimension configuration
+type store struct {
+	db           *sql.DB
+	config       Config
+	idParser     *idParser
+	queryBuilder *queryBuilder
+	sqlBuilder   *sqlBuilder
 }
 
-// storeAdapter wraps the internal engine to implement the public Store interface.
-// After eliminating redundant type definitions, this adapter is now a simple
-// pass-through that exists solely to:
-// 1. Hide the internal engine package from public API users
-// 2. Maintain a clean separation between public interface and internal implementation
-// All methods are now simple delegations with no type conversions needed.
-type storeAdapter struct {
-	engine Engine // Using the local Engine interface
-}
-
-// newStoreWithConfig creates a new store instance with custom configuration
-func newStoreWithConfig(dbPath string, config Config) (Store, error) {
-	// Create a new configurable store with the provided configuration
-	eng, err := engine.New(dbPath, config)
+// newConfigurableStore creates a new store instance with custom dimension configuration
+func newConfigurableStore(dbPath string, config Config) (Store, error) {
+	db, err := sql.Open("sqlite3", dbPath)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
-	// No need to cast, it already implements Engine interface
-	return &storeAdapter{engine: eng}, nil
+
+	// Enable foreign keys
+	if _, err := db.Exec("PRAGMA foreign_keys = ON"); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("failed to enable foreign keys: %w", err)
+	}
+
+	s := &store{
+		db:           db,
+		config:       config,
+		idParser:     newIDParser(config),
+		queryBuilder: newQueryBuilder(config),
+		sqlBuilder:   newSQLBuilder(),
+	}
+
+	// Run base migrations
+	if err := s.migrateBase(); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("failed to run base migrations: %w", err)
+	}
+
+	// Apply dimension-specific schema
+	if err := s.applyDimensionSchema(); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("failed to apply dimension schema: %w", err)
+	}
+
+	return s, nil
 }
 
-// List returns documents based on the provided options
-func (s *storeAdapter) List(opts ListOptions) ([]Document, error) {
-	// Simple pass-through - no conversion needed!
-	return s.engine.List(opts)
+// Close releases database resources
+func (s *store) Close() error {
+	return s.db.Close()
 }
 
-// Add creates a new document
-func (s *storeAdapter) Add(title string, parentID *string, dimensions map[string]string) (string, error) {
-	return s.engine.Add(title, parentID, dimensions)
+// migrateBase runs the core schema migrations
+func (s *store) migrateBase() error {
+	// Execute base schema from embedded SQL file
+	if _, err := s.db.Exec(baseSchemaSQL); err != nil {
+		return fmt.Errorf("failed to create base schema: %w", err)
+	}
+
+	return nil
+}
+
+// applyDimensionSchema adds dimension-specific columns and indexes
+func (s *store) applyDimensionSchema() error {
+	schemaBuilder := newSchemaBuilder(s.config)
+
+	// Generate and execute dimension columns
+	for _, ddl := range schemaBuilder.generateDimensionColumns() {
+		if _, err := s.db.Exec(ddl); err != nil {
+			// Column might already exist, which is fine
+			if !isColumnExistsError(err) {
+				return fmt.Errorf("failed to add dimension column: %w", err)
+			}
+		}
+	}
+
+	// Generate and execute indexes
+	for _, ddl := range schemaBuilder.generateIndexes() {
+		if _, err := s.db.Exec(ddl); err != nil {
+			return fmt.Errorf("failed to create index: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// List returns documents with dynamically generated IDs
+func (s *store) List(opts ListOptions) ([]Document, error) {
+	// Convert ListOptions to generic filters map
+	filters := s.convertListOptionsToFilters(opts)
+
+	// Generate dynamic query
+	query, args, err := s.queryBuilder.GenerateListQuery(filters)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate query: %w", err)
+	}
+
+	rows, err := s.db.Query(query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute query: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var results []Document
+	for rows.Next() {
+		doc, err := s.scanDocument(rows)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan row: %w", err)
+		}
+		results = append(results, doc)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating rows: %w", err)
+	}
+
+	return results, nil
+}
+
+// Add creates a new document with dimension values
+func (s *store) Add(title string, parentID *string, dimensions map[string]string) (string, error) {
+	// Convert string dimensions to interface{} and merge with defaults
+	dimensionValues := make(map[string]interface{})
+
+	// Set default values for enumerated dimensions
+	for _, dim := range s.config.Dimensions {
+		if dim.Type == Enumerated {
+			// Check if user provided a value
+			if val, ok := dimensions[dim.Name]; ok {
+				// Validate the provided value
+				validValue := false
+				for _, allowedVal := range dim.Values {
+					if val == allowedVal {
+						validValue = true
+						break
+					}
+				}
+				if !validValue {
+					return "", fmt.Errorf("invalid value '%s' for dimension '%s'", val, dim.Name)
+				}
+				dimensionValues[dim.Name] = val
+			} else {
+				// Use default value
+				if dim.DefaultValue != "" {
+					dimensionValues[dim.Name] = dim.DefaultValue
+				} else if len(dim.Values) > 0 {
+					dimensionValues[dim.Name] = dim.Values[0]
+				}
+			}
+		}
+	}
+
+	// Set hierarchical dimension if parentID provided
+	hierDim := s.findHierarchicalDimension()
+	if hierDim != nil && parentID != nil {
+		dimensionValues[hierDim.RefField] = *parentID
+	}
+
+	return s.addWithDimensions(title, dimensionValues)
+}
+
+// addWithDimensions creates a new document with specific dimension values
+func (s *store) addWithDimensions(title string, dimensionValues map[string]interface{}) (string, error) {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return "", fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	id := uuid.New().String()
+	now := time.Now().Unix()
+
+	// Build dynamic INSERT statement
+	columns := []string{"uuid", "title", "body", "created_at", "updated_at"}
+	values := []interface{}{id, title, "", now, now}
+
+	// Add dimension columns
+	for _, dim := range s.config.Dimensions {
+		if val, exists := dimensionValues[dim.Name]; exists {
+			columns = append(columns, dim.Name)
+			values = append(values, val)
+		} else if dim.Type == Hierarchical {
+			// For hierarchical dimensions, check RefField
+			if val, exists := dimensionValues[dim.RefField]; exists {
+				columns = append(columns, dim.RefField)
+				values = append(values, val)
+			}
+		}
+	}
+
+	// Use SQL builder for safe query construction
+	query, args, err := s.sqlBuilder.buildInsert("documents", columns, values)
+	if err != nil {
+		return "", fmt.Errorf("failed to build insert query: %w", err)
+	}
+
+	_, err = tx.Exec(query, args...)
+	if err != nil {
+		return "", fmt.Errorf("failed to insert document: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return "", fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	return id, nil
 }
 
 // Update modifies an existing document
-func (s *storeAdapter) Update(id string, updates UpdateRequest) error {
-	// Simple pass-through - no conversion needed!
-	return s.engine.Update(id, updates)
+func (s *store) Update(id string, updates UpdateRequest) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	// Handle parent update if hierarchical dimension exists
+	if updates.ParentID != nil {
+		hierDim := s.findHierarchicalDimension()
+		if hierDim != nil {
+			// Check for circular references
+			if *updates.ParentID != "" {
+				if *updates.ParentID == id {
+					return fmt.Errorf("cannot set document as its own parent")
+				}
+
+				// Check for circular references using embedded SQL
+				var cycle int
+				err = tx.QueryRow(checkCircularReferenceSQL, *updates.ParentID, id).Scan(&cycle)
+				if err != nil {
+					return fmt.Errorf("failed to check for circular reference: %w", err)
+				}
+
+				if cycle > 0 {
+					return fmt.Errorf("cannot set parent: would create circular reference")
+				}
+			}
+		}
+	}
+
+	// Build dynamic UPDATE statement
+	columns := []string{"updated_at"}
+	values := []interface{}{time.Now().Unix()}
+
+	if updates.Title != nil {
+		columns = append(columns, "title")
+		values = append(values, *updates.Title)
+	}
+
+	if updates.Body != nil {
+		columns = append(columns, "body")
+		values = append(values, *updates.Body)
+	}
+
+	// Handle parent update for hierarchical dimension
+	if updates.ParentID != nil {
+		hierDim := s.findHierarchicalDimension()
+		if hierDim != nil {
+			if *updates.ParentID == "" {
+				columns = append(columns, hierDim.RefField)
+				values = append(values, nil)
+			} else {
+				columns = append(columns, hierDim.RefField)
+				values = append(values, *updates.ParentID)
+			}
+		}
+	}
+
+	// Handle dimension updates
+	if updates.Dimensions != nil {
+		for dimName, dimValue := range updates.Dimensions {
+			// Validate dimension exists and value is valid
+			dimFound := false
+			for _, dim := range s.config.Dimensions {
+				if dim.Name == dimName && dim.Type == Enumerated {
+					dimFound = true
+					// Validate the value
+					validValue := false
+					for _, allowedVal := range dim.Values {
+						if dimValue == allowedVal {
+							validValue = true
+							break
+						}
+					}
+					if !validValue {
+						return fmt.Errorf("invalid value '%s' for dimension '%s'", dimValue, dimName)
+					}
+					columns = append(columns, dimName)
+					values = append(values, dimValue)
+					break
+				}
+			}
+			if !dimFound {
+				return fmt.Errorf("unknown dimension '%s'", dimName)
+			}
+		}
+	}
+
+	// Use SQL builder for safe query construction
+	query, args, err := s.sqlBuilder.buildDynamicUpdate(columns, values, id)
+	if err != nil {
+		return fmt.Errorf("failed to build update query: %w", err)
+	}
+
+	result, err := tx.Exec(query, args...)
+	if err != nil {
+		return fmt.Errorf("failed to update document: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %w", err)
+	}
+
+	if rowsAffected == 0 {
+		return fmt.Errorf("document not found: %s", id)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	return nil
 }
 
 // SetStatus changes the status of a document
-func (s *storeAdapter) SetStatus(id string, status Status) error {
-	// Simple pass-through - Status type is now used throughout
-	return s.engine.SetStatus(id, status)
+func (s *store) SetStatus(id string, status Status) error {
+	// Find status dimension
+	var statusDim *DimensionConfig
+	for _, dim := range s.config.Dimensions {
+		if dim.Name == "status" && dim.Type == Enumerated {
+			statusDim = &dim
+			break
+		}
+	}
+
+	if statusDim == nil {
+		return fmt.Errorf("no status dimension configured")
+	}
+
+	// For custom configs, status might be a string not Status
+	statusStr := string(status)
+
+	// Validate status value
+	validStatus := false
+	for _, val := range statusDim.Values {
+		if val == statusStr {
+			validStatus = true
+			break
+		}
+	}
+	if !validStatus {
+		return fmt.Errorf("invalid status value '%s' for configured values: %v", status, statusDim.Values)
+	}
+
+	query := "UPDATE documents SET status = ?, updated_at = ? WHERE uuid = ?"
+
+	result, err := s.db.Exec(query, statusStr, time.Now().Unix(), id)
+	if err != nil {
+		return fmt.Errorf("failed to update status: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %w", err)
+	}
+
+	if rowsAffected == 0 {
+		return fmt.Errorf("document not found: %s", id)
+	}
+
+	return nil
 }
 
 // ResolveUUID converts a user-facing ID to a UUID
-func (s *storeAdapter) ResolveUUID(userFacingID string) (string, error) {
-	return s.engine.ResolveUUID(userFacingID)
+func (s *store) ResolveUUID(userFacingID string) (string, error) {
+	// Normalize the input ID to handle different prefix orders
+	normalizedID, err := s.normalizeUserFacingID(userFacingID)
+	if err != nil {
+		return "", fmt.Errorf("failed to normalize ID: %w", err)
+	}
+
+	// Parse the normalized ID to extract hierarchy and filters
+	parsedID, err := s.idParser.parseID(normalizedID)
+	if err != nil {
+		return "", fmt.Errorf("failed to parse ID: %w", err)
+	}
+
+	// Use optimized SQL-based resolution for single level IDs
+	if len(parsedID.Levels) == 1 {
+		return s.resolveUUIDFlat(parsedID.Levels[0])
+	}
+
+	// For multi-level hierarchical IDs, resolve level by level
+	return s.resolveUUIDHierarchical(parsedID)
 }
 
 // Delete removes a document and optionally its children
-func (s *storeAdapter) Delete(id string, cascade bool) error {
-	return s.engine.Delete(id, cascade)
+func (s *store) Delete(id string, cascade bool) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if cascade {
+		hierDim := s.findHierarchicalDimension()
+		if hierDim != nil {
+			// Use recursive CTE to delete all descendants from embedded SQL
+			query := fmt.Sprintf(deleteCascadeSQL, hierDim.RefField)
+
+			result, err := tx.Exec(query, id)
+			if err != nil {
+				return fmt.Errorf("failed to delete with cascade: %w", err)
+			}
+
+			rowsAffected, err := result.RowsAffected()
+			if err != nil {
+				return fmt.Errorf("failed to get rows affected: %w", err)
+			}
+
+			if rowsAffected == 0 {
+				return fmt.Errorf("document not found: %s", id)
+			}
+		} else {
+			// No hierarchy - just delete the single document
+			result, err := tx.Exec("DELETE FROM documents WHERE uuid = ?", id)
+			if err != nil {
+				return fmt.Errorf("failed to delete document: %w", err)
+			}
+
+			rowsAffected, err := result.RowsAffected()
+			if err != nil {
+				return fmt.Errorf("failed to get rows affected: %w", err)
+			}
+
+			if rowsAffected == 0 {
+				return fmt.Errorf("document not found: %s", id)
+			}
+		}
+	} else {
+		// Check if document has children first
+		hierDim := s.findHierarchicalDimension()
+		if hierDim != nil {
+			var hasChildren int
+			// Use SQL builder for count query
+			query, args, err := s.sqlBuilder.buildSelectCount("documents", squirrel.Eq{hierDim.RefField: id})
+			if err != nil {
+				return fmt.Errorf("failed to build count query: %w", err)
+			}
+			err = tx.QueryRow(query, args...).Scan(&hasChildren)
+			if err != nil {
+				return fmt.Errorf("failed to check for children: %w", err)
+			}
+
+			if hasChildren > 0 {
+				return fmt.Errorf("cannot delete document with children unless cascade is true")
+			}
+		}
+
+		// Delete single document
+		result, err := tx.Exec("DELETE FROM documents WHERE uuid = ?", id)
+		if err != nil {
+			return fmt.Errorf("failed to delete document: %w", err)
+		}
+
+		rowsAffected, err := result.RowsAffected()
+		if err != nil {
+			return fmt.Errorf("failed to get rows affected: %w", err)
+		}
+
+		if rowsAffected == 0 {
+			return fmt.Errorf("document not found: %s", id)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	return nil
 }
 
-// Close releases any resources
-func (s *storeAdapter) Close() error {
-	return s.engine.Close()
+// Helper methods
+
+func (s *store) findHierarchicalDimension() *DimensionConfig {
+	for _, dim := range s.config.Dimensions {
+		if dim.Type == Hierarchical {
+			return &dim
+		}
+	}
+	return nil
+}
+
+func (s *store) convertListOptionsToFilters(opts ListOptions) map[string]interface{} {
+	filters := make(map[string]interface{})
+
+	// Convert status filter
+	if len(opts.FilterByStatus) > 0 {
+		// Check if we have a status dimension
+		for _, dim := range s.config.Dimensions {
+			if dim.Name == "status" {
+				statuses := make([]string, len(opts.FilterByStatus))
+				for i, s := range opts.FilterByStatus {
+					statuses[i] = string(s)
+				}
+				filters["status"] = statuses
+				break
+			}
+		}
+	}
+
+	// Convert parent filter
+	if opts.FilterByParent != nil {
+		filters["parent"] = opts.FilterByParent
+	}
+
+	// Convert search filter
+	if opts.FilterBySearch != "" {
+		filters["search"] = opts.FilterBySearch
+	}
+
+	return filters
+}
+
+func (s *store) scanDocument(rows *sql.Rows) (Document, error) {
+	// Get column names
+	columns, err := rows.Columns()
+	if err != nil {
+		return Document{}, err
+	}
+
+	// Create a slice to hold the values
+	values := make([]interface{}, len(columns))
+	valuePtrs := make([]interface{}, len(columns))
+	for i := range values {
+		valuePtrs[i] = &values[i]
+	}
+
+	// Scan the row
+	if err := rows.Scan(valuePtrs...); err != nil {
+		return Document{}, err
+	}
+
+	// Build document
+	doc := Document{}
+
+	// Map values to document fields
+	for i, col := range columns {
+		switch col {
+		case "uuid":
+			doc.UUID = values[i].(string)
+		case "user_facing_id":
+			doc.UserFacingID = values[i].(string)
+		case "title":
+			doc.Title = values[i].(string)
+		case "body":
+			doc.Body = values[i].(string)
+		case "created_at":
+			doc.CreatedAt = time.Unix(values[i].(int64), 0)
+		case "updated_at":
+			doc.UpdatedAt = time.Unix(values[i].(int64), 0)
+		case "status":
+			// Handle status if it exists
+			if val, ok := values[i].(string); ok {
+				doc.Status = Status(val)
+			}
+		default:
+			// Check if it's a hierarchical dimension
+			hierDim := s.findHierarchicalDimension()
+			if hierDim != nil && col == hierDim.RefField {
+				if values[i] != nil {
+					parentUUID := values[i].(string)
+					doc.ParentUUID = &parentUUID
+				}
+			}
+		}
+	}
+
+	return doc, nil
+}
+
+func isColumnExistsError(err error) bool {
+	// SQLite returns "duplicate column name" when column already exists
+	return err != nil && strings.Contains(err.Error(), "duplicate column name")
+}
+
+// normalizeUserFacingID normalizes prefix ordering in a user-facing ID
+func (s *store) normalizeUserFacingID(userFacingID string) (string, error) {
+	// Split by dots for hierarchical levels
+	levels := strings.Split(userFacingID, ".")
+	normalizedLevels := make([]string, len(levels))
+
+	for i, level := range levels {
+		normalizedLevel, err := s.normalizeLevelID(level)
+		if err != nil {
+			return "", fmt.Errorf("failed to normalize level %d: %w", i+1, err)
+		}
+		normalizedLevels[i] = normalizedLevel
+	}
+
+	return strings.Join(normalizedLevels, "."), nil
+}
+
+// normalizeLevelID normalizes a single level of an ID (e.g., "ph1" -> "hp1")
+func (s *store) normalizeLevelID(levelID string) (string, error) {
+	if levelID == "" {
+		return "", fmt.Errorf("empty level ID")
+	}
+
+	// Extract prefixes (consecutive lowercase letters at the start)
+	prefixEnd := 0
+	for i, r := range levelID {
+		if r >= 'a' && r <= 'z' {
+			prefixEnd = i + 1
+		} else {
+			break
+		}
+	}
+
+	// If no prefixes, return as-is
+	if prefixEnd == 0 {
+		return levelID, nil
+	}
+
+	prefixes := levelID[:prefixEnd]
+	numberPart := levelID[prefixEnd:]
+
+	// Validate all prefixes are known before normalizing
+	seenDimensions := make(map[string]bool)
+	for _, r := range prefixes {
+		prefix := string(r)
+		mapping, found := s.idParser.prefixMap[prefix]
+		if !found {
+			return "", fmt.Errorf("unknown prefix: %s", prefix)
+		}
+		// Check for duplicate dimension
+		if seenDimensions[mapping.dimension] {
+			return "", fmt.Errorf("duplicate dimension prefix for %s", mapping.dimension)
+		}
+		seenDimensions[mapping.dimension] = true
+	}
+
+	// Normalize the prefixes using the ID parser
+	normalizedPrefixes := s.idParser.normalizePrefixes(prefixes)
+
+	return normalizedPrefixes + numberPart, nil
+}
+
+// resolveUUIDFlat efficiently resolves a single-level ID using direct SQL queries
+func (s *store) resolveUUIDFlat(level parsedLevel) (string, error) {
+	// Build SQL query with ROW_NUMBER() partitioning
+	var whereClauses []string
+	var args []interface{}
+
+	// Add dimension filters
+	enumDims := s.config.GetEnumeratedDimensions()
+	var partitionCols []string
+
+	for _, dim := range enumDims {
+		if filterValue, hasFilter := level.DimensionFilters[dim.Name]; hasFilter {
+			whereClauses = append(whereClauses, fmt.Sprintf("%s = ?", dim.Name))
+			args = append(args, filterValue)
+			partitionCols = append(partitionCols, dim.Name)
+		} else {
+			// Use default value if no specific filter
+			whereClauses = append(whereClauses, fmt.Sprintf("%s = ?", dim.Name))
+			args = append(args, dim.DefaultValue)
+			partitionCols = append(partitionCols, dim.Name)
+		}
+	}
+
+	// Handle hierarchical dimension (should be NULL for root level)
+	hierDims := s.config.GetHierarchicalDimensions()
+	for _, dim := range hierDims {
+		whereClauses = append(whereClauses, fmt.Sprintf("%s IS NULL", dim.RefField))
+		partitionCols = append(partitionCols, dim.RefField)
+	}
+
+	// Build the query
+	partitionBy := strings.Join(partitionCols, ", ")
+	whereClause := strings.Join(whereClauses, " AND ")
+
+	query := fmt.Sprintf(`
+		WITH numbered_docs AS (
+			SELECT uuid, ROW_NUMBER() OVER (PARTITION BY %s ORDER BY created_at) as row_num
+			FROM documents 
+			WHERE %s
+		)
+		SELECT uuid FROM numbered_docs WHERE row_num = ?`,
+		partitionBy, whereClause)
+
+	args = append(args, level.Offset+1) // Convert 0-based to 1-based
+
+	var uuid string
+	err := s.db.QueryRow(query, args...).Scan(&uuid)
+	if err != nil {
+		return "", fmt.Errorf("document not found")
+	}
+
+	return uuid, nil
+}
+
+// resolveUUIDHierarchical resolves multi-level hierarchical IDs by walking the tree level by level
+func (s *store) resolveUUIDHierarchical(parsedID *parsedID) (string, error) {
+	// Start with the root level
+	currentUUID, err := s.resolveUUIDFlat(parsedID.Levels[0])
+	if err != nil {
+		return "", fmt.Errorf("failed to resolve root level: %w", err)
+	}
+
+	// Resolve each subsequent level
+	for i := 1; i < len(parsedID.Levels); i++ {
+		currentUUID, err = s.resolveChildUUID(currentUUID, parsedID.Levels[i])
+		if err != nil {
+			return "", fmt.Errorf("failed to resolve level %d: %w", i+1, err)
+		}
+	}
+
+	return currentUUID, nil
+}
+
+// resolveChildUUID finds a child document given parent UUID and level constraints
+func (s *store) resolveChildUUID(parentUUID string, level parsedLevel) (string, error) {
+	// Get hierarchical dimension
+	hierDims := s.config.GetHierarchicalDimensions()
+	if len(hierDims) == 0 {
+		return "", fmt.Errorf("no hierarchical dimension configured")
+	}
+	hierDim := hierDims[0] // Use first hierarchical dimension
+
+	// Build WHERE clauses for this level
+	var whereClauses []string
+	var args []interface{}
+
+	// Must be child of parent
+	whereClauses = append(whereClauses, fmt.Sprintf("%s = ?", hierDim.RefField))
+	args = append(args, parentUUID)
+
+	// Add dimension filters
+	enumDims := s.config.GetEnumeratedDimensions()
+	var partitionCols []string
+
+	partitionCols = append(partitionCols, hierDim.RefField) // Partition by parent
+
+	for _, dim := range enumDims {
+		if filterValue, hasFilter := level.DimensionFilters[dim.Name]; hasFilter {
+			whereClauses = append(whereClauses, fmt.Sprintf("%s = ?", dim.Name))
+			args = append(args, filterValue)
+		} else {
+			// Use default value if no specific filter
+			whereClauses = append(whereClauses, fmt.Sprintf("%s = ?", dim.Name))
+			args = append(args, dim.DefaultValue)
+		}
+		partitionCols = append(partitionCols, dim.Name)
+	}
+
+	// Build the query
+	partitionBy := strings.Join(partitionCols, ", ")
+	whereClause := strings.Join(whereClauses, " AND ")
+
+	query := fmt.Sprintf(`
+		WITH numbered_docs AS (
+			SELECT uuid, ROW_NUMBER() OVER (PARTITION BY %s ORDER BY created_at) as row_num
+			FROM documents 
+			WHERE %s
+		)
+		SELECT uuid FROM numbered_docs WHERE row_num = ?`,
+		partitionBy, whereClause)
+
+	args = append(args, level.Offset+1) // Convert 0-based to 1-based
+
+	var uuid string
+	err := s.db.QueryRow(query, args...).Scan(&uuid)
+	if err != nil {
+		return "", fmt.Errorf("child document not found")
+	}
+
+	return uuid, nil
 }
