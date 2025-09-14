@@ -10,3 +10,7 @@ go test ./... -json
 # Run todo app tests
 cd examples/apps/todo
 go test ./... -json
+
+# Run notes app tests
+cd ../notes
+go test ./... -json

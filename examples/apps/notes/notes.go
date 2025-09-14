@@ -147,48 +147,6 @@ func (n *Notes) Delete(userFacingID string) error {
 	return nil
 }
 
-// Pin pins a note so it appears first
-func (n *Notes) Pin(userFacingID string) error {
-	uuid, err := n.store.ResolveUUID(userFacingID)
-	if err != nil {
-		return fmt.Errorf("failed to resolve ID '%s': %w", userFacingID, err)
-	}
-
-	updates := nanostore.UpdateRequest{
-		Dimensions: map[string]string{
-			"pinned": "true",
-		},
-	}
-
-	err = n.store.Update(uuid, updates)
-	if err != nil {
-		return fmt.Errorf("failed to pin note: %w", err)
-	}
-
-	return nil
-}
-
-// Unpin unpins a note
-func (n *Notes) Unpin(userFacingID string) error {
-	uuid, err := n.store.ResolveUUID(userFacingID)
-	if err != nil {
-		return fmt.Errorf("failed to resolve ID '%s': %w", userFacingID, err)
-	}
-
-	updates := nanostore.UpdateRequest{
-		Dimensions: map[string]string{
-			"pinned": "false",
-		},
-	}
-
-	err = n.store.Update(uuid, updates)
-	if err != nil {
-		return fmt.Errorf("failed to unpin note: %w", err)
-	}
-
-	return nil
-}
-
 // ListOptions configures how notes are listed
 type ListOptions struct {
 	ShowArchived bool

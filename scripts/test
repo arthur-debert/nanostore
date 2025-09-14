@@ -19,4 +19,8 @@ else
     echo -e "\nRunning todo app tests..."
     cd "$PROJECT_ROOT/examples/apps/todo"
     go test ./... -v
+    
+    echo -e "\nRunning notes app tests..."
+    cd "$PROJECT_ROOT/examples/apps/notes"
+    go test ./... -v
 fi

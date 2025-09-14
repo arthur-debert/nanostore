@@ -48,10 +48,6 @@ func main() {
 		cmdUnarchive(app, os.Args[2:])
 	case "delete":
 		cmdDelete(app, os.Args[2:])
-	case "pin":
-		cmdPin(app, os.Args[2:])
-	case "unpin":
-		cmdUnpin(app, os.Args[2:])
 	case "tag":
 		cmdTag(app, os.Args[2:])
 	case "search":
@@ -71,8 +67,6 @@ func printUsage() {
 	fmt.Println("  archive <id>                   Archive a note")
 	fmt.Println("  unarchive <id>                 Unarchive a note")
 	fmt.Println("  delete <id>                    Soft-delete a note")
-	fmt.Println("  pin <id>                       Pin a note")
-	fmt.Println("  unpin <id>                     Unpin a note")
 	fmt.Println("  tag <id> <tags>                Update note tags")
 	fmt.Println("  search <query> [--archived]    Search notes")
 }
@@ -83,7 +77,7 @@ func cmdList(app *notes.Notes, args []string) {
 	showDeleted := fs.Bool("deleted", false, "Show deleted notes")
 	fs.Parse(args)
 
-	notes, err := app.List(notes.ListOptions{
+	notesList, err := app.List(notes.ListOptions{
 		ShowArchived: *showArchived,
 		ShowDeleted:  *showDeleted,
 	})
@@ -92,7 +86,7 @@ func cmdList(app *notes.Notes, args []string) {
 		os.Exit(1)
 	}
 
-	output := notes.FormatList(notes, *showArchived || *showDeleted)
+	output := notes.FormatList(notesList, *showArchived || *showDeleted)
 	fmt.Print(output)
 }
 
@@ -171,36 +165,6 @@ func cmdDelete(app *notes.Notes, args []string) {
 	fmt.Printf("Deleted: %s\n", args[0])
 }
 
-func cmdPin(app *notes.Notes, args []string) {
-	if len(args) < 1 {
-		fmt.Fprintf(os.Stderr, "Error: ID required\n")
-		os.Exit(1)
-	}
-
-	err := app.Pin(args[0])
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error pinning note: %v\n", err)
-		os.Exit(1)
-	}
-
-	fmt.Printf("Pinned: %s\n", args[0])
-}
-
-func cmdUnpin(app *notes.Notes, args []string) {
-	if len(args) < 1 {
-		fmt.Fprintf(os.Stderr, "Error: ID required\n")
-		os.Exit(1)
-	}
-
-	err := app.Unpin(args[0])
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error unpinning note: %v\n", err)
-		os.Exit(1)
-	}
-
-	fmt.Printf("Unpinned: %s\n", args[0])
-}
-
 func cmdTag(app *notes.Notes, args []string) {
 	if len(args) < 2 {
 		fmt.Fprintf(os.Stderr, "Error: ID and tags required\n")
@@ -234,12 +198,12 @@ func cmdSearch(app *notes.Notes, args []string) {
 
 	query := strings.Join(fs.Args(), " ")
 
-	notes, err := app.Search(query, *showArchived)
+	notesList, err := app.Search(query, *showArchived)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error searching: %v\n", err)
 		os.Exit(1)
 	}
 
-	output := notes.FormatList(notes, false)
+	output := notes.FormatList(notesList, false)
 	fmt.Print(output)
 }
