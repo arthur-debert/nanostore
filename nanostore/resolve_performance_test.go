@@ -5,17 +5,15 @@ import (
 	"os"
 	"testing"
 	"time"
-
-	"github.com/arthur-debert/nanostore/nanostore/types"
 )
 
 // TestResolveUUIDPerformance demonstrates the performance improvement of the optimized ResolveUUID
 func TestResolveUUIDPerformance(t *testing.T) {
-	config := types.Config{
-		Dimensions: []types.DimensionConfig{
+	config := Config{
+		Dimensions: []DimensionConfig{
 			{
 				Name:         "status",
-				Type:         types.Enumerated,
+				Type:         Enumerated,
 				Values:       []string{"pending", "done"},
 				Prefixes:     map[string]string{"done": "d"},
 				DefaultValue: "pending",
@@ -96,7 +94,7 @@ func TestResolveUUIDPerformance(t *testing.T) {
 	}
 
 	// Test that we can resolve actual document IDs
-	docs, err := store.List(types.ListOptions{})
+	docs, err := store.List(ListOptions{})
 	if err != nil {
 		t.Fatalf("Failed to list documents: %v", err)
 	}
@@ -124,11 +122,11 @@ func TestResolveUUIDPerformance(t *testing.T) {
 
 // BenchmarkResolveUUID measures ResolveUUID performance
 func BenchmarkResolveUUID(b *testing.B) {
-	config := types.Config{
-		Dimensions: []types.DimensionConfig{
+	config := Config{
+		Dimensions: []DimensionConfig{
 			{
 				Name:         "status",
-				Type:         types.Enumerated,
+				Type:         Enumerated,
 				Values:       []string{"pending", "done", "blocked"},
 				Prefixes:     map[string]string{"done": "d", "blocked": "b"},
 				DefaultValue: "pending",

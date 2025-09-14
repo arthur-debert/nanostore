@@ -4,7 +4,6 @@ import (
 	"testing"
 
 	"github.com/arthur-debert/nanostore/nanostore"
-	"github.com/arthur-debert/nanostore/nanostore/types"
 )
 
 func TestDefaultConfig(t *testing.T) {
@@ -20,7 +19,7 @@ func TestDefaultConfig(t *testing.T) {
 	if statusDim.Name != "status" {
 		t.Errorf("expected first dimension to be 'status', got '%s'", statusDim.Name)
 	}
-	if statusDim.Type != types.Enumerated {
+	if statusDim.Type != nanostore.Enumerated {
 		t.Errorf("expected status dimension to be Enumerated, got %d", statusDim.Type)
 	}
 	if len(statusDim.Values) != 2 {
@@ -32,7 +31,7 @@ func TestDefaultConfig(t *testing.T) {
 	if parentDim.Name != "parent" {
 		t.Errorf("expected second dimension to be 'parent', got '%s'", parentDim.Name)
 	}
-	if parentDim.Type != types.Hierarchical {
+	if parentDim.Type != nanostore.Hierarchical {
 		t.Errorf("expected parent dimension to be Hierarchical, got %d", parentDim.Type)
 	}
 	if parentDim.RefField != "parent_uuid" {
@@ -48,17 +47,17 @@ func TestDefaultConfig(t *testing.T) {
 func TestConfigValidation(t *testing.T) {
 	tests := []struct {
 		name      string
-		config    types.Config
+		config    nanostore.Config
 		shouldErr bool
 		errorMsg  string
 	}{
 		{
 			name: "valid config",
-			config: types.Config{
-				Dimensions: []types.DimensionConfig{
+			config: nanostore.Config{
+				Dimensions: []nanostore.DimensionConfig{
 					{
 						Name:         "status",
-						Type:         types.Enumerated,
+						Type:         nanostore.Enumerated,
 						Values:       []string{"pending", "completed"},
 						Prefixes:     map[string]string{"completed": "c"},
 						DefaultValue: "pending",
@@ -69,24 +68,24 @@ func TestConfigValidation(t *testing.T) {
 		},
 		{
 			name: "empty dimensions",
-			config: types.Config{
-				Dimensions: []types.DimensionConfig{},
+			config: nanostore.Config{
+				Dimensions: []nanostore.DimensionConfig{},
 			},
 			shouldErr: true,
 			errorMsg:  "at least one dimension must be configured",
 		},
 		{
 			name: "too many dimensions",
-			config: types.Config{
-				Dimensions: []types.DimensionConfig{
-					{Name: "d1", Type: types.Enumerated, Values: []string{"v1"}},
-					{Name: "d2", Type: types.Enumerated, Values: []string{"v1"}},
-					{Name: "d3", Type: types.Enumerated, Values: []string{"v1"}},
-					{Name: "d4", Type: types.Enumerated, Values: []string{"v1"}},
-					{Name: "d5", Type: types.Enumerated, Values: []string{"v1"}},
-					{Name: "d6", Type: types.Enumerated, Values: []string{"v1"}},
-					{Name: "d7", Type: types.Enumerated, Values: []string{"v1"}},
-					{Name: "d8", Type: types.Enumerated, Values: []string{"v1"}},
+			config: nanostore.Config{
+				Dimensions: []nanostore.DimensionConfig{
+					{Name: "d1", Type: nanostore.Enumerated, Values: []string{"v1"}},
+					{Name: "d2", Type: nanostore.Enumerated, Values: []string{"v1"}},
+					{Name: "d3", Type: nanostore.Enumerated, Values: []string{"v1"}},
+					{Name: "d4", Type: nanostore.Enumerated, Values: []string{"v1"}},
+					{Name: "d5", Type: nanostore.Enumerated, Values: []string{"v1"}},
+					{Name: "d6", Type: nanostore.Enumerated, Values: []string{"v1"}},
+					{Name: "d7", Type: nanostore.Enumerated, Values: []string{"v1"}},
+					{Name: "d8", Type: nanostore.Enumerated, Values: []string{"v1"}},
 				},
 			},
 			shouldErr: true,
@@ -94,11 +93,11 @@ func TestConfigValidation(t *testing.T) {
 		},
 		{
 			name: "empty dimension name",
-			config: types.Config{
-				Dimensions: []types.DimensionConfig{
+			config: nanostore.Config{
+				Dimensions: []nanostore.DimensionConfig{
 					{
 						Name: "",
-						Type: types.Enumerated,
+						Type: nanostore.Enumerated,
 					},
 				},
 			},
@@ -107,11 +106,11 @@ func TestConfigValidation(t *testing.T) {
 		},
 		{
 			name: "reserved column name",
-			config: types.Config{
-				Dimensions: []types.DimensionConfig{
+			config: nanostore.Config{
+				Dimensions: []nanostore.DimensionConfig{
 					{
 						Name: "uuid",
-						Type: types.Enumerated,
+						Type: nanostore.Enumerated,
 					},
 				},
 			},
@@ -120,16 +119,16 @@ func TestConfigValidation(t *testing.T) {
 		},
 		{
 			name: "duplicate dimension names",
-			config: types.Config{
-				Dimensions: []types.DimensionConfig{
+			config: nanostore.Config{
+				Dimensions: []nanostore.DimensionConfig{
 					{
 						Name:   "status",
-						Type:   types.Enumerated,
+						Type:   nanostore.Enumerated,
 						Values: []string{"pending"},
 					},
 					{
 						Name:   "status",
-						Type:   types.Enumerated,
+						Type:   nanostore.Enumerated,
 						Values: []string{"active"},
 					},
 				},
@@ -139,11 +138,11 @@ func TestConfigValidation(t *testing.T) {
 		},
 		{
 			name: "enumerated dimension without values",
-			config: types.Config{
-				Dimensions: []types.DimensionConfig{
+			config: nanostore.Config{
+				Dimensions: []nanostore.DimensionConfig{
 					{
 						Name:   "status",
-						Type:   types.Enumerated,
+						Type:   nanostore.Enumerated,
 						Values: []string{},
 					},
 				},
@@ -153,11 +152,11 @@ func TestConfigValidation(t *testing.T) {
 		},
 		{
 			name: "enumerated dimension with empty value",
-			config: types.Config{
-				Dimensions: []types.DimensionConfig{
+			config: nanostore.Config{
+				Dimensions: []nanostore.DimensionConfig{
 					{
 						Name:   "status",
-						Type:   types.Enumerated,
+						Type:   nanostore.Enumerated,
 						Values: []string{"pending", ""},
 					},
 				},
@@ -167,11 +166,11 @@ func TestConfigValidation(t *testing.T) {
 		},
 		{
 			name: "enumerated dimension with duplicate values",
-			config: types.Config{
-				Dimensions: []types.DimensionConfig{
+			config: nanostore.Config{
+				Dimensions: []nanostore.DimensionConfig{
 					{
 						Name:   "status",
-						Type:   types.Enumerated,
+						Type:   nanostore.Enumerated,
 						Values: []string{"pending", "pending"},
 					},
 				},
@@ -181,11 +180,11 @@ func TestConfigValidation(t *testing.T) {
 		},
 		{
 			name: "invalid default value",
-			config: types.Config{
-				Dimensions: []types.DimensionConfig{
+			config: nanostore.Config{
+				Dimensions: []nanostore.DimensionConfig{
 					{
 						Name:         "status",
-						Type:         types.Enumerated,
+						Type:         nanostore.Enumerated,
 						Values:       []string{"pending", "completed"},
 						DefaultValue: "active",
 					},
@@ -196,11 +195,11 @@ func TestConfigValidation(t *testing.T) {
 		},
 		{
 			name: "prefix for unknown value",
-			config: types.Config{
-				Dimensions: []types.DimensionConfig{
+			config: nanostore.Config{
+				Dimensions: []nanostore.DimensionConfig{
 					{
 						Name:     "status",
-						Type:     types.Enumerated,
+						Type:     nanostore.Enumerated,
 						Values:   []string{"pending", "completed"},
 						Prefixes: map[string]string{"active": "a"},
 					},
@@ -211,11 +210,11 @@ func TestConfigValidation(t *testing.T) {
 		},
 		{
 			name: "empty prefix",
-			config: types.Config{
-				Dimensions: []types.DimensionConfig{
+			config: nanostore.Config{
+				Dimensions: []nanostore.DimensionConfig{
 					{
 						Name:     "status",
-						Type:     types.Enumerated,
+						Type:     nanostore.Enumerated,
 						Values:   []string{"pending", "completed"},
 						Prefixes: map[string]string{"completed": ""},
 					},
@@ -226,11 +225,11 @@ func TestConfigValidation(t *testing.T) {
 		},
 		{
 			name: "invalid prefix characters",
-			config: types.Config{
-				Dimensions: []types.DimensionConfig{
+			config: nanostore.Config{
+				Dimensions: []nanostore.DimensionConfig{
 					{
 						Name:     "status",
-						Type:     types.Enumerated,
+						Type:     nanostore.Enumerated,
 						Values:   []string{"pending", "completed"},
 						Prefixes: map[string]string{"completed": "C1"},
 					},
@@ -241,17 +240,17 @@ func TestConfigValidation(t *testing.T) {
 		},
 		{
 			name: "conflicting prefixes",
-			config: types.Config{
-				Dimensions: []types.DimensionConfig{
+			config: nanostore.Config{
+				Dimensions: []nanostore.DimensionConfig{
 					{
 						Name:     "status",
-						Type:     types.Enumerated,
+						Type:     nanostore.Enumerated,
 						Values:   []string{"pending", "completed"},
 						Prefixes: map[string]string{"completed": "c"},
 					},
 					{
 						Name:     "priority",
-						Type:     types.Enumerated,
+						Type:     nanostore.Enumerated,
 						Values:   []string{"low", "critical"},
 						Prefixes: map[string]string{"critical": "c"},
 					},
@@ -262,11 +261,11 @@ func TestConfigValidation(t *testing.T) {
 		},
 		{
 			name: "enumerated with RefField",
-			config: types.Config{
-				Dimensions: []types.DimensionConfig{
+			config: nanostore.Config{
+				Dimensions: []nanostore.DimensionConfig{
 					{
 						Name:     "status",
-						Type:     types.Enumerated,
+						Type:     nanostore.Enumerated,
 						Values:   []string{"pending"},
 						RefField: "parent_uuid",
 					},
@@ -277,11 +276,11 @@ func TestConfigValidation(t *testing.T) {
 		},
 		{
 			name: "hierarchical without RefField",
-			config: types.Config{
-				Dimensions: []types.DimensionConfig{
+			config: nanostore.Config{
+				Dimensions: []nanostore.DimensionConfig{
 					{
 						Name: "parent",
-						Type: types.Hierarchical,
+						Type: nanostore.Hierarchical,
 					},
 				},
 			},
@@ -290,11 +289,11 @@ func TestConfigValidation(t *testing.T) {
 		},
 		{
 			name: "hierarchical with reserved RefField",
-			config: types.Config{
-				Dimensions: []types.DimensionConfig{
+			config: nanostore.Config{
+				Dimensions: []nanostore.DimensionConfig{
 					{
 						Name:     "parent",
-						Type:     types.Hierarchical,
+						Type:     nanostore.Hierarchical,
 						RefField: "uuid",
 					},
 				},
@@ -304,11 +303,11 @@ func TestConfigValidation(t *testing.T) {
 		},
 		{
 			name: "hierarchical with Values",
-			config: types.Config{
-				Dimensions: []types.DimensionConfig{
+			config: nanostore.Config{
+				Dimensions: []nanostore.DimensionConfig{
 					{
 						Name:     "parent",
-						Type:     types.Hierarchical,
+						Type:     nanostore.Hierarchical,
 						Values:   []string{"root"},
 						RefField: "parent_uuid",
 					},
@@ -319,11 +318,11 @@ func TestConfigValidation(t *testing.T) {
 		},
 		{
 			name: "hierarchical with Prefixes",
-			config: types.Config{
-				Dimensions: []types.DimensionConfig{
+			config: nanostore.Config{
+				Dimensions: []nanostore.DimensionConfig{
 					{
 						Name:     "parent",
-						Type:     types.Hierarchical,
+						Type:     nanostore.Hierarchical,
 						Prefixes: map[string]string{"root": "r"},
 						RefField: "parent_uuid",
 					},
@@ -334,11 +333,11 @@ func TestConfigValidation(t *testing.T) {
 		},
 		{
 			name: "hierarchical with DefaultValue",
-			config: types.Config{
-				Dimensions: []types.DimensionConfig{
+			config: nanostore.Config{
+				Dimensions: []nanostore.DimensionConfig{
 					{
 						Name:         "parent",
-						Type:         types.Hierarchical,
+						Type:         nanostore.Hierarchical,
 						DefaultValue: "root",
 						RefField:     "parent_uuid",
 					},
@@ -368,26 +367,26 @@ func TestConfigValidation(t *testing.T) {
 }
 
 func TestConfigHelperMethods(t *testing.T) {
-	config := types.Config{
-		Dimensions: []types.DimensionConfig{
+	config := nanostore.Config{
+		Dimensions: []nanostore.DimensionConfig{
 			{
 				Name:   "status",
-				Type:   types.Enumerated,
+				Type:   nanostore.Enumerated,
 				Values: []string{"pending", "completed"},
 			},
 			{
 				Name:   "priority",
-				Type:   types.Enumerated,
+				Type:   nanostore.Enumerated,
 				Values: []string{"low", "high"},
 			},
 			{
 				Name:     "parent",
-				Type:     types.Hierarchical,
+				Type:     nanostore.Hierarchical,
 				RefField: "parent_uuid",
 			},
 			{
 				Name:     "project",
-				Type:     types.Hierarchical,
+				Type:     nanostore.Hierarchical,
 				RefField: "project_uuid",
 			},
 		},

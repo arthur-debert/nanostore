@@ -1,21 +1,19 @@
-package engine
+package nanostore
 
 import (
 	"fmt"
 	"sort"
 	"strings"
-
-	"github.com/arthur-debert/nanostore/nanostore/types"
 )
 
-// QueryBuilder generates dynamic SQL queries based on dimension configuration
-type QueryBuilder struct {
-	config types.Config
+// queryBuilder generates dynamic SQL queries based on dimension configuration
+type queryBuilder struct {
+	config Config
 }
 
-// NewQueryBuilder creates a new query builder for the given configuration
-func NewQueryBuilder(config types.Config) *QueryBuilder {
-	return &QueryBuilder{config: config}
+// newQueryBuilder creates a new query builder for the given configuration
+func newQueryBuilder(config Config) *queryBuilder {
+	return &queryBuilder{config: config}
 }
 
 // GenerateListQuery creates a SQL query for listing documents with generated IDs.
@@ -35,7 +33,7 @@ func NewQueryBuilder(config types.Config) *QueryBuilder {
 // - Flat queries are O(log n) with proper indexing on dimension columns
 // - Hierarchical queries are O(n log n) due to recursive CTE traversal
 // - Query complexity scales with number of configured dimensions
-func (qb *QueryBuilder) GenerateListQuery(filters map[string]interface{}) (string, []interface{}, error) {
+func (qb *queryBuilder) GenerateListQuery(filters map[string]interface{}) (string, []interface{}, error) {
 	// Get dimension information
 	enumDims := qb.config.GetEnumeratedDimensions()
 	hierDim := qb.findHierarchicalDimension()
@@ -130,7 +128,7 @@ func (qb *QueryBuilder) GenerateListQuery(filters map[string]interface{}) (strin
 //	  WHEN priority = 'high' THEN 'h' || ROW_NUMBER() OVER (...)
 //	  ELSE CAST(ROW_NUMBER() OVER (...) AS TEXT)
 //	END
-func (qb *QueryBuilder) generateRootQuery(enumDims []types.DimensionConfig, filters map[string]interface{}) string {
+func (qb *queryBuilder) generateRootQuery(enumDims []DimensionConfig, filters map[string]interface{}) string {
 	var query strings.Builder
 
 	query.WriteString("    SELECT\n")
@@ -162,7 +160,7 @@ func (qb *QueryBuilder) generateRootQuery(enumDims []types.DimensionConfig, filt
 }
 
 // generateChildQuery creates the query for child documents with local ID generation
-func (qb *QueryBuilder) generateChildQuery(enumDims []types.DimensionConfig, hierDim *types.DimensionConfig) string {
+func (qb *queryBuilder) generateChildQuery(enumDims []DimensionConfig, hierDim *DimensionConfig) string {
 	var query strings.Builder
 
 	query.WriteString("    SELECT\n")
@@ -192,7 +190,7 @@ func (qb *QueryBuilder) generateChildQuery(enumDims []types.DimensionConfig, hie
 }
 
 // generateTreeQuery creates the recursive CTE for building the hierarchical tree
-func (qb *QueryBuilder) generateTreeQuery(hierDim *types.DimensionConfig) string {
+func (qb *queryBuilder) generateTreeQuery(hierDim *DimensionConfig) string {
 	var query strings.Builder
 
 	// Base case: root documents
@@ -268,7 +266,7 @@ func (qb *QueryBuilder) generateTreeQuery(hierDim *types.DimensionConfig) string
 // - Root documents: PARTITION BY all_dimensions ORDER BY created_at
 // - Child documents: PARTITION BY all_dimensions, parent_id ORDER BY created_at
 // - Ensures IDs 1,2,3... within each dimension combination and parent context
-func (qb *QueryBuilder) generateIDExpression(enumDims []types.DimensionConfig, isRoot bool) string {
+func (qb *queryBuilder) generateIDExpression(enumDims []DimensionConfig, isRoot bool) string {
 	if len(enumDims) == 0 {
 		// No enumerated dimensions, just use row number
 		return qb.generateSimpleRowNumber(isRoot)
@@ -324,7 +322,7 @@ func (qb *QueryBuilder) generateIDExpression(enumDims []types.DimensionConfig, i
 }
 
 // generateSimpleRowNumber creates a basic ROW_NUMBER expression without prefixes
-func (qb *QueryBuilder) generateSimpleRowNumber(isRoot bool) string {
+func (qb *queryBuilder) generateSimpleRowNumber(isRoot bool) string {
 	var partition string
 	if !isRoot {
 		hierDim := qb.findHierarchicalDimension()
@@ -343,7 +341,7 @@ type dimensionCombination struct {
 }
 
 // generateDimensionCombinations creates all possible combinations of dimension values
-func (qb *QueryBuilder) generateDimensionCombinations(enumDims []types.DimensionConfig) []dimensionCombination {
+func (qb *queryBuilder) generateDimensionCombinations(enumDims []DimensionConfig) []dimensionCombination {
 	if len(enumDims) == 0 {
 		return nil
 	}
@@ -419,9 +417,9 @@ func (qb *QueryBuilder) generateDimensionCombinations(enumDims []types.Dimension
 }
 
 // findHierarchicalDimension returns the first hierarchical dimension (if any)
-func (qb *QueryBuilder) findHierarchicalDimension() *types.DimensionConfig {
+func (qb *queryBuilder) findHierarchicalDimension() *DimensionConfig {
 	for _, dim := range qb.config.Dimensions {
-		if dim.Type == types.Hierarchical {
+		if dim.Type == Hierarchical {
 			return &dim
 		}
 	}
@@ -429,7 +427,7 @@ func (qb *QueryBuilder) findHierarchicalDimension() *types.DimensionConfig {
 }
 
 // buildWhereClausesAndArgs constructs WHERE clauses and arguments from filters
-func (qb *QueryBuilder) buildWhereClausesAndArgs(filters map[string]interface{}, hierDim *types.DimensionConfig) ([]string, []interface{}) {
+func (qb *queryBuilder) buildWhereClausesAndArgs(filters map[string]interface{}, hierDim *DimensionConfig) ([]string, []interface{}) {
 	var whereClauses []string
 	var args []interface{}
 
@@ -456,7 +454,7 @@ func (qb *QueryBuilder) buildWhereClausesAndArgs(filters map[string]interface{},
 		default:
 			// Check if it's a dimension filter
 			if dim, found := qb.config.GetDimension(key); found {
-				if dim.Type == types.Enumerated {
+				if dim.Type == Enumerated {
 					// Handle both single value and slice of values
 					switch v := value.(type) {
 					case string:
@@ -481,7 +479,7 @@ func (qb *QueryBuilder) buildWhereClausesAndArgs(filters map[string]interface{},
 }
 
 // generateFlatListQuery creates a simple query for filtered results with flat numbering
-func (qb *QueryBuilder) generateFlatListQuery(enumDims []types.DimensionConfig, hierDim *types.DimensionConfig, filters map[string]interface{}) (string, []interface{}, error) {
+func (qb *queryBuilder) generateFlatListQuery(enumDims []DimensionConfig, hierDim *DimensionConfig, filters map[string]interface{}) (string, []interface{}, error) {
 	var query strings.Builder
 	query.WriteString("SELECT uuid, title, body, created_at, updated_at,\n")
 
