@@ -18,11 +18,26 @@ func NewQueryBuilder(config types.Config) *QueryBuilder {
 	return &QueryBuilder{config: config}
 }
 
-// GenerateListQuery creates a SQL query for listing documents with generated IDs
-// This is the core of the configurable ID generation system
+// GenerateListQuery creates a SQL query for listing documents with generated IDs.
+// This is the core of the configurable ID generation system.
+//
+// The function generates different query strategies based on the presence of filters:
+// 1. Flat Query (with filters): Simple query with WHERE clauses for performance
+// 2. Hierarchical Query (no filters): Complex recursive CTE that generates tree structure
+//
+// ID Generation Strategy:
+// - Uses ROW_NUMBER() OVER (PARTITION BY dimensions ORDER BY created_at)
+// - Partitioning ensures contiguous IDs within each dimension combination
+// - Example: status="done" documents get IDs d1, d2, d3... regardless of creation gaps
+// - Hierarchical documents get IDs like 1.1, 1.2, 2.1 based on their parent context
+//
+// Performance Considerations:
+// - Flat queries are O(log n) with proper indexing on dimension columns
+// - Hierarchical queries are O(n log n) due to recursive CTE traversal
+// - Query complexity scales with number of configured dimensions
 func (qb *QueryBuilder) GenerateListQuery(filters map[string]interface{}) (string, []interface{}, error) {
 	// Get dimension information
-	enumDims := GetEnumeratedDimensions(qb.config)
+	enumDims := qb.config.GetEnumeratedDimensions()
 	hierDim := qb.findHierarchicalDimension()
 
 	// Check if we should use flat listing (when filters are present)
@@ -99,7 +114,22 @@ func (qb *QueryBuilder) GenerateListQuery(filters map[string]interface{}) (strin
 	return cteBuilder.String(), args, nil
 }
 
-// generateRootQuery creates the query for root-level documents with ID generation
+// generateRootQuery creates the base query for root documents (documents with no parent).
+// This query generates contiguous IDs starting from 1 within each dimension partition.
+//
+// ID Generation Logic:
+// - Uses ROW_NUMBER() OVER (PARTITION BY dimensions ORDER BY created_at) for contiguous numbering
+// - Applies prefixes based on dimension values (e.g., status="done" gets "d" prefix)
+// - Multiple dimensions are sorted alphabetically (e.g., "high priority + done" = "hd1")
+//
+// Example SQL output for status+priority dimensions:
+//
+//	CASE
+//	  WHEN status = 'done' AND priority = 'high' THEN 'hd' || ROW_NUMBER() OVER (...)
+//	  WHEN status = 'done' THEN 'd' || ROW_NUMBER() OVER (...)
+//	  WHEN priority = 'high' THEN 'h' || ROW_NUMBER() OVER (...)
+//	  ELSE CAST(ROW_NUMBER() OVER (...) AS TEXT)
+//	END
 func (qb *QueryBuilder) generateRootQuery(enumDims []types.DimensionConfig, filters map[string]interface{}) string {
 	var query strings.Builder
 
@@ -171,7 +201,7 @@ func (qb *QueryBuilder) generateTreeQuery(hierDim *types.DimensionConfig) string
 	query.WriteString("        uuid, title, body, created_at, updated_at,\n")
 
 	// Include all dimension columns in tree
-	enumDims := GetEnumeratedDimensions(qb.config)
+	enumDims := qb.config.GetEnumeratedDimensions()
 	for _, dim := range enumDims {
 		query.WriteString("        ")
 		query.WriteString(dim.Name)
@@ -211,7 +241,33 @@ func (qb *QueryBuilder) generateTreeQuery(hierDim *types.DimensionConfig) string
 	return query.String()
 }
 
-// generateIDExpression creates the CASE/ROW_NUMBER expression for ID generation
+// generateIDExpression creates the complex CASE statement for dynamic ID generation.
+// This is the heart of the configurable ID system - it generates SQL that produces
+// user-facing IDs with prefixes based on dimension values.
+//
+// Algorithm:
+// 1. Generate all possible combinations of dimension values that have prefixes
+// 2. Create CASE WHEN conditions for each combination (sorted alphabetically)
+// 3. Apply appropriate prefixes based on the combination
+// 4. Use ROW_NUMBER() with proper partitioning to ensure contiguous numbering
+//
+// Example for dimensions [status, priority]:
+// - status: ["pending", "done"] with prefix "d" for done
+// - priority: ["low", "high"] with prefix "h" for high
+//
+// Generated SQL:
+//
+//	CASE
+//	  WHEN priority = 'high' AND status = 'done' THEN 'hd' || ROW_NUMBER() OVER (...)
+//	  WHEN status = 'done' THEN 'd' || ROW_NUMBER() OVER (...)
+//	  WHEN priority = 'high' THEN 'h' || ROW_NUMBER() OVER (...)
+//	  ELSE CAST(ROW_NUMBER() OVER (...) AS TEXT)
+//	END
+//
+// Partitioning Strategy:
+// - Root documents: PARTITION BY all_dimensions ORDER BY created_at
+// - Child documents: PARTITION BY all_dimensions, parent_id ORDER BY created_at
+// - Ensures IDs 1,2,3... within each dimension combination and parent context
 func (qb *QueryBuilder) generateIDExpression(enumDims []types.DimensionConfig, isRoot bool) string {
 	if len(enumDims) == 0 {
 		// No enumerated dimensions, just use row number
@@ -399,7 +455,7 @@ func (qb *QueryBuilder) buildWhereClausesAndArgs(filters map[string]interface{},
 			}
 		default:
 			// Check if it's a dimension filter
-			if dim, found := GetDimension(qb.config, key); found {
+			if dim, found := qb.config.GetDimension(key); found {
 				if dim.Type == types.Enumerated {
 					// Handle both single value and slice of values
 					switch v := value.(type) {

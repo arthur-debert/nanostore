@@ -394,7 +394,7 @@ func TestConfigHelperMethods(t *testing.T) {
 	}
 
 	// Test GetEnumeratedDimensions
-	enumerated := nanostore.GetEnumeratedDimensions(config)
+	enumerated := config.GetEnumeratedDimensions()
 	if len(enumerated) != 2 {
 		t.Errorf("expected 2 enumerated dimensions, got %d", len(enumerated))
 	}
@@ -403,7 +403,7 @@ func TestConfigHelperMethods(t *testing.T) {
 	}
 
 	// Test GetHierarchicalDimensions
-	hierarchical := nanostore.GetHierarchicalDimensions(config)
+	hierarchical := config.GetHierarchicalDimensions()
 	if len(hierarchical) != 2 {
 		t.Errorf("expected 2 hierarchical dimensions, got %d", len(hierarchical))
 	}
@@ -412,7 +412,7 @@ func TestConfigHelperMethods(t *testing.T) {
 	}
 
 	// Test GetDimension
-	statusDim, found := nanostore.GetDimension(config, "status")
+	statusDim, found := config.GetDimension("status")
 	if !found {
 		t.Errorf("expected to find status dimension")
 	}
@@ -420,7 +420,7 @@ func TestConfigHelperMethods(t *testing.T) {
 		t.Errorf("expected status dimension, got %v", statusDim)
 	}
 
-	_, found = nanostore.GetDimension(config, "nonexistent")
+	_, found = config.GetDimension("nonexistent")
 	if found {
 		t.Errorf("expected not to find nonexistent dimension")
 	}

@@ -1,0 +1,106 @@
+let's create a full test app
+
+now that we have nanostore ready and reviewed, we want to ensure : 
+
+- that it does solve the problem it was designed for
+- that the usage is as simple as we expect
+- that we have a more real world example to test against
+
+
+We will crete a todo app (maybe in nanostore/tests/apps/todo/)
+This app has the following features :
+- Nested: items can have sub item.
+- Status are pending and done
+- Status are reversible.
+- Items can be added, completed, reopened, moved.
+- items can be searched
+
+
+The canonical view, to which the incremental ids are indexed is no searching
+and with pending items.
+
+This is not meant to be a shell app, we can just have the go code to the app,
+but I'll use a shell like for  example sake: 
+
+
+
+$ too list 
+
+○ 1. Groceries
+  ○ 1.1. Milk
+  ○ 1.2. Bread
+  ○ 1.3. Eggs
+○ 2. Pack for Trip
+  ○ 2.1. Clothes
+  ○ 2.2. Camera Gear
+  ○ 2.3. Passport
+
+# now we complete the second sub-task of the first task (Bread)
+#  since the code does only consider pending, we re index the children of item
+one, and eggs bumps up to 1.2.
+$ too list 
+○ 1. Groceries
+  ○ 1.1. Milk
+  ○ 1.2. Eggs
+○ 2. Pack for Trip
+  ○ 2.1. Clothes
+  ○ 2.2. Camera Gear
+  ○ 2.3. Passport
+
+But if we show all items, completed and pending, we want to see the completed
+in the same parent, and with an id that we can easily refere to.
+$ too list --all
+◐ 1. Groceries
+  ○ 1.1. Milk
+  ○ 1.2. Eggs
+  ● 1.c1. Bread -> it's namespaced to completed .
+○ 2. Pack for Trip
+  ○ 2.1. Clothes
+  ○ 2.2. Camera Gear
+  ○ 2.3. Passport
+
+now we re open bread
+$ too reopen 1.c1
+○ 1. Groceries
+  ○ 1.1. Milk
+  ○ 1.2. Eggs
+  ○ 1.3. Bread
+○ 2. Pack for Trip
+  ○ 2.1. Clothes
+  ○ 2.2. Camera Gear
+  ○ 2.3. Passport
+
+Its ok to loose the position. While it seems simple to keep it (we could have
+assigned, say 1.d2) and on re open it would become 1.2.. However, since between
+completing and reopening, the user could have added more items, completed more
+this is not feasible without implementing a full versioning system, which is 
+obviously out of scope for this app. Hence the compromise of loosing the
+position on re insertion is ok.
+
+
+search will work the same, we show ids that are relative to the canonical view
+
+too search r
+○ 1. Groceries -> subdue , the parent is only here to give context
+    ○ 1.3. Bread -> no eggs, but bread is 1.3
+○ 2. Pack for Trip
+    ○ 2.2. Camera Gear -> same , no clothes but parent is here
+    ○ 2.3. Passport
+
+
+say that we search for  r or g
+too search r|g
+○ 1. Groceries
+    ○ 1.3. Bread
+○ 2. Pack for Trip
+    ○ 2.2. Camera Gear
+    ○ 2.3. Passport 
+
+now say that we use search and all: 
+too search r|g --all
+◐ 1. Groceries
+    ○ 1.2. Eggs
+    ◐ .c1. Bread -> bread is completed, so namespaced   but searchable
+○  2. Pack for Trip
+    ○ 2.2. Camera Gear
+    ○ 2.3. Passport

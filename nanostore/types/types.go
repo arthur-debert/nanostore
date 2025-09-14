@@ -90,3 +90,35 @@ type Config struct {
 	// Dimensions defines the ID partitioning dimensions
 	Dimensions []DimensionConfig
 }
+
+// GetEnumeratedDimensions returns all enumerated dimensions from the config
+func (c Config) GetEnumeratedDimensions() []DimensionConfig {
+	var enumerated []DimensionConfig
+	for _, dim := range c.Dimensions {
+		if dim.Type == Enumerated {
+			enumerated = append(enumerated, dim)
+		}
+	}
+	return enumerated
+}
+
+// GetHierarchicalDimensions returns all hierarchical dimensions from the config
+func (c Config) GetHierarchicalDimensions() []DimensionConfig {
+	var hierarchical []DimensionConfig
+	for _, dim := range c.Dimensions {
+		if dim.Type == Hierarchical {
+			hierarchical = append(hierarchical, dim)
+		}
+	}
+	return hierarchical
+}
+
+// GetDimension returns the dimension configuration by name
+func (c Config) GetDimension(name string) (*DimensionConfig, bool) {
+	for _, dim := range c.Dimensions {
+		if dim.Name == name {
+			return &dim, true
+		}
+	}
+	return nil, false
+}

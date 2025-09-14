@@ -59,7 +59,30 @@ type ParsedLevel struct {
 	Offset int
 }
 
-// ParseID parses a user-facing ID into structured components
+// ParseID parses a user-facing ID into structured components for SQL resolution.
+// This reverses the ID generation process - converting "hp2.c1" back into filters and offsets.
+//
+// Parsing Algorithm:
+// 1. Split by "." to handle hierarchical levels (e.g., "1.2.3" = 3 levels)
+// 2. For each level, extract prefixes and numeric ID:
+//   - "hp2" -> prefixes: ["h", "p"], offset: 1 (2-1, convert to 0-based)
+//   - "c1"  -> prefixes: ["c"], offset: 0
+//   - "3"   -> prefixes: [], offset: 2
+//
+// 3. Map prefixes to dimension values using configuration
+// 4. Return structured ParsedID with filters for SQL query generation
+//
+// Example Input/Output:
+// Input: "hp2.c1"
+//
+//	Output: ParsedID{
+//	  Levels: [
+//	    {DimensionFilters: {"priority": "high", "status": "pending"}, Offset: 1},
+//	    {DimensionFilters: {"status": "completed"}, Offset: 0}
+//	  ]
+//	}
+//
+// Security: Validates input against SQL injection patterns before processing.
 func (p *IDParser) ParseID(userFacingID string) (*ParsedID, error) {
 	// Validate input doesn't contain SQL injection attempts
 	if strings.ContainsAny(userFacingID, "'\"`;\\") {
