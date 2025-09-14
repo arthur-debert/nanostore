@@ -10,6 +10,10 @@ A document and ID store library that uses SQLite to manage document storage with
 - Configurable dimensions for custom taxonomies
 - Thread-safe operations
 
+## Important Considerations
+
+- **Dynamic IDs**: User-facing IDs are generated at query time and can shift when document status changes. See [Batch Operations Guide](docs/batch-operations.md) for handling this correctly.
+
 ## Installation
 
 ```bash
@@ -33,7 +37,12 @@ uuid, err := store.Add("My Document", nil, nil)
 
 // List documents
 docs, err := store.List(nanostore.ListOptions{})
+
+// Complete a document (note: IDs may shift after this!)
+err = store.SetStatus(uuid, nanostore.StatusCompleted)
 ```
+
+**Note**: When working with multiple documents, always read the [Batch Operations Guide](docs/batch-operations.md) to understand how ID shifting affects batch operations.
 
 ## Testing
 

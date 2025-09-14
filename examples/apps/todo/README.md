@@ -70,6 +70,9 @@ go build -o todo
 # Complete an item
 ./todo complete 1.2
 
+# Complete multiple items (batch operation)
+./todo complete 1 3 5
+
 # Reopen a completed item
 ./todo reopen 1.c1
 
@@ -107,3 +110,36 @@ go test -v
 - Reopening an item loses its original position (by design)
 - Parent items show mixed status when they have both pending and completed children
 - The system handles ID resolution transparently when referencing items
+
+## Batch Operations and ID Resolution
+
+When completing multiple items, the todo app demonstrates the correct pattern for handling dynamic IDs:
+
+```go
+// The CompleteMultiple method shows best practices:
+// 1. Resolve ALL IDs to UUIDs first
+// 2. Then perform ALL operations
+
+// This prevents ID shifting from affecting subsequent resolutions
+```
+
+### Example: Completing Multiple Items
+
+Given these todos:
+```
+1. First
+2. Second
+3. Third
+4. Fourth
+```
+
+Running `./todo complete 1 3` will:
+1. Resolve both "1" and "3" to their UUIDs
+2. Complete both items
+3. Result in:
+   ```
+   1. Second
+   2. Fourth
+   ```
+
+The implementation in `todo.go` shows how to handle this correctly. For more details on batch operations with dynamic IDs, see the [Batch Operations Guide](../../../docs/batch-operations.md).
