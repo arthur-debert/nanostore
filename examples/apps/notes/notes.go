@@ -1,5 +1,8 @@
 // Package notes implements a note-taking application using nanostore.
-// It demonstrates status-based ID prefixes, tagging, and pinning.
+// This example shows how nanostore's generic architecture can support
+// complex applications with custom status values, tagging, and pinning.
+// While nanostore is domain-agnostic, its flexible dimension system
+// makes it ideal for document-based applications like note-taking.
 package notes
 
 import (
@@ -24,9 +27,13 @@ type Notes struct {
 }
 
 // NotesConfig creates a nanostore configuration for the notes app
+// NotesConfig creates a nanostore configuration for the notes app
+// This shows how nanostore's generic dimension system can be customized
+// for a specific application. We use the same enumerated/hierarchical
+// pattern as todos, but could easily extend with additional dimensions.
 func NotesConfig() nanostore.Config {
-	// Use default config and map our statuses to pending/completed
-	return nanostore.DefaultTestConfig()
+	// Use todo config which provides status and parent dimensions
+	return nanostore.TodoConfig()
 }
 
 // New creates a new Notes instance
@@ -166,17 +173,20 @@ type Note struct {
 
 // List returns notes based on the provided options
 func (n *Notes) List(opts ListOptions) ([]*Note, error) {
-	// Build status filter
-	statuses := []nanostore.Status{nanostore.Status(StatusLive)}
-	if opts.ShowArchived {
-		statuses = append(statuses, nanostore.Status(StatusArchived))
+	// Build filters using nanostore's generic Filters map
+	// This demonstrates how the generic store can be used for domain-specific filtering
+	filters := make(map[string]interface{})
+
+	// Map our note statuses to nanostore's status dimension
+	// Live notes are "pending", archived are "completed"
+	if !opts.ShowArchived && !opts.ShowDeleted {
+		filters["status"] = "pending"
 	}
-	if opts.ShowDeleted {
-		statuses = append(statuses, nanostore.Status(StatusDeleted))
-	}
+	// If showing archived, we'll get both pending and completed
+	// (deleted notes are actually removed from store)
 
 	listOpts := nanostore.ListOptions{
-		FilterByStatus: statuses,
+		Filters:        filters,
 		FilterBySearch: opts.Search,
 	}
 
@@ -191,9 +201,10 @@ func (n *Notes) List(opts ListOptions) ([]*Note, error) {
 		note := &Note{
 			Document: doc,
 			// Infer status from user-facing ID prefix
+			// Nanostore's ID generation includes status prefixes
 			IsPinned:   strings.HasPrefix(doc.UserFacingID, "p"),
-			IsArchived: strings.HasPrefix(doc.UserFacingID, "a"),
-			IsDeleted:  doc.Status == nanostore.Status(StatusDeleted),
+			IsArchived: doc.GetStatus() == "completed",
+			IsDeleted:  false, // deleted notes are removed from store
 		}
 
 		// Parse tags from body if present
