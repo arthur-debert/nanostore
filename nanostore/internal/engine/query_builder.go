@@ -22,7 +22,7 @@ func NewQueryBuilder(config types.Config) *QueryBuilder {
 // This is the core of the configurable ID generation system
 func (qb *QueryBuilder) GenerateListQuery(filters map[string]interface{}) (string, []interface{}, error) {
 	// Get dimension information
-	enumDims := GetEnumeratedDimensions(qb.config)
+	enumDims := qb.config.GetEnumeratedDimensions()
 	hierDim := qb.findHierarchicalDimension()
 
 	// Check if we should use flat listing (when filters are present)
@@ -171,7 +171,7 @@ func (qb *QueryBuilder) generateTreeQuery(hierDim *types.DimensionConfig) string
 	query.WriteString("        uuid, title, body, created_at, updated_at,\n")
 
 	// Include all dimension columns in tree
-	enumDims := GetEnumeratedDimensions(qb.config)
+	enumDims := qb.config.GetEnumeratedDimensions()
 	for _, dim := range enumDims {
 		query.WriteString("        ")
 		query.WriteString(dim.Name)
@@ -399,7 +399,7 @@ func (qb *QueryBuilder) buildWhereClausesAndArgs(filters map[string]interface{},
 			}
 		default:
 			// Check if it's a dimension filter
-			if dim, found := GetDimension(qb.config, key); found {
+			if dim, found := qb.config.GetDimension(key); found {
 				if dim.Type == types.Enumerated {
 					// Handle both single value and slice of values
 					switch v := value.(type) {

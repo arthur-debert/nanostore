@@ -241,7 +241,7 @@ func TestQueryBuilder_IDGeneration(t *testing.T) {
 	qb := NewQueryBuilder(config)
 
 	// Test root query generation
-	enumDims := GetEnumeratedDimensions(config)
+	enumDims := config.GetEnumeratedDimensions()
 	rootQuery := qb.generateRootQuery(enumDims, nil)
 
 	// Check CASE statement for different statuses
