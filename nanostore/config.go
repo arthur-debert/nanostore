@@ -199,18 +199,3 @@ func isValidPrefix(prefix string) bool {
 	}
 	return true
 }
-
-// GetEnumeratedDimensions returns all enumerated dimensions from the config
-func GetEnumeratedDimensions(c types.Config) []types.DimensionConfig {
-	return c.GetEnumeratedDimensions()
-}
-
-// GetHierarchicalDimensions returns all hierarchical dimensions from the config
-func GetHierarchicalDimensions(c types.Config) []types.DimensionConfig {
-	return c.GetHierarchicalDimensions()
-}
-
-// GetDimension returns the dimension configuration by name
-func GetDimension(c types.Config, name string) (*types.DimensionConfig, bool) {
-	return c.GetDimension(name)
-}
