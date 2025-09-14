@@ -9,35 +9,6 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
-func TestTransactionRollback(t *testing.T) {
-	t.Skip("Transaction support not yet exposed in public API")
-
-	// This test documents expected transaction behavior
-	// Currently, each operation is auto-committed
-	// Future enhancement: Add transaction support to Store interface
-
-	store, err := nanostore.NewTestStore(":memory:")
-	if err != nil {
-		t.Fatalf("failed to create store: %v", err)
-	}
-	defer func() { _ = store.Close() }()
-
-	// In a transaction-aware API, this might look like:
-	// tx, err := store.BeginTx()
-	// defer tx.Rollback()
-	//
-	// id1, err := tx.Add("Document 1", nil, nil)
-	// id2, err := tx.Add("Document 2", nil, nil)
-	//
-	// // Simulate error condition
-	// if someError {
-	//     tx.Rollback()
-	//     // Both documents should be rolled back
-	// } else {
-	//     tx.Commit()
-	// }
-}
-
 func TestDatabaseConsistencyAfterPanic(t *testing.T) {
 	// Create file-based database for persistence test
 	tmpDir := t.TempDir()
@@ -181,16 +152,4 @@ func TestRollbackOnConstraintViolation(t *testing.T) {
 	if docs[0].UUID != parentID {
 		t.Error("parent document corrupted after constraint violation")
 	}
-}
-
-func TestAtomicBatchOperations(t *testing.T) {
-	t.Skip("Batch operations not yet implemented")
-
-	// Future enhancement: Add batch operations that execute in a single transaction
-	// Example API:
-	// batch := store.NewBatch()
-	// batch.Add("Doc 1", nil, nil)
-	// batch.Add("Doc 2", nil, nil)
-	// batch.SetStatus(id, "completed")
-	// err := batch.Execute() // All or nothing
 }

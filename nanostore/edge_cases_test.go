@@ -465,8 +465,3 @@ func TestListOrderStability(t *testing.T) {
 		}
 	}
 }
-
-func TestListAfterDeletion(t *testing.T) {
-	// Note: Since we don't have a Delete method yet, this test documents expected behavior
-	t.Skip("Delete functionality not yet implemented")
-}
