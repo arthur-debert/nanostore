@@ -435,7 +435,28 @@ func (s *configurableStore) ResolveUUID(userFacingID string) (string, error) {
 	return s.resolveUUIDHierarchical(parsedID)
 }
 
-// resolveUUIDFlat efficiently resolves a single-level ID using direct SQL
+// resolveUUIDFlat efficiently resolves a single-level ID using direct SQL queries.
+// This replaces the inefficient approach that loaded all documents to find one match.
+//
+// Performance Improvement:
+// - Before: O(n) - loaded all documents, scanned for matching ID
+// - After: O(log n) - direct SQL with ROW_NUMBER() and proper WHERE clauses
+//
+// Algorithm:
+// 1. Build WHERE clause from dimension filters in the parsed level
+// 2. Use ROW_NUMBER() OVER (PARTITION BY dimensions ORDER BY created_at)
+// 3. Execute single query: WHERE row_num = (offset + 1)
+// 4. Return UUID directly from database
+//
+// Example SQL for level {DimensionFilters: {"status": "done"}, Offset: 1}:
+//
+//	WITH numbered_docs AS (
+//	  SELECT uuid, ROW_NUMBER() OVER (PARTITION BY status ORDER BY created_at) as row_num
+//	  FROM documents WHERE status = 'done'
+//	)
+//	SELECT uuid FROM numbered_docs WHERE row_num = 2
+//
+// This finds the 2nd document (offset 1 = 2nd in 1-based numbering) with status="done".
 func (s *configurableStore) resolveUUIDFlat(level ParsedLevel) (string, error) {
 	// Build SQL query with ROW_NUMBER() partitioning
 	var whereClauses []string
@@ -489,7 +510,24 @@ func (s *configurableStore) resolveUUIDFlat(level ParsedLevel) (string, error) {
 	return uuid, nil
 }
 
-// resolveUUIDHierarchical resolves multi-level hierarchical IDs level by level
+// resolveUUIDHierarchical resolves multi-level hierarchical IDs by walking the tree level by level.
+// Handles IDs like "1.c2.3" by resolving each level in sequence using parent-child relationships.
+//
+// Algorithm:
+//  1. Resolve root level (level 0) using resolveUUIDFlat - finds root document
+//  2. For each subsequent level:
+//     a. Use previous level's UUID as parent constraint
+//     b. Apply dimension filters from current level
+//     c. Use ROW_NUMBER() partitioned by parent + dimensions
+//     d. Find document at specified offset within that partition
+//  3. Return final UUID after traversing all levels
+//
+// Example for ID "1.c2":
+// - Level 0: Find root document #1 -> UUID-A
+// - Level 1: Find 2nd child of UUID-A with status="completed" -> UUID-B
+// - Return UUID-B
+//
+// Performance: O(levels * log n) where levels is typically 2-3 for most hierarchies.
 func (s *configurableStore) resolveUUIDHierarchical(parsedID *ParsedID) (string, error) {
 	// Start with the root level
 	currentUUID, err := s.resolveUUIDFlat(parsedID.Levels[0])

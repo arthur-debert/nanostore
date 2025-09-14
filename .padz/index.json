@@ -1,7 +1,12 @@
 {
   "version": "1.0",
-  "updated_at": "2025-09-13T21:20:16.125099-03:00",
+  "updated_at": "2025-09-13T21:36:31.994663-03:00",
   "scratches": {
+    "3977ca729065284eb5bc66b32fe3ddceb8bfe398": {
+      "project": "nanostore",
+      "title": "let's create a full test app",
+      "created_at": "2025-09-13T21:35:48.793185-03:00"
+    },
     "49e9e23ff896a3f637f7f1995d8902b7ad1a0697": {
       "project": "nanostore",
       "title": "test app for nanostore",
