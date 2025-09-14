@@ -65,9 +65,7 @@ func TestConfigurableStore(t *testing.T) {
 		}
 
 		// Test setting custom status
-		// Note: SetStatus expects types.Status, but we have custom values
-		// For now, use the type cast
-		if err := store.SetStatus(doc1, nanostore.Status("done")); err != nil {
+		if err := nanostore.SetStatus(store, doc1, "done"); err != nil {
 			t.Fatalf("failed to set status: %v", err)
 		}
 
@@ -81,7 +79,7 @@ func TestConfigurableStore(t *testing.T) {
 		foundDone := false
 		t.Logf("After setting status to 'done':")
 		for _, doc := range docs {
-			t.Logf("  %s: %s (status: %s)", doc.UserFacingID, doc.Title, doc.Status)
+			t.Logf("  %s: %s (status: %s)", doc.UserFacingID, doc.Title, doc.GetStatus())
 			if doc.UUID == doc1 {
 				if doc.UserFacingID == "d1" {
 					foundDone = true
@@ -111,7 +109,7 @@ func TestConfigurableStore(t *testing.T) {
 		// First, let's see what all the IDs are
 		t.Logf("Document IDs after adding child:")
 		for _, doc := range docs {
-			t.Logf("  %s: %s (parent: %v)", doc.UserFacingID, doc.Title, doc.ParentUUID)
+			t.Logf("  %s: %s (parent: %v)", doc.UserFacingID, doc.Title, doc.GetParentUUID())
 		}
 
 		// Find parent's ID first
@@ -220,7 +218,7 @@ func TestConfigurableIDResolution(t *testing.T) {
 	}
 
 	// Set as completed high priority
-	if err := store.SetStatus(root1, "completed"); err != nil {
+	if err := nanostore.SetStatus(store, root1, "completed"); err != nil {
 		t.Fatalf("failed to set status: %v", err)
 	}
 

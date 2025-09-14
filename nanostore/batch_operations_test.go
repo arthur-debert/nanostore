@@ -41,13 +41,13 @@ func TestBatchIDResolution(t *testing.T) {
 			t.Errorf("expected ID 1 to resolve to %s, got %s", uuid1, resolved1)
 		}
 
-		err = store.SetStatus(resolved1, nanostore.StatusCompleted)
+		err = nanostore.SetStatus(store, resolved1, "completed")
 		if err != nil {
 			t.Fatalf("failed to complete first item: %v", err)
 		}
 
 		// After completing 1, IDs shift: 2→1, 3→2
-		docs, _ = store.List(nanostore.ListOptions{FilterByStatus: []nanostore.Status{nanostore.StatusPending}})
+		docs, _ = store.List(nanostore.ListOptions{Filters: map[string]interface{}{"status": "pending"}})
 		if len(docs) != 2 {
 			t.Fatalf("expected 2 pending documents, got %d", len(docs))
 		}
@@ -96,15 +96,15 @@ func TestBatchIDResolutionPattern(t *testing.T) {
 
 		// Then perform all operations
 		for i, uuid := range resolvedUUIDs {
-			err := store.SetStatus(uuid, nanostore.StatusCompleted)
+			err := nanostore.SetStatus(store, uuid, "completed")
 			if err != nil {
 				t.Fatalf("failed to complete item %s: %v", targetIDs[i], err)
 			}
 		}
 
 		// Verify results
-		pending, _ := store.List(nanostore.ListOptions{FilterByStatus: []nanostore.Status{nanostore.StatusPending}})
-		completed, _ := store.List(nanostore.ListOptions{FilterByStatus: []nanostore.Status{nanostore.StatusCompleted}})
+		pending, _ := store.List(nanostore.ListOptions{Filters: map[string]interface{}{"status": "pending"}})
+		completed, _ := store.List(nanostore.ListOptions{Filters: map[string]interface{}{"status": "completed"}})
 
 		if len(pending) != 2 {
 			t.Errorf("expected 2 pending items, got %d", len(pending))
@@ -137,7 +137,7 @@ func TestBatchIDResolutionPattern(t *testing.T) {
 		// User wants to complete 1 and 3, but resolves after each operation
 
 		// First complete ID 1
-		_ = store2.SetStatus(uuid1, nanostore.StatusCompleted)
+		_ = nanostore.SetStatus(store2, uuid1, "completed")
 
 		// Now try to resolve ID 3 - but it's now ID 2!
 		resolved3, err := store2.ResolveUUID("3")
@@ -176,14 +176,14 @@ func TestBatchOperationStrategies(t *testing.T) {
 				t.Fatalf("failed to resolve ID %s: %v", id, err)
 			}
 
-			err = store.SetStatus(uuid, nanostore.StatusCompleted)
+			err = nanostore.SetStatus(store, uuid, "completed")
 			if err != nil {
 				t.Fatalf("failed to complete ID %s: %v", id, err)
 			}
 		}
 
 		// Verify only Item 3 remains pending
-		pending, _ := store.List(nanostore.ListOptions{FilterByStatus: []nanostore.Status{nanostore.StatusPending}})
+		pending, _ := store.List(nanostore.ListOptions{Filters: map[string]interface{}{"status": "pending"}})
 		if len(pending) != 1 || pending[0].Title != "Item 3" {
 			t.Errorf("expected only 'Item 3' to remain pending, got %d items", len(pending))
 		}
@@ -238,7 +238,7 @@ func TestBatchOperationStrategies(t *testing.T) {
 			// Step 2: Complete all items
 			for _, item := range items {
 				t.Logf("Completing ID %s (UUID: %s, Title: %s)", item.userID, item.uuid, item.title)
-				err := store.SetStatus(item.uuid, nanostore.StatusCompleted)
+				err := nanostore.SetStatus(store, item.uuid, "completed")
 				if err != nil {
 					return err
 				}
@@ -254,7 +254,7 @@ func TestBatchOperationStrategies(t *testing.T) {
 		}
 
 		// Verify results
-		pending, _ := store.List(nanostore.ListOptions{FilterByStatus: []nanostore.Status{nanostore.StatusPending}})
+		pending, _ := store.List(nanostore.ListOptions{Filters: map[string]interface{}{"status": "pending"}})
 		if len(pending) != 1 || pending[0].Title != "Task B" {
 			t.Errorf("expected only Task B to remain pending")
 		}

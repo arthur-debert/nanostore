@@ -275,7 +275,7 @@ func TestResourceExhaustionComplexFilters(t *testing.T) {
 
 		// Set half as completed
 		if i%2 == 0 {
-			err = store.SetStatus(id, nanostore.StatusCompleted)
+			err = nanostore.SetStatus(store, id, "completed")
 			if err != nil {
 				t.Fatalf("failed to set status: %v", err)
 			}
@@ -301,7 +301,7 @@ func TestResourceExhaustionComplexFilters(t *testing.T) {
 		{
 			name: "filter by status",
 			opts: nanostore.ListOptions{
-				FilterByStatus: []nanostore.Status{nanostore.StatusCompleted},
+				Filters: map[string]interface{}{"status": "completed"},
 			},
 		},
 		{
@@ -313,7 +313,7 @@ func TestResourceExhaustionComplexFilters(t *testing.T) {
 		{
 			name: "combined filters",
 			opts: nanostore.ListOptions{
-				FilterByStatus: []nanostore.Status{nanostore.StatusCompleted},
+				Filters:        map[string]interface{}{"status": "completed"},
 				FilterBySearch: "searchable",
 			},
 		},

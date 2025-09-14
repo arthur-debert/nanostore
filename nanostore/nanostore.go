@@ -7,46 +7,86 @@ package nanostore
 
 import "time"
 
-// Status represents the status of a document
-type Status string
-
-const (
-	StatusPending   Status = "pending"
-	StatusCompleted Status = "completed"
-)
-
 // Document represents a document in the store with its generated ID
 type Document struct {
-	UUID         string    // Stable internal identifier
-	UserFacingID string    // Generated ID like "1", "c2", "1.2.c3"
-	Title        string    // Document title
-	Body         string    // Optional document body
-	Status       Status    // Current status
-	ParentUUID   *string   // UUID of parent document, if any
-	CreatedAt    time.Time // Creation timestamp
-	UpdatedAt    time.Time // Last update timestamp
+	UUID         string                 // Stable internal identifier
+	UserFacingID string                 // Generated ID like "1", "c2", "1.2.c3"
+	Title        string                 // Document title
+	Body         string                 // Optional document body
+	Dimensions   map[string]interface{} // All dimension values for this document
+	CreatedAt    time.Time              // Creation timestamp
+	UpdatedAt    time.Time              // Last update timestamp
+}
+
+// GetStatus returns the status dimension value, if it exists
+func (d *Document) GetStatus() string {
+	if status, ok := d.Dimensions["status"].(string); ok {
+		return status
+	}
+	return ""
+}
+
+// GetParentUUID returns the parent UUID from hierarchical dimension, if it exists
+func (d *Document) GetParentUUID() *string {
+	// Check common parent field names
+	parentFields := []string{"parent_uuid", "parent"}
+	for _, field := range parentFields {
+		if parent, ok := d.Dimensions[field].(string); ok && parent != "" {
+			return &parent
+		}
+	}
+	return nil
 }
 
 // ListOptions configures how documents are listed
 type ListOptions struct {
-	// FilterByStatus limits results to specific statuses
-	// If empty, all statuses are returned
-	FilterByStatus []Status
-
-	// FilterByParent limits results to children of a specific parent
-	// Use nil for root documents only
-	FilterByParent *string
+	// Filters allows filtering by any configured dimension
+	// Key is dimension name, value can be a single value or slice of values
+	// Example: {"status": []string{"active", "pending"}, "priority": "high"}
+	Filters map[string]interface{}
 
 	// FilterBySearch performs a text search on title and body
 	FilterBySearch string
+}
+
+// NewListOptions creates a new ListOptions with empty filters
+func NewListOptions() ListOptions {
+	return ListOptions{
+		Filters: make(map[string]interface{}),
+	}
+}
+
+// WithStatusFilter adds a status filter to ListOptions (helper for migration)
+func (opts ListOptions) WithStatusFilter(statuses ...string) ListOptions {
+	if opts.Filters == nil {
+		opts.Filters = make(map[string]interface{})
+	}
+	if len(statuses) == 1 {
+		opts.Filters["status"] = statuses[0]
+	} else {
+		opts.Filters["status"] = statuses
+	}
+	return opts
+}
+
+// WithParentFilter adds a parent filter to ListOptions (helper for migration)
+func (opts ListOptions) WithParentFilter(parentUUID *string) ListOptions {
+	if opts.Filters == nil {
+		opts.Filters = make(map[string]interface{})
+	}
+	if parentUUID != nil {
+		opts.Filters["parent_uuid"] = *parentUUID
+	} else {
+		opts.Filters["parent_uuid"] = nil
+	}
+	return opts
 }
 
 // UpdateRequest specifies fields to update on a document
 type UpdateRequest struct {
 	Title      *string
 	Body       *string
-	ParentID   *string           // Optional: new parent UUID (nil = no change, empty string = make root)
-	Dimensions map[string]string // Optional: dimension values to update (e.g., "priority": "high")
+	Dimensions map[string]string // Optional: dimension values to update (e.g., "status": "completed", "parent_uuid": "some-uuid")
 }
 
 // DimensionType defines the type of dimension for ID partitioning
@@ -139,9 +179,6 @@ type Store interface {
 	// Update modifies an existing document
 	Update(id string, updates UpdateRequest) error
 
-	// SetStatus changes the status of a document
-	SetStatus(id string, status Status) error
-
 	// ResolveUUID converts a user-facing ID (e.g., "1.2.c3") to a UUID
 	ResolveUUID(userFacingID string) (string, error)
 
@@ -149,10 +186,6 @@ type Store interface {
 	// If cascade is true, all child documents are also deleted
 	// If cascade is false and the document has children, an error is returned
 	Delete(id string, cascade bool) error
-
-	// DeleteCompleted removes all documents with completed status
-	// Returns the number of documents deleted
-	DeleteCompleted() (int, error)
 
 	// DeleteByDimension removes all documents matching a specific dimension value
 	// For example: DeleteByDimension("status", "archived") or DeleteByDimension("priority", "low")
@@ -178,4 +211,12 @@ func New(dbPath string, config Config) (Store, error) {
 		return nil, err
 	}
 	return newConfigurableStore(dbPath, config)
+}
+
+// SetStatus is a helper function to set the status dimension of a document
+// This is equivalent to: store.Update(id, UpdateRequest{Dimensions: {"status": status}})
+func SetStatus(store Store, id string, status string) error {
+	return store.Update(id, UpdateRequest{
+		Dimensions: map[string]string{"status": status},
+	})
 }

@@ -31,7 +31,7 @@ func TestResolveAfterComplete(t *testing.T) {
 	}
 
 	// Complete the first one
-	err = store.SetStatus(id1, nanostore.StatusCompleted)
+	err = nanostore.SetStatus(store, id1, "completed")
 	if err != nil {
 		t.Fatalf("failed to complete first todo: %v", err)
 	}
@@ -72,7 +72,7 @@ func TestResolveAfterComplete(t *testing.T) {
 	docs, _ := store.List(nanostore.ListOptions{})
 	t.Logf("After completing first todo:")
 	for _, doc := range docs {
-		t.Logf("  %s: %s (UUID: %s, Status: %s)", doc.UserFacingID, doc.Title, doc.UUID, doc.Status)
+		t.Logf("  %s: %s (UUID: %s, Status: %s)", doc.UserFacingID, doc.Title, doc.UUID, doc.GetStatus())
 	}
 }
 
@@ -89,7 +89,7 @@ func TestCompleteMultiple(t *testing.T) {
 	_, _ = store.Add("Third", nil, nil)  // was id3
 
 	// Complete first one
-	err = store.SetStatus(id1, nanostore.StatusCompleted)
+	err = nanostore.SetStatus(store, id1, "completed")
 	if err != nil {
 		t.Fatalf("failed to complete first todo: %v", err)
 	}
@@ -113,7 +113,7 @@ func TestCompleteMultiple(t *testing.T) {
 
 	// Complete them
 	for _, uuid := range uuids {
-		err = store.SetStatus(uuid, nanostore.StatusCompleted)
+		err = nanostore.SetStatus(store, uuid, "completed")
 		if err != nil {
 			t.Errorf("failed to complete UUID %s: %v", uuid, err)
 		}
@@ -123,7 +123,7 @@ func TestCompleteMultiple(t *testing.T) {
 	docs, _ := store.List(nanostore.ListOptions{})
 	t.Logf("After completing all:")
 	for _, doc := range docs {
-		t.Logf("  %s: %s (UUID: %s, Status: %s)", doc.UserFacingID, doc.Title, doc.UUID, doc.Status)
+		t.Logf("  %s: %s (UUID: %s, Status: %s)", doc.UserFacingID, doc.Title, doc.UUID, doc.GetStatus())
 	}
 
 	// All should be completed
@@ -131,8 +131,8 @@ func TestCompleteMultiple(t *testing.T) {
 		t.Errorf("expected 3 todos, got %d", len(docs))
 	}
 	for _, doc := range docs {
-		if doc.Status != nanostore.StatusCompleted {
-			t.Errorf("expected %s to be completed, but status is %s", doc.Title, doc.Status)
+		if doc.GetStatus() != "completed" {
+			t.Errorf("expected %s to be completed, but status is %s", doc.Title, doc.GetStatus())
 		}
 	}
 }

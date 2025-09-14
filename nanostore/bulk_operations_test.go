@@ -132,7 +132,7 @@ func TestBulkStatusChange(t *testing.T) {
 	statusChanges := 0
 	for i, id := range ids {
 		if i%2 == 0 {
-			err := store.SetStatus(id, nanostore.StatusCompleted)
+			err := nanostore.SetStatus(store, id, "completed")
 			if err != nil {
 				t.Fatalf("failed to set status for document %d: %v", i, err)
 			}
@@ -152,10 +152,10 @@ func TestBulkStatusChange(t *testing.T) {
 	pendingCount := 0
 	completedCount := 0
 	for _, doc := range docs {
-		switch doc.Status {
-		case nanostore.StatusPending:
+		switch doc.GetStatus() {
+		case "pending":
 			pendingCount++
-		case nanostore.StatusCompleted:
+		case "completed":
 			completedCount++
 		}
 	}
@@ -216,7 +216,7 @@ func TestBulkHierarchicalCreation(t *testing.T) {
 	roots := 0
 	children := 0
 	for _, doc := range docs {
-		if doc.ParentUUID == nil {
+		if doc.GetParentUUID() == nil {
 			roots++
 		} else {
 			children++

@@ -166,7 +166,7 @@ func BenchmarkMixedStatusList(b *testing.B) {
 		}
 		// Mark every third as completed
 		if i%3 == 0 {
-			_ = store.SetStatus(id, nanostore.StatusCompleted)
+			_ = nanostore.SetStatus(store, id, "completed")
 		}
 	}
 

@@ -70,7 +70,7 @@ func (t *Todo) Complete(userFacingID string) error {
 		return fmt.Errorf("failed to resolve ID '%s': %w", userFacingID, err)
 	}
 
-	err = t.store.SetStatus(uuid, nanostore.StatusCompleted)
+	err = nanostore.SetStatus(t.store, uuid, "completed")
 	if err != nil {
 		return fmt.Errorf("failed to complete todo: %w", err)
 	}
@@ -103,7 +103,7 @@ func (t *Todo) CompleteMultiple(userFacingIDs []string) error {
 	// Step 2: Complete all items using their UUIDs
 	var completed []string
 	for _, item := range items {
-		err := t.store.SetStatus(item.uuid, nanostore.StatusCompleted)
+		err := nanostore.SetStatus(t.store, item.uuid, "completed")
 		if err != nil {
 			// If we fail partway through, report what was completed
 			if len(completed) > 0 {
@@ -125,7 +125,7 @@ func (t *Todo) Reopen(userFacingID string) error {
 		return fmt.Errorf("failed to resolve ID '%s': %w", userFacingID, err)
 	}
 
-	err = t.store.SetStatus(uuid, nanostore.StatusPending)
+	err = nanostore.SetStatus(t.store, uuid, "pending")
 	if err != nil {
 		return fmt.Errorf("failed to reopen todo: %w", err)
 	}
@@ -151,7 +151,10 @@ func (t *Todo) Move(userFacingID string, newParentID *string) error {
 	}
 
 	updates := nanostore.UpdateRequest{
-		ParentID: newParentUUID,
+		Dimensions: map[string]string{"parent_uuid": ""},
+	}
+	if newParentUUID != nil {
+		updates.Dimensions["parent_uuid"] = *newParentUUID
 	}
 
 	err = t.store.Update(uuid, updates)
@@ -211,7 +214,7 @@ func (t *Todo) List(opts ListOptions) ([]*TodoItem, error) {
 	for i, doc := range docs {
 		item := &TodoItem{
 			Document:    doc,
-			IsCompleted: doc.Status == nanostore.StatusCompleted,
+			IsCompleted: doc.GetStatus() == "completed",
 			Children:    []*TodoItem{},
 		}
 
@@ -228,10 +231,11 @@ func (t *Todo) List(opts ListOptions) ([]*TodoItem, error) {
 	// Build hierarchy
 	var roots []*TodoItem
 	for _, item := range items {
-		if item.ParentUUID == nil {
+		parentUUID := item.Document.GetParentUUID()
+		if parentUUID == nil {
 			roots = append(roots, item)
 		} else {
-			if parent, ok := itemMap[*item.ParentUUID]; ok {
+			if parent, ok := itemMap[*parentUUID]; ok {
 				parent.Children = append(parent.Children, item)
 			}
 		}

@@ -266,7 +266,7 @@ func TestDelete(t *testing.T) {
 		}
 
 		// Set one child as completed
-		err = store.SetStatus(child2ID, nanostore.StatusCompleted)
+		err = nanostore.SetStatus(store, child2ID, "completed")
 		if err != nil {
 			t.Fatalf("failed to set status: %v", err)
 		}
@@ -386,7 +386,7 @@ func TestDeleteEdgeCases(t *testing.T) {
 			// Get parent of current
 			docs, _ := store.List(nanostore.ListOptions{})
 			for _, doc := range docs {
-				if doc.ParentUUID == nil {
+				if doc.GetParentUUID() == nil {
 					rootID = doc.UUID
 					break
 				}

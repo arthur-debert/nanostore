@@ -51,7 +51,7 @@ func TestSetStatus(t *testing.T) {
 	}
 
 	// Change its status
-	err = store.SetStatus(id, nanostore.StatusCompleted)
+	err = nanostore.SetStatus(store, id, "completed")
 	if err != nil {
 		t.Fatalf("failed to set status: %v", err)
 	}

@@ -90,7 +90,7 @@ func TestConfigurableIntegration(t *testing.T) {
 
 	// Test filtering by parent
 	subtasks, err := store.List(nanostore.ListOptions{
-		FilterByParent: &personalTodo,
+		Filters: map[string]interface{}{"parent_uuid": personalTodo},
 	})
 	if err != nil {
 		t.Fatalf("failed to filter by parent: %v", err)

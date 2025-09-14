@@ -53,7 +53,7 @@ func TestSetStatusTransactionFailure(t *testing.T) {
 	_ = store.Close()
 
 	// Try to set status on closed store (should fail)
-	err = store.SetStatus(docID, nanostore.StatusCompleted)
+	err = nanostore.SetStatus(store, docID, "completed")
 	if err == nil {
 		t.Error("expected error when setting status on closed store")
 	}
@@ -69,7 +69,7 @@ func TestListWithComplexFilterCombinations(t *testing.T) {
 	// Create test documents
 	parentID, _ := store.Add("Parent", nil, nil)
 	childID, _ := store.Add("Child with searchable content", &parentID, nil)
-	_ = store.SetStatus(childID, nanostore.StatusCompleted)
+	_ = nanostore.SetStatus(store, childID, "completed")
 
 	// Test complex filter combinations that might expose edge cases
 	testCases := []struct {
@@ -79,16 +79,20 @@ func TestListWithComplexFilterCombinations(t *testing.T) {
 		{
 			name: "empty parent filter with status",
 			opts: nanostore.ListOptions{
-				FilterByParent: func() *string { s := ""; return &s }(),
-				FilterByStatus: []nanostore.Status{nanostore.StatusPending},
+				Filters: map[string]interface{}{
+					"parent_uuid": "",
+					"status":      "pending",
+				},
 			},
 		},
 		{
 			name: "all filters combined",
 			opts: nanostore.ListOptions{
-				FilterByStatus: []nanostore.Status{nanostore.StatusCompleted},
+				Filters: map[string]interface{}{
+					"status":      "completed",
+					"parent_uuid": parentID,
+				},
 				FilterBySearch: "searchable",
-				FilterByParent: &parentID,
 			},
 		},
 		{
@@ -100,9 +104,8 @@ func TestListWithComplexFilterCombinations(t *testing.T) {
 		{
 			name: "multiple statuses with search",
 			opts: nanostore.ListOptions{
-				FilterByStatus: []nanostore.Status{
-					nanostore.StatusPending,
-					nanostore.StatusCompleted,
+				Filters: map[string]interface{}{
+					"status": []string{"pending", "completed"},
 				},
 				FilterBySearch: "searchable",
 			},
@@ -173,7 +176,7 @@ func TestUpdateWithNonExistentParent(t *testing.T) {
 	// Try to set a non-existent parent (should fail due to foreign key constraint)
 	nonExistentParent := "00000000-0000-0000-0000-000000000000"
 	err = store.Update(docID, nanostore.UpdateRequest{
-		ParentID: &nonExistentParent,
+		Dimensions: map[string]string{"parent_uuid": nonExistentParent},
 	})
 	if err == nil {
 		t.Error("expected error when setting non-existent parent")
@@ -246,7 +249,7 @@ func TestConcurrentCircularReferenceCheck(t *testing.T) {
 		defer func() { _ = s.Close() }()
 
 		err = s.Update(aID, nanostore.UpdateRequest{
-			ParentID: &cID,
+			Dimensions: map[string]string{"parent_uuid": cID},
 		})
 		errChan <- err
 	}()
@@ -261,7 +264,7 @@ func TestConcurrentCircularReferenceCheck(t *testing.T) {
 		defer func() { _ = s.Close() }()
 
 		err = s.Update(bID, nanostore.UpdateRequest{
-			ParentID: &cID,
+			Dimensions: map[string]string{"parent_uuid": cID},
 		})
 		errChan <- err
 	}()

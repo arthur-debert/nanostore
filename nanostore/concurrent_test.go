@@ -184,11 +184,11 @@ func TestConcurrentMixedOperations(t *testing.T) {
 		go func(n int) {
 			defer wg.Done()
 			id := initialIDs[n%10]
-			status := nanostore.StatusPending
+			status := "pending"
 			if n%2 == 0 {
-				status = nanostore.StatusCompleted
+				status = "completed"
 			}
-			err := store.SetStatus(id, status)
+			err := nanostore.SetStatus(store, id, status)
 			if err != nil {
 				errors <- fmt.Errorf("status error: %v", err)
 			}

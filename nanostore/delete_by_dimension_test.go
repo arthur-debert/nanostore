@@ -62,7 +62,7 @@ func TestDeleteByDimension(t *testing.T) {
 
 		// Check that no completed items remain
 		for _, doc := range docs {
-			if doc.Status == "completed" {
+			if doc.GetStatus() == "completed" {
 				t.Errorf("found completed document that should have been deleted: %s", doc.Title)
 			}
 		}
@@ -122,7 +122,7 @@ func TestDeleteByDimension(t *testing.T) {
 	})
 }
 
-func TestDeleteCompleted(t *testing.T) {
+func TestDeleteCompletedUsingDeleteByDimension(t *testing.T) {
 	store, err := nanostore.NewTestStore(":memory:")
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
@@ -138,12 +138,12 @@ func TestDeleteCompleted(t *testing.T) {
 	uuid3, _ := store.Add("To Complete 3", nil, nil)
 
 	// Complete some items
-	_ = store.SetStatus(uuid1, nanostore.StatusCompleted)
-	_ = store.SetStatus(uuid2, nanostore.StatusCompleted)
-	_ = store.SetStatus(uuid3, nanostore.StatusCompleted)
+	_ = nanostore.SetStatus(store, uuid1, "completed")
+	_ = nanostore.SetStatus(store, uuid2, "completed")
+	_ = nanostore.SetStatus(store, uuid3, "completed")
 
-	// Delete all completed
-	deleted, err := store.DeleteCompleted()
+	// Delete all completed using DeleteByDimension
+	deleted, err := store.DeleteByDimension("status", "completed")
 	if err != nil {
 		t.Fatalf("failed to delete completed: %v", err)
 	}
@@ -163,8 +163,8 @@ func TestDeleteCompleted(t *testing.T) {
 	}
 
 	for _, doc := range docs {
-		if doc.Status != nanostore.StatusPending {
-			t.Errorf("expected only pending items, found status: %s", doc.Status)
+		if doc.GetStatus() != "pending" {
+			t.Errorf("expected only pending items, found status: %s", doc.GetStatus())
 		}
 	}
 }
@@ -205,7 +205,7 @@ func TestDeleteByDimensionWithHierarchy(t *testing.T) {
 	allBefore, _ := store.List(nanostore.ListOptions{})
 	t.Logf("Documents before deletion: %d", len(allBefore))
 	for _, doc := range allBefore {
-		t.Logf("  %s: %s (status: %v)", doc.UserFacingID, doc.Title, doc.Status)
+		t.Logf("  %s: %s (status: %v)", doc.UserFacingID, doc.Title, doc.GetStatus())
 	}
 
 	// Delete all inactive items
@@ -224,7 +224,7 @@ func TestDeleteByDimensionWithHierarchy(t *testing.T) {
 
 	t.Logf("Documents after deletion: %d", len(docs))
 	for _, doc := range docs {
-		t.Logf("  %s: %s (status: %v)", doc.UserFacingID, doc.Title, doc.Status)
+		t.Logf("  %s: %s (status: %v)", doc.UserFacingID, doc.Title, doc.GetStatus())
 	}
 
 	// The cascade delete behavior may affect the count
@@ -313,7 +313,7 @@ func TestDeleteWhere(t *testing.T) {
 		if len(docs) != 0 {
 			t.Errorf("expected 0 remaining documents, got %d", len(docs))
 			for _, doc := range docs {
-				t.Logf("  Remaining: %s (status: %v)", doc.Title, doc.Status)
+				t.Logf("  Remaining: %s (status: %v)", doc.Title, doc.GetStatus())
 			}
 		}
 	})

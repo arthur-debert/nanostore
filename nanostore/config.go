@@ -5,9 +5,30 @@ import (
 	"strings"
 )
 
-// DefaultConfig returns a configuration that matches the original hardcoded behavior
-// This provides backward compatibility for existing applications
-func DefaultConfig() Config {
+// ExampleConfig returns a sample configuration showing how to configure dimensions
+// Applications should define their own configuration based on their domain needs
+func ExampleConfig() Config {
+	return Config{
+		Dimensions: []DimensionConfig{
+			{
+				Name:         "category",
+				Type:         Enumerated,
+				Values:       []string{"default", "archived"},
+				Prefixes:     map[string]string{"archived": "a"},
+				DefaultValue: "default",
+			},
+			{
+				Name:     "parent",
+				Type:     Hierarchical,
+				RefField: "parent_uuid",
+			},
+		},
+	}
+}
+
+// TodoConfig returns a configuration suitable for todo applications
+// This is provided for backward compatibility and as an example
+func TodoConfig() Config {
 	return Config{
 		Dimensions: []DimensionConfig{
 			{

@@ -191,6 +191,6 @@ func TestAtomicBatchOperations(t *testing.T) {
 	// batch := store.NewBatch()
 	// batch.Add("Doc 1", nil, nil)
 	// batch.Add("Doc 2", nil, nil)
-	// batch.SetStatus(id, nanostore.StatusCompleted)
+	// batch.SetStatus(id, "completed")
 	// err := batch.Execute() // All or nothing
 }

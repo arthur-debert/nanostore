@@ -1,24 +1,9 @@
 package nanostore
 
-// DefaultTestConfig returns a configuration that mimics the old hardcoded behavior
-// for tests that rely on status (pending/completed) and parent dimensions.
+// DefaultTestConfig returns the TodoConfig for backward compatibility in tests
+// New tests should define their own domain-specific configurations
 func DefaultTestConfig() Config {
-	return Config{
-		Dimensions: []DimensionConfig{
-			{
-				Name:         "status",
-				Type:         Enumerated,
-				Values:       []string{"pending", "completed"},
-				Prefixes:     map[string]string{"completed": "c"},
-				DefaultValue: "pending",
-			},
-			{
-				Name:     "parent",
-				Type:     Hierarchical,
-				RefField: "parent_uuid",
-			},
-		},
-	}
+	return TodoConfig()
 }
 
 // NewTestStore creates a store with the default test configuration

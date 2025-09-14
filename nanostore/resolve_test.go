@@ -20,7 +20,7 @@ func TestResolveUUID(t *testing.T) {
 	id3, _ := store.Add("Third", nil, nil)
 
 	// Mark one as completed
-	_ = store.SetStatus(id3, nanostore.StatusCompleted)
+	_ = nanostore.SetStatus(store, id3, "completed")
 
 	// Test cases
 	tests := []struct {
@@ -59,7 +59,7 @@ func TestResolveHierarchicalUUID(t *testing.T) {
 	child3ID, _ := store.Add("Child 3", &parentID, nil)
 
 	// Mark one child as completed
-	_ = store.SetStatus(child3ID, nanostore.StatusCompleted)
+	_ = nanostore.SetStatus(store, child3ID, "completed")
 
 	// Nested child
 	grandchildID, _ := store.Add("Grandchild", &child1ID, nil)
