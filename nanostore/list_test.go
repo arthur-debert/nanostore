@@ -31,18 +31,18 @@ func TestListWithIDs(t *testing.T) {
 	defer func() { _ = store.Close() }()
 
 	// Add some pending documents
-	id1, err := store.Add("First task", nil, nil)
+	id1, err := store.Add("First task", nil)
 	if err != nil {
 		t.Fatalf("failed to add first document: %v", err)
 	}
 
-	id2, err := store.Add("Second task", nil, nil)
+	id2, err := store.Add("Second task", nil)
 	if err != nil {
 		t.Fatalf("failed to add second document: %v", err)
 	}
 
 	// Add a completed document
-	id3, err := store.Add("Completed task", nil, nil)
+	id3, err := store.Add("Completed task", nil)
 	if err != nil {
 		t.Fatalf("failed to add third document: %v", err)
 	}
@@ -90,24 +90,24 @@ func TestListHierarchical(t *testing.T) {
 	defer func() { _ = store.Close() }()
 
 	// Create a parent document
-	parentID, err := store.Add("Parent task", nil, nil)
+	parentID, err := store.Add("Parent task", nil)
 	if err != nil {
 		t.Fatalf("failed to add parent: %v", err)
 	}
 
 	// Add child documents
-	child1ID, err := store.Add("Child 1", &parentID, nil)
+	child1ID, err := store.Add("Child 1", map[string]interface{}{"parent_uuid": parentID})
 	if err != nil {
 		t.Fatalf("failed to add child 1: %v", err)
 	}
 
-	child2ID, err := store.Add("Child 2", &parentID, nil)
+	child2ID, err := store.Add("Child 2", map[string]interface{}{"parent_uuid": parentID})
 	if err != nil {
 		t.Fatalf("failed to add child 2: %v", err)
 	}
 
 	// Add a completed child
-	child3ID, err := store.Add("Completed child", &parentID, nil)
+	child3ID, err := store.Add("Completed child", map[string]interface{}{"parent_uuid": parentID})
 	if err != nil {
 		t.Fatalf("failed to add child 3: %v", err)
 	}
@@ -155,18 +155,18 @@ func TestListFilteredIDs(t *testing.T) {
 	defer func() { _ = store.Close() }()
 
 	// Create a mix of pending and completed documents
-	pending1, _ := store.Add("Pending 1", nil, nil)
-	pending2, _ := store.Add("Pending 2", nil, nil)
-	pending3, _ := store.Add("Pending 3", nil, nil)
+	pending1, _ := store.Add("Pending 1", nil)
+	pending2, _ := store.Add("Pending 2", nil)
+	pending3, _ := store.Add("Pending 3", nil)
 
-	completed1, _ := store.Add("Completed 1", nil, nil)
+	completed1, _ := store.Add("Completed 1", nil)
 	_ = nanostore.SetStatus(store, completed1, "completed")
 
-	completed2, _ := store.Add("Completed 2", nil, nil)
+	completed2, _ := store.Add("Completed 2", nil)
 	_ = nanostore.SetStatus(store, completed2, "completed")
 
 	// Add more pending after completed
-	pending4, _ := store.Add("Pending 4", nil, nil)
+	pending4, _ := store.Add("Pending 4", nil)
 
 	// Test 1: Filter for pending documents only
 	pendingDocs, err := store.List(nanostore.ListOptions{
@@ -240,23 +240,23 @@ func TestListFilteredHierarchicalIDs(t *testing.T) {
 	defer func() { _ = store.Close() }()
 
 	// Create hierarchical structure with mixed statuses
-	root1, _ := store.Add("Root 1", nil, nil)
-	root2, _ := store.Add("Root 2", nil, nil)
+	root1, _ := store.Add("Root 1", nil)
+	root2, _ := store.Add("Root 2", nil)
 
 	// Children of root1
-	child1_1, _ := store.Add("Child 1.1", &root1, nil)
-	child1_2, _ := store.Add("Child 1.2", &root1, nil)
+	child1_1, _ := store.Add("Child 1.1", map[string]interface{}{"parent_uuid": root1})
+	child1_2, _ := store.Add("Child 1.2", map[string]interface{}{"parent_uuid": root1})
 	_ = nanostore.SetStatus(store, child1_2, "completed")
-	child1_3, _ := store.Add("Child 1.3", &root1, nil)
+	child1_3, _ := store.Add("Child 1.3", map[string]interface{}{"parent_uuid": root1})
 
 	// Children of root2 (all completed)
-	child2_1, _ := store.Add("Child 2.1", &root2, nil)
+	child2_1, _ := store.Add("Child 2.1", map[string]interface{}{"parent_uuid": root2})
 	_ = nanostore.SetStatus(store, child2_1, "completed")
-	child2_2, _ := store.Add("Child 2.2", &root2, nil)
+	child2_2, _ := store.Add("Child 2.2", map[string]interface{}{"parent_uuid": root2})
 	_ = nanostore.SetStatus(store, child2_2, "completed")
 
 	// Grandchildren
-	grandchild, _ := store.Add("Grandchild", &child1_1, nil)
+	grandchild, _ := store.Add("Grandchild", map[string]interface{}{"parent_uuid": child1_1})
 
 	// Test: Filter for pending documents only
 	pendingDocs, err := store.List(nanostore.ListOptions{
@@ -301,13 +301,13 @@ func TestListFilterByParentIDs(t *testing.T) {
 	defer func() { _ = store.Close() }()
 
 	// Create structure
-	root1, _ := store.Add("Root 1", nil, nil)
-	root2, _ := store.Add("Root 2", nil, nil)
+	root1, _ := store.Add("Root 1", nil)
+	root2, _ := store.Add("Root 2", nil)
 	_ = nanostore.SetStatus(store, root2, "completed")
-	root3, _ := store.Add("Root 3", nil, nil)
+	root3, _ := store.Add("Root 3", nil)
 
-	child1, _ := store.Add("Child 1", &root1, nil)
-	child2, _ := store.Add("Child 2", &root1, nil)
+	child1, _ := store.Add("Child 1", map[string]interface{}{"parent_uuid": root1})
+	child2, _ := store.Add("Child 2", map[string]interface{}{"parent_uuid": root1})
 	_ = nanostore.SetStatus(store, child2, "completed")
 
 	// Test: Get only root documents
@@ -378,14 +378,14 @@ func TestListCombinedFilters(t *testing.T) {
 	defer func() { _ = store.Close() }()
 
 	// Create test data
-	root1, _ := store.Add("Project Alpha", nil, nil)
-	root2, _ := store.Add("Project Beta", nil, nil)
+	root1, _ := store.Add("Project Alpha", nil)
+	root2, _ := store.Add("Project Beta", nil)
 	_ = nanostore.SetStatus(store, root2, "completed")
 
-	task1, _ := store.Add("Design mockups", &root1, nil)
-	task2, _ := store.Add("Write tests", &root1, nil)
+	task1, _ := store.Add("Design mockups", map[string]interface{}{"parent_uuid": root1})
+	task2, _ := store.Add("Write tests", map[string]interface{}{"parent_uuid": root1})
 	_ = nanostore.SetStatus(store, task2, "completed")
-	task3, _ := store.Add("Deploy to production", &root1, nil)
+	task3, _ := store.Add("Deploy to production", map[string]interface{}{"parent_uuid": root1})
 
 	// Test: Search + Status filter
 	results, err := store.List(nanostore.ListOptions{

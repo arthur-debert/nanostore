@@ -50,12 +50,12 @@ func TestDatabaseConsistencyAfterPanic(t *testing.T) {
 	}
 
 	// Add some documents
-	id1, err := store1.Add("Before Panic 1", nil, nil)
+	id1, err := store1.Add("Before Panic 1", nil)
 	if err != nil {
 		t.Fatalf("failed to add document: %v", err)
 	}
 
-	id2, err := store1.Add("Before Panic 2", nil, nil)
+	id2, err := store1.Add("Before Panic 2", nil)
 	if err != nil {
 		t.Fatalf("failed to add document: %v", err)
 	}
@@ -154,7 +154,7 @@ func TestRollbackOnConstraintViolation(t *testing.T) {
 	defer func() { _ = store.Close() }()
 
 	// Create a parent document
-	parentID, err := store.Add("Parent", nil, nil)
+	parentID, err := store.Add("Parent", nil)
 	if err != nil {
 		t.Fatalf("failed to add parent: %v", err)
 	}
@@ -162,7 +162,7 @@ func TestRollbackOnConstraintViolation(t *testing.T) {
 	// Try to add a child with invalid parent UUID
 	// This should fail and not leave partial data
 	invalidParent := "invalid-uuid-that-does-not-exist"
-	_, err = store.Add("Orphan Child", &invalidParent, nil)
+	_, err = store.Add("Orphan Child", map[string]interface{}{"parent_uuid": invalidParent})
 
 	if err == nil {
 		t.Error("expected foreign key constraint error")

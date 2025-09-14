@@ -14,9 +14,9 @@ func TestResolveAfterComplete(t *testing.T) {
 	defer func() { _ = store.Close() }()
 
 	// Create three todos
-	id1, _ := store.Add("First", nil, nil)
-	id2, _ := store.Add("Second", nil, nil)
-	id3, _ := store.Add("Third", nil, nil)
+	id1, _ := store.Add("First", nil)
+	id2, _ := store.Add("Second", nil)
+	id3, _ := store.Add("Third", nil)
 
 	// Initial state - all should resolve
 	for i, id := range []string{"1", "2", "3"} {
@@ -84,9 +84,9 @@ func TestCompleteMultiple(t *testing.T) {
 	defer func() { _ = store.Close() }()
 
 	// Create three todos
-	id1, _ := store.Add("First", nil, nil)
-	_, _ = store.Add("Second", nil, nil) // was id2
-	_, _ = store.Add("Third", nil, nil)  // was id3
+	id1, _ := store.Add("First", nil)
+	_, _ = store.Add("Second", nil) // was id2
+	_, _ = store.Add("Third", nil)  // was id3
 
 	// Complete first one
 	err = nanostore.SetStatus(store, id1, "completed")

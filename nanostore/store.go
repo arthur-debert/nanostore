@@ -141,27 +141,41 @@ func (s *store) List(opts ListOptions) ([]Document, error) {
 }
 
 // Add creates a new document with dimension values
-func (s *store) Add(title string, parentID *string, dimensions map[string]string) (string, error) {
-	// Convert string dimensions to interface{} and merge with defaults
+func (s *store) Add(title string, dimensions map[string]interface{}) (string, error) {
+	// Merge provided dimensions with defaults
 	dimensionValues := make(map[string]interface{})
 
-	// Set default values for enumerated dimensions
+	// Copy provided dimensions
+	for k, v := range dimensions {
+		dimensionValues[k] = v
+	}
+
+	// Set default values for enumerated dimensions not provided
 	for _, dim := range s.config.Dimensions {
 		if dim.Type == Enumerated {
-			// Check if user provided a value
-			if val, ok := dimensions[dim.Name]; ok {
+			// Check if user provided a value (either by dimension name or for hierarchical ref field)
+			provided := false
+			var val interface{}
+
+			if v, ok := dimensionValues[dim.Name]; ok {
+				provided = true
+				val = v
+			}
+
+			if provided {
 				// Validate the provided value
+				strVal := fmt.Sprintf("%v", val)
 				validValue := false
 				for _, allowedVal := range dim.Values {
-					if val == allowedVal {
+					if strVal == allowedVal {
 						validValue = true
 						break
 					}
 				}
 				if !validValue {
-					return "", fmt.Errorf("invalid value '%s' for dimension '%s'", val, dim.Name)
+					return "", fmt.Errorf("invalid value '%s' for dimension '%s'", strVal, dim.Name)
 				}
-				dimensionValues[dim.Name] = val
+				dimensionValues[dim.Name] = strVal
 			} else {
 				// Use default value
 				if dim.DefaultValue != "" {
@@ -173,10 +187,19 @@ func (s *store) Add(title string, parentID *string, dimensions map[string]string
 		}
 	}
 
-	// Set hierarchical dimension if parentID provided
+	// Handle hierarchical dimension - check if parent_uuid was provided
 	hierDim := s.findHierarchicalDimension()
-	if hierDim != nil && parentID != nil {
-		dimensionValues[hierDim.RefField] = *parentID
+	if hierDim != nil {
+		// Check if parent_uuid was provided (common convention)
+		if parentVal, ok := dimensionValues["parent_uuid"]; ok && hierDim.RefField != "parent_uuid" {
+			// Move the value to the actual ref field if different
+			dimensionValues[hierDim.RefField] = parentVal
+			delete(dimensionValues, "parent_uuid")
+		} else if parentVal, ok := dimensionValues[hierDim.Name]; ok && hierDim.Name != hierDim.RefField {
+			// Check by dimension name if different from ref field
+			dimensionValues[hierDim.RefField] = parentVal
+			delete(dimensionValues, hierDim.Name)
+		}
 	}
 
 	return s.addWithDimensions(title, dimensionValues)

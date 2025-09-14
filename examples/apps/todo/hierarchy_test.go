@@ -15,11 +15,11 @@ func TestHierarchyFiltering(t *testing.T) {
 	defer store.Close()
 
 	// Add documents
-	rootID, _ := store.Add("Groceries", nil, nil)
-	store.Add("Milk", &rootID, nil)
-	store.Add("Bread", &rootID, nil)
-	store.Add("Eggs", &rootID, nil)
-	store.Add("Pack for Trip", nil, nil)
+	rootID, _ := store.Add("Groceries", nil)
+	store.Add("Milk", map[string]interface{}{"parent_uuid": rootID})
+	store.Add("Bread", map[string]interface{}{"parent_uuid": rootID})
+	store.Add("Eggs", map[string]interface{}{"parent_uuid": rootID})
+	store.Add("Pack for Trip", nil)
 
 	// Test 1: List all pending
 	t.Logf("\nTest 1: All pending items:")

@@ -15,20 +15,20 @@ func TestDebugHierarchicalIDs(t *testing.T) {
 	defer store.Close()
 
 	// Add root document
-	rootID, err := store.Add("Root", nil, nil)
+	rootID, err := store.Add("Root", nil)
 	if err != nil {
 		t.Fatalf("failed to add root: %v", err)
 	}
 	t.Logf("Root UUID: %s", rootID)
 
 	// Add child documents
-	child1ID, err := store.Add("Child 1", &rootID, nil)
+	child1ID, err := store.Add("Child 1", map[string]interface{}{"parent_uuid": rootID})
 	if err != nil {
 		t.Fatalf("failed to add child 1: %v", err)
 	}
 	t.Logf("Child 1 UUID: %s", child1ID)
 
-	child2ID, err := store.Add("Child 2", &rootID, nil)
+	child2ID, err := store.Add("Child 2", map[string]interface{}{"parent_uuid": rootID})
 	if err != nil {
 		t.Fatalf("failed to add child 2: %v", err)
 	}

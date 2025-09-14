@@ -16,9 +16,9 @@ func TestBatchIDResolution(t *testing.T) {
 	defer func() { _ = store.Close() }()
 
 	// Create three documents
-	uuid1, _ := store.Add("First todo", nil, nil)
-	_, _ = store.Add("Second todo", nil, nil)
-	uuid3, _ := store.Add("Third todo", nil, nil)
+	uuid1, _ := store.Add("First todo", nil)
+	_, _ = store.Add("Second todo", nil)
+	uuid3, _ := store.Add("Third todo", nil)
 
 	// Verify initial IDs
 	docs, _ := store.List(nanostore.ListOptions{})
@@ -75,10 +75,10 @@ func TestBatchIDResolutionPattern(t *testing.T) {
 	defer func() { _ = store.Close() }()
 
 	// Create documents
-	_, _ = store.Add("Task A", nil, nil)
-	_, _ = store.Add("Task B", nil, nil)
-	_, _ = store.Add("Task C", nil, nil)
-	_, _ = store.Add("Task D", nil, nil)
+	_, _ = store.Add("Task A", nil)
+	_, _ = store.Add("Task B", nil)
+	_, _ = store.Add("Task C", nil)
+	_, _ = store.Add("Task D", nil)
 
 	t.Run("correct batch completion pattern", func(t *testing.T) {
 		// User wants to complete items 1 and 3
@@ -129,9 +129,9 @@ func TestBatchIDResolutionPattern(t *testing.T) {
 		store2, _ := nanostore.New(":memory:", nanostore.DefaultTestConfig())
 		defer func() { _ = store2.Close() }()
 
-		uuid1, _ := store2.Add("Item 1", nil, nil)
-		_, _ = store2.Add("Item 2", nil, nil)
-		uuid3, _ := store2.Add("Item 3", nil, nil)
+		uuid1, _ := store2.Add("Item 1", nil)
+		_, _ = store2.Add("Item 2", nil)
+		uuid3, _ := store2.Add("Item 3", nil)
 
 		// INCORRECT: Resolving and completing one at a time
 		// User wants to complete 1 and 3, but resolves after each operation
@@ -161,10 +161,10 @@ func TestBatchOperationStrategies(t *testing.T) {
 		defer func() { _ = store.Close() }()
 
 		// Create items
-		_, _ = store.Add("Item 1", nil, nil)
-		_, _ = store.Add("Item 2", nil, nil)
-		_, _ = store.Add("Item 3", nil, nil)
-		_, _ = store.Add("Item 4", nil, nil)
+		_, _ = store.Add("Item 1", nil)
+		_, _ = store.Add("Item 2", nil)
+		_, _ = store.Add("Item 3", nil)
+		_, _ = store.Add("Item 4", nil)
 
 		// Strategy: Complete in reverse order (4, 2, 1)
 		// This avoids ID shifting affecting subsequent operations
@@ -195,9 +195,9 @@ func TestBatchOperationStrategies(t *testing.T) {
 
 		// Create items
 		uuids := make(map[string]string)
-		uuids["A"], _ = store.Add("Task A", nil, nil)
-		uuids["B"], _ = store.Add("Task B", nil, nil)
-		uuids["C"], _ = store.Add("Task C", nil, nil)
+		uuids["A"], _ = store.Add("Task A", nil)
+		uuids["B"], _ = store.Add("Task B", nil)
+		uuids["C"], _ = store.Add("Task C", nil)
 
 		// Helper function that safely completes multiple items
 		completeMultiple := func(ids []string) error {

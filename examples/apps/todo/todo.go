@@ -42,7 +42,11 @@ func (t *Todo) Add(title string, parentID *string) (string, error) {
 		parentID = &uuid
 	}
 
-	uuid, err := t.store.Add(title, parentID, nil)
+	dimensions := make(map[string]interface{})
+	if parentID != nil {
+		dimensions["parent_uuid"] = *parentID
+	}
+	uuid, err := t.store.Add(title, dimensions)
 	if err != nil {
 		return "", fmt.Errorf("failed to add todo: %w", err)
 	}

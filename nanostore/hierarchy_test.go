@@ -15,7 +15,7 @@ func TestDeepNesting(t *testing.T) {
 	defer func() { _ = store.Close() }()
 
 	// Create a deep hierarchy: root -> level1 -> level2 -> level3 -> level4
-	rootID, err := store.Add("Root", nil, nil)
+	rootID, err := store.Add("Root", nil)
 	if err != nil {
 		t.Fatalf("failed to add root: %v", err)
 	}
@@ -25,7 +25,7 @@ func TestDeepNesting(t *testing.T) {
 	ids := []string{rootID}
 
 	for i := 1; i < 5; i++ {
-		id, err := store.Add(fmt.Sprintf("Level %d", i), &currentParent, nil)
+		id, err := store.Add(fmt.Sprintf("Level %d", i), map[string]interface{}{"parent_uuid": currentParent})
 		if err != nil {
 			t.Fatalf("failed to add level %d: %v", i, err)
 		}
@@ -82,20 +82,20 @@ func TestMixedStatusHierarchy(t *testing.T) {
 	//   c1.1 (pending)
 	//   c1.c1 (completed)
 
-	root1, _ := store.Add("Root 1", nil, nil)
-	child1, _ := store.Add("Child 1.1", &root1, nil)
-	child2, _ := store.Add("Child 1.2", &root1, nil)
-	child3, _ := store.Add("Child 1.3", &root1, nil)
-	child4, _ := store.Add("Child 1.4", &root1, nil)
+	root1, _ := store.Add("Root 1", nil)
+	child1, _ := store.Add("Child 1.1", map[string]interface{}{"parent_uuid": root1})
+	child2, _ := store.Add("Child 1.2", map[string]interface{}{"parent_uuid": root1})
+	child3, _ := store.Add("Child 1.3", map[string]interface{}{"parent_uuid": root1})
+	child4, _ := store.Add("Child 1.4", map[string]interface{}{"parent_uuid": root1})
 
 	_ = nanostore.SetStatus(store, child2, "completed")
 	_ = nanostore.SetStatus(store, child4, "completed")
 
-	root2, _ := store.Add("Root 2", nil, nil)
+	root2, _ := store.Add("Root 2", nil)
 	_ = nanostore.SetStatus(store, root2, "completed")
 
-	child5, _ := store.Add("Child c1.1", &root2, nil)
-	child6, _ := store.Add("Child c1.c1", &root2, nil)
+	child5, _ := store.Add("Child c1.1", map[string]interface{}{"parent_uuid": root2})
+	child6, _ := store.Add("Child c1.c1", map[string]interface{}{"parent_uuid": root2})
 	_ = nanostore.SetStatus(store, child6, "completed")
 
 	// Expected IDs
@@ -136,12 +136,12 @@ func TestSiblingNumbering(t *testing.T) {
 	defer func() { _ = store.Close() }()
 
 	// Create parent
-	parent, _ := store.Add("Parent", nil, nil)
+	parent, _ := store.Add("Parent", nil)
 
 	// Add 20 pending children
 	pendingIDs := make([]string, 20)
 	for i := 0; i < 20; i++ {
-		id, err := store.Add(fmt.Sprintf("Pending Child %d", i+1), &parent, nil)
+		id, err := store.Add(fmt.Sprintf("Pending Child %d", i+1), map[string]interface{}{"parent_uuid": parent})
 		if err != nil {
 			t.Fatalf("failed to add pending child %d: %v", i+1, err)
 		}
@@ -151,7 +151,7 @@ func TestSiblingNumbering(t *testing.T) {
 	// Add 15 completed children
 	completedIDs := make([]string, 15)
 	for i := 0; i < 15; i++ {
-		id, err := store.Add(fmt.Sprintf("Completed Child %d", i+1), &parent, nil)
+		id, err := store.Add(fmt.Sprintf("Completed Child %d", i+1), map[string]interface{}{"parent_uuid": parent})
 		if err != nil {
 			t.Fatalf("failed to add completed child %d: %v", i+1, err)
 		}
@@ -224,17 +224,17 @@ func TestDeletedParentHandling(t *testing.T) {
 	defer func() { _ = store.Close() }()
 
 	// Create a hierarchy
-	parentID, err := store.Add("Parent", nil, nil)
+	parentID, err := store.Add("Parent", nil)
 	if err != nil {
 		t.Fatalf("failed to add parent: %v", err)
 	}
 
-	childID, err := store.Add("Child", &parentID, nil)
+	childID, err := store.Add("Child", map[string]interface{}{"parent_uuid": parentID})
 	if err != nil {
 		t.Fatalf("failed to add child: %v", err)
 	}
 
-	grandchildID, err := store.Add("Grandchild", &childID, nil)
+	grandchildID, err := store.Add("Grandchild", map[string]interface{}{"parent_uuid": childID})
 	if err != nil {
 		t.Fatalf("failed to add grandchild: %v", err)
 	}
@@ -286,12 +286,12 @@ func TestResolveComplexIDs(t *testing.T) {
 	defer func() { _ = store.Close() }()
 
 	// Create complex hierarchy
-	root, _ := store.Add("Root", nil, nil)
+	root, _ := store.Add("Root", nil)
 
 	// Add children with mixed status
 	var lastParent string
 	for i := 0; i < 3; i++ {
-		child, _ := store.Add(fmt.Sprintf("Child %d", i), &root, nil)
+		child, _ := store.Add(fmt.Sprintf("Child %d", i), map[string]interface{}{"parent_uuid": root})
 		if i == 1 {
 			_ = nanostore.SetStatus(store, child, "completed")
 			lastParent = child
@@ -300,7 +300,7 @@ func TestResolveComplexIDs(t *testing.T) {
 
 	// Add grandchildren to the completed child
 	for i := 0; i < 2; i++ {
-		gc, _ := store.Add(fmt.Sprintf("Grandchild %d", i), &lastParent, nil)
+		gc, _ := store.Add(fmt.Sprintf("Grandchild %d", i), map[string]interface{}{"parent_uuid": lastParent})
 		if i == 0 {
 			_ = nanostore.SetStatus(store, gc, "completed")
 		}

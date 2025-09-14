@@ -34,7 +34,7 @@ func TestIDResolutionNormalization(t *testing.T) {
 		defer func() { _ = store.Close() }()
 
 		// Create a document with high priority and pending status
-		docID, err := store.Add("Important Task", nil, map[string]string{
+		docID, err := store.Add("Important Task", map[string]interface{}{
 			"priority": "high",
 			"status":   "pending",
 		})
@@ -108,7 +108,7 @@ func TestIDResolutionNormalization(t *testing.T) {
 		defer func() { _ = store.Close() }()
 
 		// Create a document with all three prefix values
-		docID, err := store.Add("Critical Task", nil, map[string]string{
+		docID, err := store.Add("Critical Task", map[string]interface{}{
 			"priority": "high",
 			"status":   "pending",
 			"category": "urgent",
@@ -165,7 +165,7 @@ func TestIDResolutionNormalization(t *testing.T) {
 		defer func() { _ = store.Close() }()
 
 		// Create parent with high priority and done status
-		parentID, err := store.Add("Parent Task", nil, map[string]string{
+		parentID, err := store.Add("Parent Task", map[string]interface{}{
 			"priority": "high",
 			"status":   "done",
 		})
@@ -174,7 +174,7 @@ func TestIDResolutionNormalization(t *testing.T) {
 		}
 
 		// Create child with high priority
-		childID, err := store.Add("Child Task", &parentID, map[string]string{
+		childID, err := store.Add("Child Task", map[string]interface{}{"parent_uuid": parentID,
 			"priority": "high",
 		})
 		if err != nil {
@@ -221,7 +221,7 @@ func TestIDResolutionNormalization(t *testing.T) {
 		defer func() { _ = store.Close() }()
 
 		// Create a document
-		_, err = store.Add("Task", nil, map[string]string{
+		_, err = store.Add("Task", map[string]interface{}{
 			"priority": "high",
 		})
 		if err != nil {

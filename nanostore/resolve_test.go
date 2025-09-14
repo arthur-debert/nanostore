@@ -15,9 +15,9 @@ func TestResolveUUID(t *testing.T) {
 
 	// Create test documents
 	// Root documents
-	id1, _ := store.Add("First", nil, nil)
-	id2, _ := store.Add("Second", nil, nil)
-	id3, _ := store.Add("Third", nil, nil)
+	id1, _ := store.Add("First", nil)
+	id2, _ := store.Add("Second", nil)
+	id3, _ := store.Add("Third", nil)
 
 	// Mark one as completed
 	_ = nanostore.SetStatus(store, id3, "completed")
@@ -53,16 +53,16 @@ func TestResolveHierarchicalUUID(t *testing.T) {
 	defer func() { _ = store.Close() }()
 
 	// Create hierarchical structure
-	parentID, _ := store.Add("Parent", nil, nil)
-	child1ID, _ := store.Add("Child 1", &parentID, nil)
-	child2ID, _ := store.Add("Child 2", &parentID, nil)
-	child3ID, _ := store.Add("Child 3", &parentID, nil)
+	parentID, _ := store.Add("Parent", nil)
+	child1ID, _ := store.Add("Child 1", map[string]interface{}{"parent_uuid": parentID})
+	child2ID, _ := store.Add("Child 2", map[string]interface{}{"parent_uuid": parentID})
+	child3ID, _ := store.Add("Child 3", map[string]interface{}{"parent_uuid": parentID})
 
 	// Mark one child as completed
 	_ = nanostore.SetStatus(store, child3ID, "completed")
 
 	// Nested child
-	grandchildID, _ := store.Add("Grandchild", &child1ID, nil)
+	grandchildID, _ := store.Add("Grandchild", map[string]interface{}{"parent_uuid": child1ID})
 
 	// Test cases
 	tests := []struct {

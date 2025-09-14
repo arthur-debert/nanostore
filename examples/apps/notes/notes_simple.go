@@ -41,7 +41,7 @@ func (n *SimpleNotes) Add(title, content string, tags []string) (string, error) 
 		body = content + "\n\n#tags: " + strings.Join(tags, ", ")
 	}
 
-	uuid, err := n.store.Add(title, nil, nil)
+	uuid, err := n.store.Add(title, nil)
 	if err != nil {
 		return "", fmt.Errorf("failed to add note: %w", err)
 	}

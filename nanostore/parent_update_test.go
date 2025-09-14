@@ -15,17 +15,17 @@ func TestUpdateParent(t *testing.T) {
 		defer func() { _ = store.Close() }()
 
 		// Create two potential parents and a child
-		parent1ID, err := store.Add("Parent 1", nil, nil)
+		parent1ID, err := store.Add("Parent 1", nil)
 		if err != nil {
 			t.Fatalf("failed to add parent 1: %v", err)
 		}
 
-		parent2ID, err := store.Add("Parent 2", nil, nil)
+		parent2ID, err := store.Add("Parent 2", nil)
 		if err != nil {
 			t.Fatalf("failed to add parent 2: %v", err)
 		}
 
-		childID, err := store.Add("Child", &parent1ID, nil)
+		childID, err := store.Add("Child", map[string]interface{}{"parent_uuid": parent1ID})
 		if err != nil {
 			t.Fatalf("failed to add child: %v", err)
 		}
@@ -65,12 +65,12 @@ func TestUpdateParent(t *testing.T) {
 		defer func() { _ = store.Close() }()
 
 		// Create parent and child
-		parentID, err := store.Add("Parent", nil, nil)
+		parentID, err := store.Add("Parent", nil)
 		if err != nil {
 			t.Fatalf("failed to add parent: %v", err)
 		}
 
-		childID, err := store.Add("Child", &parentID, nil)
+		childID, err := store.Add("Child", map[string]interface{}{"parent_uuid": parentID})
 		if err != nil {
 			t.Fatalf("failed to add child: %v", err)
 		}
@@ -110,12 +110,12 @@ func TestUpdateParent(t *testing.T) {
 		defer func() { _ = store.Close() }()
 
 		// Create two root documents
-		root1ID, err := store.Add("Root 1", nil, nil)
+		root1ID, err := store.Add("Root 1", nil)
 		if err != nil {
 			t.Fatalf("failed to add root 1: %v", err)
 		}
 
-		root2ID, err := store.Add("Root 2", nil, nil)
+		root2ID, err := store.Add("Root 2", nil)
 		if err != nil {
 			t.Fatalf("failed to add root 2: %v", err)
 		}
@@ -155,7 +155,7 @@ func TestUpdateParent(t *testing.T) {
 		defer func() { _ = store.Close() }()
 
 		// Create a document
-		docID, err := store.Add("Document", nil, nil)
+		docID, err := store.Add("Document", nil)
 		if err != nil {
 			t.Fatalf("failed to add document: %v", err)
 		}
@@ -180,17 +180,17 @@ func TestUpdateParent(t *testing.T) {
 		defer func() { _ = store.Close() }()
 
 		// Create a chain: A -> B -> C
-		aID, err := store.Add("A", nil, nil)
+		aID, err := store.Add("A", nil)
 		if err != nil {
 			t.Fatalf("failed to add A: %v", err)
 		}
 
-		bID, err := store.Add("B", &aID, nil)
+		bID, err := store.Add("B", map[string]interface{}{"parent_uuid": aID})
 		if err != nil {
 			t.Fatalf("failed to add B: %v", err)
 		}
 
-		cID, err := store.Add("C", &bID, nil)
+		cID, err := store.Add("C", map[string]interface{}{"parent_uuid": bID})
 		if err != nil {
 			t.Fatalf("failed to add C: %v", err)
 		}
@@ -215,12 +215,12 @@ func TestUpdateParent(t *testing.T) {
 		defer func() { _ = store.Close() }()
 
 		// Create parent and child
-		parentID, err := store.Add("Parent", nil, nil)
+		parentID, err := store.Add("Parent", nil)
 		if err != nil {
 			t.Fatalf("failed to add parent: %v", err)
 		}
 
-		childID, err := store.Add("Child", &parentID, nil)
+		childID, err := store.Add("Child", map[string]interface{}{"parent_uuid": parentID})
 		if err != nil {
 			t.Fatalf("failed to add child: %v", err)
 		}
@@ -261,7 +261,7 @@ func TestUpdateParent(t *testing.T) {
 		defer func() { _ = store.Close() }()
 
 		// Create a document
-		docID, err := store.Add("Document", nil, nil)
+		docID, err := store.Add("Document", nil)
 		if err != nil {
 			t.Fatalf("failed to add document: %v", err)
 		}
@@ -284,12 +284,12 @@ func TestUpdateParent(t *testing.T) {
 		defer func() { _ = store.Close() }()
 
 		// Create parent and child
-		parentID, err := store.Add("Parent", nil, nil)
+		parentID, err := store.Add("Parent", nil)
 		if err != nil {
 			t.Fatalf("failed to add parent: %v", err)
 		}
 
-		childID, err := store.Add("Child", &parentID, nil)
+		childID, err := store.Add("Child", map[string]interface{}{"parent_uuid": parentID})
 		if err != nil {
 			t.Fatalf("failed to add child: %v", err)
 		}
@@ -335,12 +335,12 @@ func TestUpdateParentComplexHierarchy(t *testing.T) {
 	// Root2
 	//   └── Child3
 
-	root1ID, _ := store.Add("Root1", nil, nil)
-	root2ID, _ := store.Add("Root2", nil, nil)
-	child1ID, _ := store.Add("Child1", &root1ID, nil)
-	child2ID, _ := store.Add("Child2", &root1ID, nil)
-	child3ID, _ := store.Add("Child3", &root2ID, nil)
-	grandchild1ID, _ := store.Add("Grandchild1", &child1ID, nil)
+	root1ID, _ := store.Add("Root1", nil)
+	root2ID, _ := store.Add("Root2", nil)
+	child1ID, _ := store.Add("Child1", map[string]interface{}{"parent_uuid": root1ID})
+	child2ID, _ := store.Add("Child2", map[string]interface{}{"parent_uuid": root1ID})
+	child3ID, _ := store.Add("Child3", map[string]interface{}{"parent_uuid": root2ID})
+	grandchild1ID, _ := store.Add("Grandchild1", map[string]interface{}{"parent_uuid": child1ID})
 
 	t.Run("move subtree to different root", func(t *testing.T) {
 		// Move Child1 (and its subtree) to Root2

@@ -15,7 +15,7 @@ func TestDelete(t *testing.T) {
 		defer func() { _ = store.Close() }()
 
 		// Create a document
-		id, err := store.Add("Test Document", nil, nil)
+		id, err := store.Add("Test Document", nil)
 		if err != nil {
 			t.Fatalf("failed to add document: %v", err)
 		}
@@ -61,12 +61,12 @@ func TestDelete(t *testing.T) {
 		defer func() { _ = store.Close() }()
 
 		// Create parent and child
-		parentID, err := store.Add("Parent", nil, nil)
+		parentID, err := store.Add("Parent", nil)
 		if err != nil {
 			t.Fatalf("failed to add parent: %v", err)
 		}
 
-		_, err = store.Add("Child", &parentID, nil)
+		_, err = store.Add("Child", map[string]interface{}{"parent_uuid": parentID})
 		if err != nil {
 			t.Fatalf("failed to add child: %v", err)
 		}
@@ -75,8 +75,7 @@ func TestDelete(t *testing.T) {
 		err = store.Delete(parentID, false)
 		if err == nil {
 			t.Error("expected error when deleting parent without cascade")
-		}
-		if err.Error() != "cannot delete document with children unless cascade is true" {
+		} else if err.Error() != "cannot delete document with children unless cascade is true" {
 			t.Errorf("unexpected error: %v", err)
 		}
 
@@ -98,27 +97,27 @@ func TestDelete(t *testing.T) {
 		defer func() { _ = store.Close() }()
 
 		// Create parent with multiple children and grandchildren
-		parentID, err := store.Add("Parent", nil, nil)
+		parentID, err := store.Add("Parent", nil)
 		if err != nil {
 			t.Fatalf("failed to add parent: %v", err)
 		}
 
-		child1ID, err := store.Add("Child 1", &parentID, nil)
+		child1ID, err := store.Add("Child 1", map[string]interface{}{"parent_uuid": parentID})
 		if err != nil {
 			t.Fatalf("failed to add child 1: %v", err)
 		}
 
-		child2ID, err := store.Add("Child 2", &parentID, nil)
+		child2ID, err := store.Add("Child 2", map[string]interface{}{"parent_uuid": parentID})
 		if err != nil {
 			t.Fatalf("failed to add child 2: %v", err)
 		}
 
-		_, err = store.Add("Grandchild 1", &child1ID, nil)
+		_, err = store.Add("Grandchild 1", map[string]interface{}{"parent_uuid": child1ID})
 		if err != nil {
 			t.Fatalf("failed to add grandchild 1: %v", err)
 		}
 
-		_, err = store.Add("Grandchild 2", &child2ID, nil)
+		_, err = store.Add("Grandchild 2", map[string]interface{}{"parent_uuid": child2ID})
 		if err != nil {
 			t.Fatalf("failed to add grandchild 2: %v", err)
 		}
@@ -147,23 +146,23 @@ func TestDelete(t *testing.T) {
 		defer func() { _ = store.Close() }()
 
 		// Create grandparent -> parent -> child hierarchy
-		grandparentID, err := store.Add("Grandparent", nil, nil)
+		grandparentID, err := store.Add("Grandparent", nil)
 		if err != nil {
 			t.Fatalf("failed to add grandparent: %v", err)
 		}
 
-		parentID, err := store.Add("Parent", &grandparentID, nil)
+		parentID, err := store.Add("Parent", map[string]interface{}{"parent_uuid": grandparentID})
 		if err != nil {
 			t.Fatalf("failed to add parent: %v", err)
 		}
 
-		childID, err := store.Add("Child", &parentID, nil)
+		childID, err := store.Add("Child", map[string]interface{}{"parent_uuid": parentID})
 		if err != nil {
 			t.Fatalf("failed to add child: %v", err)
 		}
 
 		// Also add a sibling to the parent
-		_, err = store.Add("Sibling", &grandparentID, nil)
+		_, err = store.Add("Sibling", map[string]interface{}{"parent_uuid": grandparentID})
 		if err != nil {
 			t.Fatalf("failed to add sibling: %v", err)
 		}
@@ -213,12 +212,12 @@ func TestDelete(t *testing.T) {
 		defer func() { _ = store.Close() }()
 
 		// Create parent -> child hierarchy
-		parentID, err := store.Add("Parent", nil, nil)
+		parentID, err := store.Add("Parent", nil)
 		if err != nil {
 			t.Fatalf("failed to add parent: %v", err)
 		}
 
-		childID, err := store.Add("Child", &parentID, nil)
+		childID, err := store.Add("Child", map[string]interface{}{"parent_uuid": parentID})
 		if err != nil {
 			t.Fatalf("failed to add child: %v", err)
 		}
@@ -250,17 +249,17 @@ func TestDelete(t *testing.T) {
 		defer func() { _ = store.Close() }()
 
 		// Create parent with children of different statuses
-		parentID, err := store.Add("Parent", nil, nil)
+		parentID, err := store.Add("Parent", nil)
 		if err != nil {
 			t.Fatalf("failed to add parent: %v", err)
 		}
 
-		_, err = store.Add("Pending Child", &parentID, nil)
+		_, err = store.Add("Pending Child", map[string]interface{}{"parent_uuid": parentID})
 		if err != nil {
 			t.Fatalf("failed to add child 1: %v", err)
 		}
 
-		child2ID, err := store.Add("Completed Child", &parentID, nil)
+		child2ID, err := store.Add("Completed Child", map[string]interface{}{"parent_uuid": parentID})
 		if err != nil {
 			t.Fatalf("failed to add child 2: %v", err)
 		}
@@ -301,7 +300,7 @@ func TestDeleteConcurrent(t *testing.T) {
 	// Create multiple documents
 	var ids []string
 	for i := 0; i < 10; i++ {
-		id, err := store.Add("Document", nil, nil)
+		id, err := store.Add("Document", nil)
 		if err != nil {
 			t.Fatalf("failed to add document: %v", err)
 		}
@@ -368,7 +367,11 @@ func TestDeleteEdgeCases(t *testing.T) {
 			if currentParentID != "" {
 				parentID = &currentParentID
 			}
-			id, err := store.Add("Level", parentID, nil)
+			dimensions := make(map[string]interface{})
+			if parentID != nil {
+				dimensions["parent_uuid"] = *parentID
+			}
+			id, err := store.Add("Level", dimensions)
 			if err != nil {
 				t.Fatalf("failed to add level %d: %v", i, err)
 			}

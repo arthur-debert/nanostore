@@ -38,7 +38,12 @@ func TestResolveUUIDPerformance(t *testing.T) {
 			dimensions["status"] = "done"
 		}
 
-		_, err := store.Add(title, nil, dimensions)
+		// Convert string map to interface{} map for the new API
+		dims := make(map[string]interface{})
+		for k, v := range dimensions {
+			dims[k] = v
+		}
+		_, err := store.Add(title, dims)
 		if err != nil {
 			t.Fatalf("Failed to add document %d: %v", i+1, err)
 		}
@@ -154,7 +159,7 @@ func BenchmarkResolveUUID(b *testing.B) {
 			status = "blocked"
 		}
 
-		_, err := store.Add(fmt.Sprintf("Doc %d", i+1), nil, map[string]string{"status": status})
+		_, err := store.Add(fmt.Sprintf("Doc %d", i+1), map[string]interface{}{"status": status})
 		if err != nil {
 			b.Fatalf("Failed to add document: %v", err)
 		}

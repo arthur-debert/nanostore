@@ -15,11 +15,11 @@ func TestNoFilterHierarchy(t *testing.T) {
 	defer store.Close()
 
 	// Add documents
-	rootID, _ := store.Add("Groceries", nil, nil)
-	store.Add("Milk", &rootID, nil)
-	store.Add("Bread", &rootID, nil)
-	store.Add("Eggs", &rootID, nil)
-	store.Add("Pack for Trip", nil, nil)
+	rootID, _ := store.Add("Groceries", nil)
+	store.Add("Milk", map[string]interface{}{"parent_uuid": rootID})
+	store.Add("Bread", map[string]interface{}{"parent_uuid": rootID})
+	store.Add("Eggs", map[string]interface{}{"parent_uuid": rootID})
+	store.Add("Pack for Trip", nil)
 
 	// List WITHOUT any filters
 	t.Logf("\nListing without filters:")

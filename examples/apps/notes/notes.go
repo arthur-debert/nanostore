@@ -64,7 +64,7 @@ func (n *Notes) Add(title, content string, tags []string) (string, error) {
 		body = content + "\n\n#tags: " + strings.Join(tags, ", ")
 	}
 
-	uuid, err := n.store.Add(title, nil, dimensions)
+	uuid, err := n.store.Add(title, dimensions)
 	if err != nil {
 		return "", fmt.Errorf("failed to add note: %w", err)
 	}
