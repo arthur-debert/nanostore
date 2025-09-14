@@ -59,3 +59,23 @@ func (b *sqlBuilder) buildDynamicUpdate(columns []string, values []interface{}, 
 
 	return update.ToSql()
 }
+
+// buildDelete builds a safe DELETE query with a single condition
+func (b *sqlBuilder) buildDelete(table string, condition squirrel.Eq) (string, []interface{}, error) {
+	if len(condition) == 0 {
+		return "", nil, fmt.Errorf("no condition specified for delete")
+	}
+
+	deleteQuery := b.sq.Delete(table).Where(condition)
+	return deleteQuery.ToSql()
+}
+
+// buildDeleteWhere builds a safe DELETE query with a custom where clause
+func (b *sqlBuilder) buildDeleteWhere(table string, whereClause interface{}, args ...interface{}) (string, []interface{}, error) {
+	if whereClause == nil {
+		return "", nil, fmt.Errorf("no where clause specified for delete")
+	}
+
+	deleteQuery := b.sq.Delete(table).Where(whereClause, args...)
+	return deleteQuery.ToSql()
+}

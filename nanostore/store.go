@@ -544,10 +544,13 @@ func (s *store) DeleteByDimension(dimension string, value string) (int, error) {
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	// Build query with parameter placeholder for safety
-	query := fmt.Sprintf("DELETE FROM documents WHERE %s = ?", dimension)
+	// Build query using SQL builder
+	query, args, err := s.sqlBuilder.buildDelete("documents", squirrel.Eq{dimension: value})
+	if err != nil {
+		return 0, fmt.Errorf("failed to build delete query: %w", err)
+	}
 
-	result, err := tx.Exec(query, value)
+	result, err := tx.Exec(query, args...)
 	if err != nil {
 		return 0, fmt.Errorf("failed to delete documents where %s='%s': %w", dimension, value, err)
 	}
@@ -576,10 +579,13 @@ func (s *store) DeleteWhere(whereClause string, args ...interface{}) (int, error
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	// Build the DELETE query
-	query := fmt.Sprintf("DELETE FROM documents WHERE %s", whereClause)
+	// Build the DELETE query using SQL builder
+	query, sqlArgs, err := s.sqlBuilder.buildDeleteWhere("documents", whereClause, args...)
+	if err != nil {
+		return 0, fmt.Errorf("failed to build delete query: %w", err)
+	}
 
-	result, err := tx.Exec(query, args...)
+	result, err := tx.Exec(query, sqlArgs...)
 	if err != nil {
 		return 0, fmt.Errorf("failed to delete documents with where clause '%s': %w", whereClause, err)
 	}
