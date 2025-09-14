@@ -54,7 +54,7 @@ func (n *Notes) Close() error {
 // Add creates a new note with optional tags
 func (n *Notes) Add(title, content string, tags []string) (string, error) {
 	// Map live status to pending
-	dimensions := map[string]string{
+	dimensions := map[string]interface{}{
 		"status": "pending",
 	}
 
