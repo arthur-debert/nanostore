@@ -2,6 +2,7 @@ package engine
 
 import (
 	"database/sql"
+	_ "embed"
 	"fmt"
 	"strings"
 	"time"
@@ -11,6 +12,17 @@ import (
 	"github.com/google/uuid"
 	_ "github.com/mattn/go-sqlite3"
 )
+
+// Embedded SQL files
+//
+//go:embed sql/base_schema.sql
+var baseSchemaSQL string
+
+//go:embed sql/check_circular_reference.sql
+var checkCircularReferenceSQL string
+
+//go:embed sql/delete_cascade.sql
+var deleteCascadeSQL string
 
 // configurableStore implements a store with dynamic dimension configuration
 type configurableStore struct {
@@ -69,21 +81,8 @@ func (s *configurableStore) Close() error {
 
 // migrateBase runs the core schema migrations
 func (s *configurableStore) migrateBase() error {
-	// Create base documents table without dimension columns
-	baseSchema := `
-	CREATE TABLE IF NOT EXISTS documents (
-		uuid TEXT PRIMARY KEY,
-		title TEXT NOT NULL,
-		body TEXT NOT NULL DEFAULT '',
-		created_at INTEGER NOT NULL,
-		updated_at INTEGER NOT NULL
-	);
-
-	CREATE INDEX IF NOT EXISTS idx_documents_created_at ON documents(created_at);
-	CREATE INDEX IF NOT EXISTS idx_documents_updated_at ON documents(updated_at);
-	`
-
-	if _, err := s.db.Exec(baseSchema); err != nil {
+	// Execute base schema from embedded SQL file
+	if _, err := s.db.Exec(baseSchemaSQL); err != nil {
 		return fmt.Errorf("failed to create base schema: %w", err)
 	}
 
@@ -254,24 +253,10 @@ func (s *configurableStore) Update(id string, updates types.UpdateRequest) error
 					return fmt.Errorf("cannot set document as its own parent")
 				}
 
-				// Check for circular references
+				// Check for circular references using embedded SQL
 				// This query traverses the parent chain to see if setting this parent would create a cycle
-				checkQuery := `
-					WITH RECURSIVE parent_chain AS (
-						-- Start with the proposed parent
-						SELECT uuid, parent_uuid FROM documents WHERE uuid = ?
-						UNION ALL
-						-- Recursively follow parent links
-						SELECT d.uuid, d.parent_uuid 
-						FROM documents d
-						JOIN parent_chain pc ON d.uuid = pc.parent_uuid
-					)
-					-- Check if the document we're updating appears in the parent chain
-					SELECT COUNT(*) FROM parent_chain WHERE uuid = ?
-				`
-
 				var cycle int
-				err = tx.QueryRow(checkQuery, *updates.ParentID, id).Scan(&cycle)
+				err = tx.QueryRow(checkCircularReferenceSQL, *updates.ParentID, id).Scan(&cycle)
 				if err != nil {
 					return fmt.Errorf("failed to check for circular reference: %w", err)
 				}
@@ -541,17 +526,8 @@ func (s *configurableStore) Delete(id string, cascade bool) error {
 	if cascade {
 		hierDim := s.findHierarchicalDimension()
 		if hierDim != nil {
-			// Use recursive CTE to delete all descendants
-			query := fmt.Sprintf(`
-				WITH RECURSIVE descendants AS (
-					SELECT uuid FROM documents WHERE uuid = ?
-					UNION ALL
-					SELECT d.uuid 
-					FROM documents d
-					INNER JOIN descendants desc ON d.%s = desc.uuid
-				)
-				DELETE FROM documents WHERE uuid IN (SELECT uuid FROM descendants)
-			`, hierDim.RefField)
+			// Use recursive CTE to delete all descendants from embedded SQL
+			query := fmt.Sprintf(deleteCascadeSQL, hierDim.RefField)
 
 			result, err := tx.Exec(query, id)
 			if err != nil {
