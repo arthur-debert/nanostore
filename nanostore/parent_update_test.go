@@ -8,24 +8,24 @@ import (
 
 func TestUpdateParent(t *testing.T) {
 	t.Run("move document to new parent", func(t *testing.T) {
-		store, err := nanostore.New(":memory:")
+		store, err := nanostore.NewTestStore(":memory:")
 		if err != nil {
 			t.Fatalf("failed to create store: %v", err)
 		}
 		defer func() { _ = store.Close() }()
 
 		// Create two potential parents and a child
-		parent1ID, err := store.Add("Parent 1", nil)
+		parent1ID, err := store.Add("Parent 1", nil, nil)
 		if err != nil {
 			t.Fatalf("failed to add parent 1: %v", err)
 		}
 
-		parent2ID, err := store.Add("Parent 2", nil)
+		parent2ID, err := store.Add("Parent 2", nil, nil)
 		if err != nil {
 			t.Fatalf("failed to add parent 2: %v", err)
 		}
 
-		childID, err := store.Add("Child", &parent1ID)
+		childID, err := store.Add("Child", &parent1ID, nil)
 		if err != nil {
 			t.Fatalf("failed to add child: %v", err)
 		}
@@ -58,19 +58,19 @@ func TestUpdateParent(t *testing.T) {
 	})
 
 	t.Run("make child document a root", func(t *testing.T) {
-		store, err := nanostore.New(":memory:")
+		store, err := nanostore.NewTestStore(":memory:")
 		if err != nil {
 			t.Fatalf("failed to create store: %v", err)
 		}
 		defer func() { _ = store.Close() }()
 
 		// Create parent and child
-		parentID, err := store.Add("Parent", nil)
+		parentID, err := store.Add("Parent", nil, nil)
 		if err != nil {
 			t.Fatalf("failed to add parent: %v", err)
 		}
 
-		childID, err := store.Add("Child", &parentID)
+		childID, err := store.Add("Child", &parentID, nil)
 		if err != nil {
 			t.Fatalf("failed to add child: %v", err)
 		}
@@ -104,19 +104,19 @@ func TestUpdateParent(t *testing.T) {
 	})
 
 	t.Run("make root document a child", func(t *testing.T) {
-		store, err := nanostore.New(":memory:")
+		store, err := nanostore.NewTestStore(":memory:")
 		if err != nil {
 			t.Fatalf("failed to create store: %v", err)
 		}
 		defer func() { _ = store.Close() }()
 
 		// Create two root documents
-		root1ID, err := store.Add("Root 1", nil)
+		root1ID, err := store.Add("Root 1", nil, nil)
 		if err != nil {
 			t.Fatalf("failed to add root 1: %v", err)
 		}
 
-		root2ID, err := store.Add("Root 2", nil)
+		root2ID, err := store.Add("Root 2", nil, nil)
 		if err != nil {
 			t.Fatalf("failed to add root 2: %v", err)
 		}
@@ -149,14 +149,14 @@ func TestUpdateParent(t *testing.T) {
 	})
 
 	t.Run("prevent self-parent", func(t *testing.T) {
-		store, err := nanostore.New(":memory:")
+		store, err := nanostore.NewTestStore(":memory:")
 		if err != nil {
 			t.Fatalf("failed to create store: %v", err)
 		}
 		defer func() { _ = store.Close() }()
 
 		// Create a document
-		docID, err := store.Add("Document", nil)
+		docID, err := store.Add("Document", nil, nil)
 		if err != nil {
 			t.Fatalf("failed to add document: %v", err)
 		}
@@ -174,24 +174,24 @@ func TestUpdateParent(t *testing.T) {
 	})
 
 	t.Run("prevent circular reference", func(t *testing.T) {
-		store, err := nanostore.New(":memory:")
+		store, err := nanostore.NewTestStore(":memory:")
 		if err != nil {
 			t.Fatalf("failed to create store: %v", err)
 		}
 		defer func() { _ = store.Close() }()
 
 		// Create a chain: A -> B -> C
-		aID, err := store.Add("A", nil)
+		aID, err := store.Add("A", nil, nil)
 		if err != nil {
 			t.Fatalf("failed to add A: %v", err)
 		}
 
-		bID, err := store.Add("B", &aID)
+		bID, err := store.Add("B", &aID, nil)
 		if err != nil {
 			t.Fatalf("failed to add B: %v", err)
 		}
 
-		cID, err := store.Add("C", &bID)
+		cID, err := store.Add("C", &bID, nil)
 		if err != nil {
 			t.Fatalf("failed to add C: %v", err)
 		}
@@ -209,19 +209,19 @@ func TestUpdateParent(t *testing.T) {
 	})
 
 	t.Run("update parent with other fields", func(t *testing.T) {
-		store, err := nanostore.New(":memory:")
+		store, err := nanostore.NewTestStore(":memory:")
 		if err != nil {
 			t.Fatalf("failed to create store: %v", err)
 		}
 		defer func() { _ = store.Close() }()
 
 		// Create parent and child
-		parentID, err := store.Add("Parent", nil)
+		parentID, err := store.Add("Parent", nil, nil)
 		if err != nil {
 			t.Fatalf("failed to add parent: %v", err)
 		}
 
-		childID, err := store.Add("Child", &parentID)
+		childID, err := store.Add("Child", &parentID, nil)
 		if err != nil {
 			t.Fatalf("failed to add child: %v", err)
 		}
@@ -256,14 +256,14 @@ func TestUpdateParent(t *testing.T) {
 	})
 
 	t.Run("update to non-existent parent", func(t *testing.T) {
-		store, err := nanostore.New(":memory:")
+		store, err := nanostore.NewTestStore(":memory:")
 		if err != nil {
 			t.Fatalf("failed to create store: %v", err)
 		}
 		defer func() { _ = store.Close() }()
 
 		// Create a document
-		docID, err := store.Add("Document", nil)
+		docID, err := store.Add("Document", nil, nil)
 		if err != nil {
 			t.Fatalf("failed to add document: %v", err)
 		}
@@ -279,19 +279,19 @@ func TestUpdateParent(t *testing.T) {
 	})
 
 	t.Run("nil parent means no change", func(t *testing.T) {
-		store, err := nanostore.New(":memory:")
+		store, err := nanostore.NewTestStore(":memory:")
 		if err != nil {
 			t.Fatalf("failed to create store: %v", err)
 		}
 		defer func() { _ = store.Close() }()
 
 		// Create parent and child
-		parentID, err := store.Add("Parent", nil)
+		parentID, err := store.Add("Parent", nil, nil)
 		if err != nil {
 			t.Fatalf("failed to add parent: %v", err)
 		}
 
-		childID, err := store.Add("Child", &parentID)
+		childID, err := store.Add("Child", &parentID, nil)
 		if err != nil {
 			t.Fatalf("failed to add child: %v", err)
 		}
@@ -323,7 +323,7 @@ func TestUpdateParent(t *testing.T) {
 }
 
 func TestUpdateParentComplexHierarchy(t *testing.T) {
-	store, err := nanostore.New(":memory:")
+	store, err := nanostore.NewTestStore(":memory:")
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
@@ -337,12 +337,12 @@ func TestUpdateParentComplexHierarchy(t *testing.T) {
 	// Root2
 	//   └── Child3
 
-	root1ID, _ := store.Add("Root1", nil)
-	root2ID, _ := store.Add("Root2", nil)
-	child1ID, _ := store.Add("Child1", &root1ID)
-	child2ID, _ := store.Add("Child2", &root1ID)
-	child3ID, _ := store.Add("Child3", &root2ID)
-	grandchild1ID, _ := store.Add("Grandchild1", &child1ID)
+	root1ID, _ := store.Add("Root1", nil, nil)
+	root2ID, _ := store.Add("Root2", nil, nil)
+	child1ID, _ := store.Add("Child1", &root1ID, nil)
+	child2ID, _ := store.Add("Child2", &root1ID, nil)
+	child3ID, _ := store.Add("Child3", &root2ID, nil)
+	grandchild1ID, _ := store.Add("Grandchild1", &child1ID, nil)
 
 	t.Run("move subtree to different root", func(t *testing.T) {
 		// Move Child1 (and its subtree) to Root2

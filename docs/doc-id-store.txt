@@ -1,48 +1,62 @@
-Title: Proposal for an Integrated Document and ID Store: microdoc
+Title: Proposal for a Configurable Document and ID Store: nanostore
 
 Summary:
       
-      This document proposes a new library to replace the current pkg/idm and parts of
-      pkg/too/store. The new library will be an integrated system, built on SQLite, that
-      manages both the storage of documents (todos) and the dynamic generation of
-      user-facing, contiguous IDs. This approach aims to drastically simplify the
-      application's architecture, improve performance, and provide a more robust foundation
-      for ID management.
+      This document proposes a new library that provides configurable, user-facing ID 
+      generation for document storage systems. The library will be built on SQLite and 
+      allow applications to define their own ID partitioning dimensions (status, priority, 
+      team, etc.) rather than being locked into hardcoded bucketing logic. This approach 
+      aims to provide a reusable foundation for CLI tools and interactive applications 
+      that need human-friendly, contiguous IDs.
 
 1. Problem Statement:
       
-      The current system for managing user-facing IDs suffers from several issues:
+      Current document storage solutions with user-facing IDs suffer from several issues:
 
-      1.1.  User Experience: Infinitely incrementing, non-contiguous IDs (e.g., 1434, 1436,
-      ) are user-unfriendly for a CLI tool. Users expect lists to start at 1.
+      1.1.  Hardcoded Dimensions: Existing solutions hardcode specific partitioning logic 
+            (e.g., status="pending" vs "completed"). Applications with different business 
+            domains (priority levels, team assignments, project phases) cannot reuse the 
+            same ID generation logic.
 
-      1.2.  Architectural Complexity: The decoupling of the ID management (pkg/idm) from the
-            document store (pkg/too/store) creates significant complexity. The application layer
-            must act as an orchestrator, fetching data, filtering and sorting it in Go, and then
-            passing the result to the ID manager to get the final view. This is inefficient and
-            error-prone.
+      1.2.  User Experience: Infinitely incrementing, non-contiguous IDs (e.g., 1434, 1436)
+            are user-unfriendly for CLI tools. Users expect lists to start at 1 within 
+            meaningful contexts.
 
-      1.3.  Imperative Logic: Much of the current logic for filtering, sorting, and grouping
-            by dimensions (like status or parent) is handled imperatively in Go code. This is
-            complex to maintain and less efficient than a declarative approach.
+      1.3.  Architectural Complexity: The decoupling of ID management from document storage
+            creates significant complexity. Applications must orchestrate multiple components,
+            fetching data, filtering and sorting it, then generating appropriate IDs.
 
-      1.4.  Hierarchical IDs: The combination of nested todos and different status dimensions
-            (pending, completed) makes ID generation and resolution a non-trivial problem that
-            the current system solves with high complexity.
+      1.4.  Inflexible ID Formats: Fixed ID formats (like "c1" for completed items) don't 
+            adapt to different domain vocabularies. A project management tool might want 
+            "h1" for high-priority items, while a support system wants "r1" for resolved 
+            tickets.
+
+      1.5.  Mixed Dimension Types: Real applications need both enumerated dimensions 
+            (status, priority) and relational dimensions (parent-child, project-membership).
+            Current systems typically handle only one pattern well.
 
 2. Proposed Solution:
       
-      The proposal is to create a new, self-contained library that encapsulates both
-            storage and ID logic using an embedded SQLite database.
+      The proposal is to create a configurable document and ID store library that allows
+      applications to define their own ID partitioning dimensions at initialization time.
 
-      This library will be the single source of truth for the application. The application
-            will no longer fetch raw data and transform it. Instead, it will ask the library for
-            a "view" of the data, and the library will return a list of items complete with the
-            correct, user-facing IDs for that specific view.
+      Key Components:
+      2.1.  Dimension Configuration: Applications specify their ID bucketing requirements
+            through a declarative configuration, defining both enumerated dimensions 
+            (status, priority, team) and relational dimensions (parent-child hierarchies, 
+            project membership).
 
-      All complex logic for filtering, sorting, handling hierarchies, and generating
-            contiguous IDs will be contained within the library, primarily implemented using
-            declarative SQL queries.
+      2.2.  Dynamic Schema Generation: The library automatically generates appropriate
+            SQLite schema based on the configured dimensions, adding necessary columns,
+            indexes, and constraints.
+
+      2.3.  Configurable ID Generation: SQL queries with ROW_NUMBER() partitioning are
+            generated dynamically based on the dimension configuration, allowing flexible
+            ID formats like "h2.1.r3" (high-priority, parent.child, resolved).
+
+      2.4.  Flexible ID Resolution: The parsing and resolution logic adapts to the 
+            configured dimensions, handling arbitrary prefix combinations and hierarchical
+            structures.
 
 3. Key Design Principles:
 
@@ -71,104 +85,264 @@ Summary:
             view and rendering the result, leading to cleaner, more maintainable code in the
             `cmd` layer.
 
-4.Data Model / Schema:
+4. Dimension Types and Configuration:
 
-      A single `documents` table in SQLite is sufficient to start.
+      4.1. Enumerated Dimensions:
+      Predefined value sets with optional prefix mapping for ID generation.
+      
+      Example: Status dimension with values ["pending", "completed", "blocked"]
+      - "pending" items get IDs: 1, 2, 3...
+      - "completed" items get IDs with "c" prefix: c1, c2, c3...  
+      - "blocked" items get IDs with "b" prefix: b1, b2, b3...
 
-            CREATE TABLE documents (
-            uuid TEXT PRIMARY KEY,
-            title TEXT NOT NULL,
-            body TEXT,
-            status TEXT NOT NULL DEFAULT 'pending',
-            parent_uuid TEXT,
-            created_at INTEGER NOT NULL,
-            updated_at INTEGER NOT NULL,
-            FOREIGN KEY (parent_uuid) REFERENCES documents(uuid)
-            );
+      4.2. Hierarchical Dimensions:
+      Self-referencing relationships that create parent-child structures.
+      
+      Example: Parent dimension creating nested structures
+      - Root items: 1, 2, 3...
+      - Children of item 1: 1.1, 1.2, 1.3...
+      - Grandchildren of 1.2: 1.2.1, 1.2.2...
 
-      - uuid: A unique, stable identifier (e.g., UUIDv4).
-      - status: A string representing the primary dimension (e.g., 'pending', 'completed').
-      - parent_uuid: A self-referencing foreign key to handle nesting. NULL for root items.
-      - created_at: Unix timestamp for default sorting.
+      4.3. Configuration API:
+      ```go
+      type DimensionConfig struct {
+          Name     string                 // Database column name
+          Type     DimensionType          // Enumerated or Hierarchical
+          Values   []string               // Valid values (enumerated only)
+          Prefixes map[string]string      // Value -> prefix mapping
+          RefField string                 // Referenced field (hierarchical only)
+      }
 
-4. API Design Sketch:
+      config := Config{
+          Dimensions: []DimensionConfig{
+              {
+                  Name: "status",
+                  Type: Enumerated,
+                  Values: []string{"pending", "completed", "blocked"},
+                  Prefixes: map[string]string{
+                      "completed": "c",
+                      "blocked":   "b",
+                  },
+              },
+              {
+                  Name: "priority", 
+                  Type: Enumerated,
+                  Values: []string{"low", "normal", "high"},
+                  Prefixes: map[string]string{"high": "h"},
+              },
+              {
+                  Name: "parent",
+                  Type: Hierarchical,
+                  RefField: "parent_uuid",
+              },
+          },
+      }
+      ```
 
-      package docstore
+5. Dynamic Schema Generation:
+
+      The library generates SQLite schema based on dimension configuration:
+
+      Base table (always present):
+      ```sql
+      CREATE TABLE documents (
+          uuid TEXT PRIMARY KEY,
+          title TEXT NOT NULL,
+          body TEXT DEFAULT '',
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL
+      );
+      ```
+
+      Additional columns per dimension:
+      ```sql
+      -- For enumerated dimensions
+      ALTER TABLE documents ADD COLUMN status TEXT DEFAULT 'pending' 
+          CHECK (status IN ('pending', 'completed', 'blocked'));
+      ALTER TABLE documents ADD COLUMN priority TEXT DEFAULT 'normal'
+          CHECK (priority IN ('low', 'normal', 'high'));
+      
+      -- For hierarchical dimensions  
+      ALTER TABLE documents ADD COLUMN parent_uuid TEXT
+          REFERENCES documents(uuid) ON DELETE CASCADE;
+      ```
+
+      Indexes for performance:
+      ```sql
+      CREATE INDEX idx_documents_status ON documents(status, created_at);
+      CREATE INDEX idx_documents_priority ON documents(priority, created_at);
+      CREATE INDEX idx_documents_parent ON documents(parent_uuid, created_at);
+      ```
+
+6. API Design Sketch:
+
+      ```go
+      package nanostore
+
+      // Configuration for dimension-aware ID generation
+      type Config struct {
+          Dimensions []DimensionConfig
+      }
+
+      type DimensionConfig struct {
+          Name     string
+          Type     DimensionType
+          Values   []string
+          Prefixes map[string]string
+          RefField string
+      }
+
+      type DimensionType int
+      const (
+          Enumerated DimensionType = iota
+          Hierarchical
+      )
 
       // The main library handle
       type Store struct {
-      db *sql.DB
+          db     *sql.DB
+          config Config
       }
 
-      // Options for querying a view of the documents
+      // Initialization with configuration
+      func NewWithConfig(dbPath string, config Config) (*Store, error) {
+          // Validates configuration
+          // Generates and applies schema migrations
+          // Returns configured store
+      }
+
+      // Flexible filtering based on configured dimensions
       type ListOptions struct {
-      FilterByStatus   []string
-      FilterByParent   *string // UUID of the parent, nil for root
-      FilterBySearch   string
+          Filters map[string]interface{} // dimension_name -> filter_value
+          Search  string
       }
 
-      // The object returned to the application, including the generated ID
-      type ViewItem struct {
-      UUID          string
-      Title         string
-      Status        string
-      ParentUUID    *string
-      UserFacingID  string // e.g., "1", "c1", "1.2", "1.c2"
+      // The object returned to the application, including generated ID
+      type Document struct {
+          UUID         string
+          UserFacingID string
+          Title        string
+          Body         string
+          Dimensions   map[string]interface{} // dimension_name -> value
+          CreatedAt    time.Time
+          UpdatedAt    time.Time
       }
 
       // Primary read method
-      func (s *Store) List(opts ListOptions) ([]ViewItem, error) {
-      // Builds and executes a SQL query with ROW_NUMBER()
-      // Formats the final UserFacingID string in Go
+      func (s *Store) List(opts ListOptions) ([]Document, error) {
+          // Builds dynamic SQL based on configured dimensions
+          // Generates appropriate ROW_NUMBER() partitioning
+          // Returns documents with context-appropriate IDs
       }
 
-      // Method to translate a user-facing ID to a stable UUID
+      // Configurable ID resolution
       func (s *Store) ResolveUUID(userFacingID string) (string, error) {
-      // Recursively resolves IDs like "1.2.c1" to a UUID
+          // Parses ID according to configured dimensions
+          // Handles arbitrary prefix combinations
+          // Supports configured hierarchical structures
       }
 
-      // Write methods
-      func (s *Store) Add(title string, parentUUID *string) (string, error) {
-      // Simple INSERT, returns the new UUID
+      // Flexible document creation
+      func (s *Store) Add(title string, dimensions map[string]interface{}) (string, error) {
+          // Validates dimension values against configuration
+          // Inserts with appropriate dimension column values
       }
 
-      func (s *Store) Update(uuid string, newTitle string, newBody string) error {
-      // Simple UPDATE
+      // Dimension-aware updates
+      func (s *Store) Update(uuid string, req UpdateRequest) error {
+          // Updates both core fields and dimension values
+          // Validates dimension changes
       }
 
-      func (s *Store) SetStatus(uuid string, status string) error {
-      // Simple UPDATE to change the status
+      type UpdateRequest struct {
+          Title      *string
+          Body       *string
+          Dimensions map[string]interface{} // dimension updates
       }
+      ```
 
-5. ID Resolution Logic:
+7. ID Format and Resolution Rules:
 
-      To handle user input like `too complete 1.2`, the `ResolveUUID` method will be used.
+      7.1. Core Design Decisions:
+      - Single-letter prefixes only: Prefixes must be exactly one lowercase letter [a-z]
+      - Numbers always represent IDs: No ambiguity between prefixes and numbers
+      - Hierarchical precedence: Hierarchy forms the backbone (1.2.3), prefixes apply at each level
+      - Alphabetical prefix ordering: Multiple prefixes always appear in alphabetical order by dimension name
+      - Dimension limit: Maximum 5-7 dimensions for performance optimization
+      - Scale assumption: Optimized for hundreds of objects, not millions
 
-      5.1.  The application passes the raw string "1.2" to `ResolveUUID`.
-      5.2.  The method splits the string by ".".
-      5.3.  It executes a query to find the item at the root with `user_facing_id = 1`. This
-            involves a `SELECT` with the appropriate `ROW_NUMBER()` calculation for root items.
-            It retrieves that item's UUID.
-      5.4.  It then executes a second query to find the item with `user_facing_id = 2` whose
-            `parent_uuid` matches the UUID from the previous step.
-      5.5.  The final UUID is returned to the application, which can then use it to perform
-            the `SetStatus` operation.
+      7.2. ID Format Examples:
+      Single enumerated dimension:
+      - "1", "2", "3" (no prefix - default value)
+      - "c1", "c2" (completed items)
+      - "h1", "h2" (high priority items)
+      
+      Multiple enumerated dimensions (alphabetical ordering):
+      - "hp1" (high priority + pending) - NOT "ph1"
+      - "ch2" (completed + high priority) - NOT "hc2"
+      
+      Hierarchical with enumerated:
+      - "1.2.3" (pure hierarchy)
+      - "1.c2" (root #1, completed child #2)
+      - "hp1.c2.3" (high-priority pending root, completed child, grandchild #3)
 
-      Benefits:
-      - Massively reduced complexity in the application's command layer.
-      - Improved performance by offloading filtering and sorting to SQLite.
-      - Enhanced data integrity via SQL constraints and transactions.
-      - A single, cohesive, and more easily testable data management library.
+      7.3. Resolution Rules:
+      Same object accessibility: "hp1" and "ph1" resolve to the same document
+      - Generation always uses alphabetical order
+      - Resolution accepts any permutation but normalizes internally
+      
+      Parsing algorithm:
+      - Split by "." for hierarchy levels
+      - For each segment: extract leading letters as prefixes, trailing numbers as ID
+      - Map prefixes to dimension values based on configuration
+      - Execute hierarchical queries with dimension filters
 
-      Potential Downsides:
-      - The primary risk is introducing a CGO dependency via the standard
-            `mattn/go-sqlite3` driver. This can add minor complexity to the cross-compilation
-            build process, but this is a well-understood and solvable problem in the Go
-            ecosystem.
+      7.4. Example Resolution:
+      Input: "hp2.c1.b3"
+      Configuration: priority=["low","high"], status=["pending","completed","blocked"]
+      
+      Parse result:
+      - Level 1: prefixes="hp" (high,pending), id=2
+      - Level 2: prefix="c" (completed), id=1  
+      - Level 3: prefix="b" (blocked), id=3
+      
+      Query: Find root document #2 with priority="high" AND status="pending",
+             then child #1 with status="completed",
+             then grandchild #3 with status="blocked"
 
+8. Implementation Benefits:
 
-6. implementation Planning
+      - Reusable across different business domains (todos, tickets, projects, etc.)
+      - Configurable ID formats adapt to domain vocabulary  
+      - Declarative configuration eliminates hardcoded partitioning logic
+      - Automatic schema generation reduces setup complexity
+      - SQL-based implementation provides performance and data integrity
+      - Single library handles both storage and ID concerns
 
-      1. Build locstore in isolation
+      Potential Considerations:
+      - Configuration complexity for applications with many dimensions
+      - SQL generation complexity for arbitrary dimension combinations
+      - CGO dependency via mattn/go-sqlite3 affects cross-compilation
+      - Performance characteristics with deep hierarchies and many dimensions
 
-      We'll use locstore/ to house the code and tests for the locstore 
+9. Implementation Planning:
+
+      Phase 1: Core Configuration System
+      - Define dimension configuration types and validation
+      - Implement dynamic schema generation
+      - Create configuration-based SQL query generation
+
+      Phase 2: ID Generation and Resolution  
+      - Build configurable ROW_NUMBER() partitioning
+      - Implement dynamic ID parsing and resolution
+      - Handle arbitrary prefix combinations
+
+      Phase 3: Integration and Testing
+      - Comprehensive test suite with multiple dimension configurations
+      - Performance testing with various scenarios
+      - Backward compatibility layer for existing hardcoded systems
+
+      Phase 4: Documentation and Examples
+      - Configuration examples for common use cases
+      - Migration guide from hardcoded to configurable systems
+      - Performance tuning recommendations 

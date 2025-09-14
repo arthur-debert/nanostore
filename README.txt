@@ -1,5 +1,5 @@
-Nanostore - Document and ID Store Library
-==========================================
+Nanostore - Configurable Document and ID Store Library
+======================================================
 
 See docs/doc-id-store.txt for the original design specification.
 
@@ -10,19 +10,23 @@ traditional CRUD systems generate non-contiguous UUIDs or auto-incrementing
 primary keys that become sparse after deletions. Users expect "todo complete 1"
 to work, not "todo complete 7f2e8c9a-1234-...".
 
-Example scenario: A todo list where users can create nested todos, mark them 
-complete, and reference them by simple numbers. When a user runs "list", they 
-see:
+Additionally, applications need flexibility in how they partition and prefix
+their IDs. A todo app might want 'p' for priority items, a project manager 
+might want 'u' for urgent tasks, a note-taking app might want 'd' for drafts.
 
-    1. Fix login bug
-    2. Write documentation  
-        2.1. API docs
-        2.2. User guide
-    3. Deploy to staging
-    c1. Review PR #123 (completed)
+Example scenario: A project management tool where tasks have multiple 
+dimensions - priority, status, team - and users need intuitive IDs:
 
-The user should be able to type "complete 2.1" to mark "API docs" as done, 
-and "complete 2" should handle the parent relationship appropriately.
+    1. Setup CI/CD pipeline
+    h1. Fix production bug (high priority)
+    h2. Security audit (high priority) 
+        h2.1. Review auth flow
+        h2.2. Pen testing
+    u1. Customer complaint (urgent)
+    uw1. API breaking (urgent + work team)
+
+The user should be able to type "complete h2.1" to mark the auth review done,
+and the system should understand the hierarchical and dimensional context.
 
 The traditional approach requires complex orchestration between a document 
 store and an ID manager, with imperative filtering/sorting in application 
@@ -57,77 +61,95 @@ common cases efficiently.
 3. Features
 
 - Document CRUD with hierarchical parent-child relationships
-- Dynamic user-facing ID generation (1, 2, c1, 1.2, etc.)
-- Status-based filtering and ID partitioning (pending vs completed items)
+- **Configurable dimension system** - define your own ID partitioning logic
+- Dynamic user-facing ID generation with custom prefixes (h1, uw2, p1.d3, etc.)
+- Multiple dimension types:
+  - Enumerated: predefined values with optional single-letter prefixes
+  - Hierarchical: parent-child relationships with dot notation
+- Alphabetical prefix ordering (hc1 and ch1 resolve to same document)
 - Search across document title and body
 - Cascade deletion (optional) for removing parent + children
 - Parent relationship updates with circular reference prevention
 - Bidirectional ID resolution (user ID -> UUID, UUID -> user ID in context)
 - Transactional safety for all operations
-- Schema migrations with embedded SQL files
+- Dynamic schema generation based on configuration
 
 4. API
 
-Schema setup for a todo application (embedded in the library):
+Configuration for a project management system:
 
-    sql/schema/001_initial.sql:
-    CREATE TABLE documents (
-        uuid TEXT PRIMARY KEY,
-        title TEXT NOT NULL,
-        body TEXT DEFAULT '',
-        status TEXT NOT NULL DEFAULT 'pending' 
-            CHECK (status IN ('pending', 'completed')),
-        parent_uuid TEXT,
-        created_at INTEGER NOT NULL,
-        updated_at INTEGER NOT NULL,
-        FOREIGN KEY (parent_uuid) REFERENCES documents(uuid) ON DELETE CASCADE
-    );
+    config := nanostore.Config{
+        Dimensions: []nanostore.DimensionConfig{
+            {
+                Name:         "priority",
+                Type:         nanostore.Enumerated,
+                Values:       []string{"low", "normal", "high", "urgent"},
+                Prefixes:     map[string]string{"high": "h", "urgent": "u"},
+                DefaultValue: "normal",
+            },
+            {
+                Name:         "status",
+                Type:         nanostore.Enumerated,
+                Values:       []string{"todo", "in_progress", "done", "blocked"},
+                Prefixes:     map[string]string{"in_progress": "p", "done": "d", "blocked": "b"},
+                DefaultValue: "todo",
+            },
+            {
+                Name:     "parent",
+                Type:     nanostore.Hierarchical,
+                RefField: "parent_task_id",
+            },
+        },
+    }
     
-    sql/schema/002_indexes.sql:
-    CREATE INDEX idx_documents_status ON documents(status, created_at);
-    CREATE INDEX idx_documents_parent ON documents(parent_uuid, created_at);
-    CREATE INDEX idx_documents_search ON documents(title, body);
+    store, err := nanostore.New("tasks.db", config)
 
-High-level usage for a todo application:
+High-level usage:
 
-    store, err := nanostore.New("todos.db")  // Auto-runs migrations
-    
-    // Add root items
-    parentID, _ := store.Add("Project Alpha", nil)
-    store.Add("Write tests", &parentID)
-    store.Add("Deploy", &parentID)
-    
-    // List current view
-    docs, _ := store.List(nanostore.ListOptions{
-        FilterByStatus: []nanostore.Status{nanostore.StatusPending},
+    // Add tasks with dimension values
+    epic, _ := store.Add("Q1 Product Launch", nil, nil) // Uses defaults
+    task1, _ := store.Add("Design mockups", &epic, nil) // Inherits parent, uses defaults
+    task2, _ := store.Add("Implement backend", &epic, map[string]string{
+        "priority": "high",  // Set high priority
     })
     
+    // Update status - changes ID prefix
+    store.SetStatus(task1, nanostore.Status("done"))       // Now: 1.d1
+    store.SetStatus(task2, nanostore.Status("in_progress")) // Now: 1.hp1 (high priority + in_progress)
+    
+    // List all documents
+    docs, _ := store.List(nanostore.ListOptions{})
+    
     // User sees:
-    // 1. Project Alpha
-    //   1.1. Write tests  
-    //   1.2. Deploy
+    // 1. Q1 Product Launch
+    //   1.d1. Design mockups (done)
+    //   1.hp1. Implement backend (high priority, in_progress)
     
-    // Complete a subtask
-    uuid, _ := store.ResolveUUID("1.1")  // "Write tests" UUID
-    store.SetStatus(uuid, nanostore.StatusCompleted)
+    // Resolve any ID format (including permutations)
+    uuid, _ := store.ResolveUUID("1.hp1")  // Backend task UUID
+    uuid, _ := store.ResolveUUID("1.ph1")  // Same document!
     
-    // Update parent relationship
+    // Update with dimension awareness
     store.Update(uuid, nanostore.UpdateRequest{
-        Title:    stringPtr("Write comprehensive tests"),
-        ParentID: nil,  // Move to root level
+        Title: stringPtr("Implement REST API"),
+        Dimensions: map[string]string{
+            "priority": "urgent",  // Escalate to urgent
+        },
     })
     
     // Delete with cascade
-    store.Delete(parentID, true)  // Removes parent + all children
+    store.Delete(epic, true)  // Removes parent + all children
 
-The library handles the complexity of maintaining contiguous IDs across 
-different filtered views while providing a clean interface for typical 
-document management operations.
+The library dynamically generates the schema based on your configuration,
+handles ID generation with proper partitioning, and maintains consistency
+across all operations.
 
-Core types: Store (main handle), ListOptions (query parameters), 
-Document (returned items with generated IDs), UpdateRequest (modification 
-parameters).
+Core types:
+- Config: Defines dimensions and their properties
+- DimensionConfig: Individual dimension specification
+- Store: Main handle for operations
+- Document: Returned items with generated IDs based on dimensions
 
-Status-based partitioning means completed items get "c" prefixed IDs (c1, c2)
-while pending items get regular numbers (1, 2). Hierarchical nesting uses 
-dot notation (1.2.3).
+ID generation follows alphabetical ordering of dimension names. For example,
+with priority and status dimensions, a high-priority done task gets ID "hd1"
+regardless of whether you think of it as "high+done" or "done+high".

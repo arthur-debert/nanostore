@@ -8,14 +8,14 @@ import (
 
 func TestDelete(t *testing.T) {
 	t.Run("delete single document without children", func(t *testing.T) {
-		store, err := nanostore.New(":memory:")
+		store, err := nanostore.NewTestStore(":memory:")
 		if err != nil {
 			t.Fatalf("failed to create store: %v", err)
 		}
 		defer func() { _ = store.Close() }()
 
 		// Create a document
-		id, err := store.Add("Test Document", nil)
+		id, err := store.Add("Test Document", nil, nil)
 		if err != nil {
 			t.Fatalf("failed to add document: %v", err)
 		}
@@ -37,7 +37,7 @@ func TestDelete(t *testing.T) {
 	})
 
 	t.Run("delete non-existent document", func(t *testing.T) {
-		store, err := nanostore.New(":memory:")
+		store, err := nanostore.NewTestStore(":memory:")
 		if err != nil {
 			t.Fatalf("failed to create store: %v", err)
 		}
@@ -54,19 +54,19 @@ func TestDelete(t *testing.T) {
 	})
 
 	t.Run("delete document with children (cascade=false)", func(t *testing.T) {
-		store, err := nanostore.New(":memory:")
+		store, err := nanostore.NewTestStore(":memory:")
 		if err != nil {
 			t.Fatalf("failed to create store: %v", err)
 		}
 		defer func() { _ = store.Close() }()
 
 		// Create parent and child
-		parentID, err := store.Add("Parent", nil)
+		parentID, err := store.Add("Parent", nil, nil)
 		if err != nil {
 			t.Fatalf("failed to add parent: %v", err)
 		}
 
-		_, err = store.Add("Child", &parentID)
+		_, err = store.Add("Child", &parentID, nil)
 		if err != nil {
 			t.Fatalf("failed to add child: %v", err)
 		}
@@ -91,34 +91,34 @@ func TestDelete(t *testing.T) {
 	})
 
 	t.Run("delete document with children (cascade=true)", func(t *testing.T) {
-		store, err := nanostore.New(":memory:")
+		store, err := nanostore.NewTestStore(":memory:")
 		if err != nil {
 			t.Fatalf("failed to create store: %v", err)
 		}
 		defer func() { _ = store.Close() }()
 
 		// Create parent with multiple children and grandchildren
-		parentID, err := store.Add("Parent", nil)
+		parentID, err := store.Add("Parent", nil, nil)
 		if err != nil {
 			t.Fatalf("failed to add parent: %v", err)
 		}
 
-		child1ID, err := store.Add("Child 1", &parentID)
+		child1ID, err := store.Add("Child 1", &parentID, nil)
 		if err != nil {
 			t.Fatalf("failed to add child 1: %v", err)
 		}
 
-		child2ID, err := store.Add("Child 2", &parentID)
+		child2ID, err := store.Add("Child 2", &parentID, nil)
 		if err != nil {
 			t.Fatalf("failed to add child 2: %v", err)
 		}
 
-		_, err = store.Add("Grandchild 1", &child1ID)
+		_, err = store.Add("Grandchild 1", &child1ID, nil)
 		if err != nil {
 			t.Fatalf("failed to add grandchild 1: %v", err)
 		}
 
-		_, err = store.Add("Grandchild 2", &child2ID)
+		_, err = store.Add("Grandchild 2", &child2ID, nil)
 		if err != nil {
 			t.Fatalf("failed to add grandchild 2: %v", err)
 		}
@@ -140,30 +140,30 @@ func TestDelete(t *testing.T) {
 	})
 
 	t.Run("delete middle node with cascade", func(t *testing.T) {
-		store, err := nanostore.New(":memory:")
+		store, err := nanostore.NewTestStore(":memory:")
 		if err != nil {
 			t.Fatalf("failed to create store: %v", err)
 		}
 		defer func() { _ = store.Close() }()
 
 		// Create grandparent -> parent -> child hierarchy
-		grandparentID, err := store.Add("Grandparent", nil)
+		grandparentID, err := store.Add("Grandparent", nil, nil)
 		if err != nil {
 			t.Fatalf("failed to add grandparent: %v", err)
 		}
 
-		parentID, err := store.Add("Parent", &grandparentID)
+		parentID, err := store.Add("Parent", &grandparentID, nil)
 		if err != nil {
 			t.Fatalf("failed to add parent: %v", err)
 		}
 
-		childID, err := store.Add("Child", &parentID)
+		childID, err := store.Add("Child", &parentID, nil)
 		if err != nil {
 			t.Fatalf("failed to add child: %v", err)
 		}
 
 		// Also add a sibling to the parent
-		_, err = store.Add("Sibling", &grandparentID)
+		_, err = store.Add("Sibling", &grandparentID, nil)
 		if err != nil {
 			t.Fatalf("failed to add sibling: %v", err)
 		}
@@ -206,19 +206,19 @@ func TestDelete(t *testing.T) {
 	})
 
 	t.Run("delete leaf node", func(t *testing.T) {
-		store, err := nanostore.New(":memory:")
+		store, err := nanostore.NewTestStore(":memory:")
 		if err != nil {
 			t.Fatalf("failed to create store: %v", err)
 		}
 		defer func() { _ = store.Close() }()
 
 		// Create parent -> child hierarchy
-		parentID, err := store.Add("Parent", nil)
+		parentID, err := store.Add("Parent", nil, nil)
 		if err != nil {
 			t.Fatalf("failed to add parent: %v", err)
 		}
 
-		childID, err := store.Add("Child", &parentID)
+		childID, err := store.Add("Child", &parentID, nil)
 		if err != nil {
 			t.Fatalf("failed to add child: %v", err)
 		}
@@ -243,24 +243,24 @@ func TestDelete(t *testing.T) {
 	})
 
 	t.Run("delete with mixed statuses", func(t *testing.T) {
-		store, err := nanostore.New(":memory:")
+		store, err := nanostore.NewTestStore(":memory:")
 		if err != nil {
 			t.Fatalf("failed to create store: %v", err)
 		}
 		defer func() { _ = store.Close() }()
 
 		// Create parent with children of different statuses
-		parentID, err := store.Add("Parent", nil)
+		parentID, err := store.Add("Parent", nil, nil)
 		if err != nil {
 			t.Fatalf("failed to add parent: %v", err)
 		}
 
-		_, err = store.Add("Pending Child", &parentID)
+		_, err = store.Add("Pending Child", &parentID, nil)
 		if err != nil {
 			t.Fatalf("failed to add child 1: %v", err)
 		}
 
-		child2ID, err := store.Add("Completed Child", &parentID)
+		child2ID, err := store.Add("Completed Child", &parentID, nil)
 		if err != nil {
 			t.Fatalf("failed to add child 2: %v", err)
 		}
@@ -292,7 +292,7 @@ func TestDeleteConcurrent(t *testing.T) {
 	// SQLite has database-level locking, so concurrent deletes from different
 	// connections will result in lock contention. This test verifies that
 	// concurrent deletes from the same connection work correctly.
-	store, err := nanostore.New(":memory:")
+	store, err := nanostore.NewTestStore(":memory:")
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
@@ -301,7 +301,7 @@ func TestDeleteConcurrent(t *testing.T) {
 	// Create multiple documents
 	var ids []string
 	for i := 0; i < 10; i++ {
-		id, err := store.Add("Document", nil)
+		id, err := store.Add("Document", nil, nil)
 		if err != nil {
 			t.Fatalf("failed to add document: %v", err)
 		}
@@ -328,7 +328,7 @@ func TestDeleteConcurrent(t *testing.T) {
 
 func TestDeleteEdgeCases(t *testing.T) {
 	t.Run("delete with SQL injection attempt", func(t *testing.T) {
-		store, err := nanostore.New(":memory:")
+		store, err := nanostore.NewTestStore(":memory:")
 		if err != nil {
 			t.Fatalf("failed to create store: %v", err)
 		}
@@ -342,7 +342,7 @@ func TestDeleteEdgeCases(t *testing.T) {
 	})
 
 	t.Run("delete empty string ID", func(t *testing.T) {
-		store, err := nanostore.New(":memory:")
+		store, err := nanostore.NewTestStore(":memory:")
 		if err != nil {
 			t.Fatalf("failed to create store: %v", err)
 		}
@@ -355,7 +355,7 @@ func TestDeleteEdgeCases(t *testing.T) {
 	})
 
 	t.Run("delete very deep hierarchy", func(t *testing.T) {
-		store, err := nanostore.New(":memory:")
+		store, err := nanostore.NewTestStore(":memory:")
 		if err != nil {
 			t.Fatalf("failed to create store: %v", err)
 		}
@@ -368,7 +368,7 @@ func TestDeleteEdgeCases(t *testing.T) {
 			if currentParentID != "" {
 				parentID = &currentParentID
 			}
-			id, err := store.Add("Level", parentID)
+			id, err := store.Add("Level", parentID, nil)
 			if err != nil {
 				t.Fatalf("failed to add level %d: %v", i, err)
 			}

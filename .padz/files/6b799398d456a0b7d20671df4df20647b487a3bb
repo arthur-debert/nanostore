@@ -1,0 +1,23 @@
+some common example problem spaces
+
+
+To make the communication clearer.
+
+Let's say that for this application we have a note taking app, with the
+following characteristics: 
+
+- notes are nested
+- notes can be pinned (boolean) -> p
+- notes can be active , archived or deleted  -> s (status)
+- notes can have tags -> t (tags)
+
+
+When viewing , this ar some examples of the views we can have: 
+
+
+list active notes
+list active pinned notes
+list active notes with their children with tags
+list active pinned notes with their children with tags created in the last week
+
+and all of the above + search term

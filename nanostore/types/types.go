@@ -42,7 +42,51 @@ type ListOptions struct {
 
 // UpdateRequest specifies fields to update on a document
 type UpdateRequest struct {
-	Title    *string
-	Body     *string
-	ParentID *string // Optional: new parent UUID (nil = no change, empty string = make root)
+	Title      *string
+	Body       *string
+	ParentID   *string           // Optional: new parent UUID (nil = no change, empty string = make root)
+	Dimensions map[string]string // Optional: dimension values to update (e.g., "priority": "high")
+}
+
+// DimensionType defines the type of dimension for ID partitioning
+type DimensionType int
+
+const (
+	// Enumerated dimensions have predefined values (e.g., status, priority)
+	Enumerated DimensionType = iota
+	// Hierarchical dimensions create parent-child relationships
+	Hierarchical
+)
+
+// DimensionConfig defines a single dimension for ID partitioning
+type DimensionConfig struct {
+	// Name is the database column name and identifier for this dimension
+	Name string
+
+	// Type specifies whether this is an enumerated or hierarchical dimension
+	Type DimensionType
+
+	// Values lists the valid values for enumerated dimensions
+	// Ignored for hierarchical dimensions
+	Values []string
+
+	// Prefixes maps values to their ID prefixes
+	// For enumerated dimensions: value -> prefix (e.g., "completed" -> "c")
+	// Ignored for hierarchical dimensions
+	Prefixes map[string]string
+
+	// RefField specifies the foreign key field name for hierarchical dimensions
+	// For hierarchical dimensions: typically "parent_uuid"
+	// Ignored for enumerated dimensions
+	RefField string
+
+	// DefaultValue specifies the default value for enumerated dimensions
+	// Used when inserting new documents without explicit value
+	DefaultValue string
+}
+
+// Config defines the overall configuration for the nanostore
+type Config struct {
+	// Dimensions defines the ID partitioning dimensions
+	Dimensions []DimensionConfig
 }

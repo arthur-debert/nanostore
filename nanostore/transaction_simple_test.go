@@ -7,7 +7,7 @@ import (
 )
 
 func TestTransactionBehavior(t *testing.T) {
-	store, err := nanostore.New(":memory:")
+	store, err := nanostore.NewTestStore(":memory:")
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
@@ -15,7 +15,7 @@ func TestTransactionBehavior(t *testing.T) {
 
 	// Test 1: Verify foreign key constraint is enforced with transactions
 	invalidParent := "non-existent-uuid"
-	_, err = store.Add("Orphan Document", &invalidParent)
+	_, err = store.Add("Orphan Document", &invalidParent, nil)
 
 	if err == nil {
 		t.Error("expected foreign key constraint error, but got none")
@@ -47,7 +47,7 @@ func TestTransactionBehavior(t *testing.T) {
 	}
 
 	// Test 3: Verify successful transaction
-	id, err := store.Add("Valid Document", nil)
+	id, err := store.Add("Valid Document", nil, nil)
 	if err != nil {
 		t.Fatalf("failed to add valid document: %v", err)
 	}

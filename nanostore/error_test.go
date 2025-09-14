@@ -12,7 +12,7 @@ import (
 func TestDatabaseErrors(t *testing.T) {
 	t.Run("InvalidDatabasePath", func(t *testing.T) {
 		// Try to create database in non-existent directory
-		_, err := nanostore.New("/non/existent/path/db.sqlite")
+		_, err := nanostore.NewTestStore("/non/existent/path/db.sqlite")
 		if err == nil {
 			t.Fatal("expected error for invalid path")
 		}
@@ -30,7 +30,7 @@ func TestDatabaseErrors(t *testing.T) {
 		dbPath := filepath.Join(tmpDir, "readonly.db")
 
 		// Create database first
-		store, err := nanostore.New(dbPath)
+		store, err := nanostore.NewTestStore(dbPath)
 		if err != nil {
 			t.Fatalf("failed to create store: %v", err)
 		}
@@ -43,7 +43,7 @@ func TestDatabaseErrors(t *testing.T) {
 		}
 
 		// Try to open read-only database
-		store2, err := nanostore.New(dbPath)
+		store2, err := nanostore.NewTestStore(dbPath)
 		if err == nil {
 			_ = store2.Close()
 			t.Fatal("expected error opening read-only database")
@@ -52,7 +52,7 @@ func TestDatabaseErrors(t *testing.T) {
 }
 
 func TestInvalidInputs(t *testing.T) {
-	store, err := nanostore.New(":memory:")
+	store, err := nanostore.NewTestStore(":memory:")
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
@@ -83,7 +83,7 @@ func TestInvalidInputs(t *testing.T) {
 
 	t.Run("InvalidParentUUID", func(t *testing.T) {
 		invalidParent := "invalid-uuid"
-		_, err := store.Add("Child", &invalidParent)
+		_, err := store.Add("Child", &invalidParent, nil)
 		if err == nil {
 			t.Fatal("expected error adding document with invalid parent")
 		}
@@ -119,7 +119,7 @@ func TestInvalidInputs(t *testing.T) {
 }
 
 func TestDatabaseIntegrityErrors(t *testing.T) {
-	store, err := nanostore.New(":memory:")
+	store, err := nanostore.NewTestStore(":memory:")
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
@@ -131,7 +131,7 @@ func TestDatabaseIntegrityErrors(t *testing.T) {
 	t.Run("SelfReferencingDocument", func(t *testing.T) {
 		// The API doesn't allow setting a document as its own parent
 		// This is more of a schema validation
-		id, err := store.Add("Test", nil)
+		id, err := store.Add("Test", nil, nil)
 		if err != nil {
 			t.Fatalf("failed to add document: %v", err)
 		}
@@ -157,7 +157,7 @@ func TestConcurrentDatabaseAccess(t *testing.T) {
 	// Create multiple stores accessing the same database
 	stores := make([]nanostore.Store, 3)
 	for i := 0; i < 3; i++ {
-		store, err := nanostore.New(dbPath)
+		store, err := nanostore.NewTestStore(dbPath)
 		if err != nil {
 			t.Fatalf("failed to create store %d: %v", i, err)
 		}
@@ -168,7 +168,7 @@ func TestConcurrentDatabaseAccess(t *testing.T) {
 	// Each store adds documents
 	for i, store := range stores {
 		for j := 0; j < 10; j++ {
-			_, err := store.Add(strings.Repeat("A", i*10+j), nil)
+			_, err := store.Add(strings.Repeat("A", i*10+j), nil, nil)
 			if err != nil {
 				t.Errorf("store %d failed to add document %d: %v", i, j, err)
 			}
@@ -188,7 +188,7 @@ func TestConcurrentDatabaseAccess(t *testing.T) {
 }
 
 func TestClosedStoreErrors(t *testing.T) {
-	store, err := nanostore.New(":memory:")
+	store, err := nanostore.NewTestStore(":memory:")
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
@@ -201,7 +201,7 @@ func TestClosedStoreErrors(t *testing.T) {
 
 	// Try to use closed store
 	t.Run("AddAfterClose", func(t *testing.T) {
-		_, err := store.Add("Test", nil)
+		_, err := store.Add("Test", nil, nil)
 		if err == nil {
 			t.Fatal("expected error using closed store")
 		}

@@ -7,14 +7,14 @@ import (
 )
 
 func TestUpdateEmptyRequest(t *testing.T) {
-	store, err := nanostore.New(":memory:")
+	store, err := nanostore.NewTestStore(":memory:")
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
 	defer func() { _ = store.Close() }()
 
 	// Create a document
-	docID, err := store.Add("Original Title", nil)
+	docID, err := store.Add("Original Title", nil, nil)
 	if err != nil {
 		t.Fatalf("failed to add document: %v", err)
 	}
@@ -65,19 +65,19 @@ func TestUpdateEmptyRequest(t *testing.T) {
 }
 
 func TestUpdateEmptyRequestWithParent(t *testing.T) {
-	store, err := nanostore.New(":memory:")
+	store, err := nanostore.NewTestStore(":memory:")
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
 	defer func() { _ = store.Close() }()
 
 	// Create parent and child
-	parentID, err := store.Add("Parent", nil)
+	parentID, err := store.Add("Parent", nil, nil)
 	if err != nil {
 		t.Fatalf("failed to add parent: %v", err)
 	}
 
-	childID, err := store.Add("Child", &parentID)
+	childID, err := store.Add("Child", &parentID, nil)
 	if err != nil {
 		t.Fatalf("failed to add child: %v", err)
 	}

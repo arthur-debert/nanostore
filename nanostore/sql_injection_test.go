@@ -8,7 +8,7 @@ import (
 )
 
 func TestSQLInjectionInAdd(t *testing.T) {
-	store, err := nanostore.New(":memory:")
+	store, err := nanostore.NewTestStore(":memory:")
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
@@ -32,7 +32,7 @@ func TestSQLInjectionInAdd(t *testing.T) {
 
 	// All of these should be safely handled as data, not SQL
 	for i, attempt := range injectionAttempts {
-		id, err := store.Add(attempt, nil)
+		id, err := store.Add(attempt, nil, nil)
 		if err != nil {
 			t.Errorf("failed to add document with injection attempt %d: %v", i, err)
 			continue
@@ -70,19 +70,19 @@ func TestSQLInjectionInAdd(t *testing.T) {
 }
 
 func TestSQLInjectionInUpdate(t *testing.T) {
-	store, err := nanostore.New(":memory:")
+	store, err := nanostore.NewTestStore(":memory:")
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
 	defer func() { _ = store.Close() }()
 
 	// Create test documents
-	id1, err := store.Add("Document 1", nil)
+	id1, err := store.Add("Document 1", nil, nil)
 	if err != nil {
 		t.Fatalf("failed to add document 1: %v", err)
 	}
 
-	id2, err := store.Add("Document 2", nil)
+	id2, err := store.Add("Document 2", nil, nil)
 	if err != nil {
 		t.Fatalf("failed to add document 2: %v", err)
 	}
@@ -124,14 +124,14 @@ func TestSQLInjectionInUpdate(t *testing.T) {
 }
 
 func TestSQLInjectionInResolveUUID(t *testing.T) {
-	store, err := nanostore.New(":memory:")
+	store, err := nanostore.NewTestStore(":memory:")
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
 	defer func() { _ = store.Close() }()
 
 	// Add a document
-	id, err := store.Add("Test", nil)
+	id, err := store.Add("Test", nil, nil)
 	if err != nil {
 		t.Fatalf("failed to add document: %v", err)
 	}
@@ -189,19 +189,19 @@ func TestSQLInjectionInResolveUUID(t *testing.T) {
 }
 
 func TestSQLInjectionInHierarchicalID(t *testing.T) {
-	store, err := nanostore.New(":memory:")
+	store, err := nanostore.NewTestStore(":memory:")
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
 	defer func() { _ = store.Close() }()
 
 	// Create parent and child
-	parent, err := store.Add("Parent", nil)
+	parent, err := store.Add("Parent", nil, nil)
 	if err != nil {
 		t.Fatalf("failed to add parent: %v", err)
 	}
 
-	_, err = store.Add("Child", &parent)
+	_, err = store.Add("Child", &parent, nil)
 	if err != nil {
 		t.Fatalf("failed to add child: %v", err)
 	}
@@ -257,7 +257,7 @@ func TestSQLInjectionInHierarchicalID(t *testing.T) {
 }
 
 func TestSQLInjectionWithNullBytes(t *testing.T) {
-	store, err := nanostore.New(":memory:")
+	store, err := nanostore.NewTestStore(":memory:")
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
@@ -272,7 +272,7 @@ func TestSQLInjectionWithNullBytes(t *testing.T) {
 	}
 
 	for i, attempt := range injectionAttempts {
-		id, err := store.Add(attempt, nil)
+		id, err := store.Add(attempt, nil, nil)
 		if err != nil {
 			t.Errorf("failed to add with null byte attempt %d: %v", i, err)
 			continue
@@ -300,14 +300,14 @@ func TestSQLInjectionWithNullBytes(t *testing.T) {
 }
 
 func TestSQLInjectionInParentID(t *testing.T) {
-	store, err := nanostore.New(":memory:")
+	store, err := nanostore.NewTestStore(":memory:")
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
 	defer func() { _ = store.Close() }()
 
 	// Create a valid parent
-	parent, err := store.Add("Parent", nil)
+	parent, err := store.Add("Parent", nil, nil)
 	if err != nil {
 		t.Fatalf("failed to add parent: %v", err)
 	}
@@ -323,7 +323,7 @@ func TestSQLInjectionInParentID(t *testing.T) {
 
 	for i, attempt := range injectionAttempts {
 		// These should fail with foreign key constraint or invalid UUID
-		_, err := store.Add("Child", &attempt)
+		_, err := store.Add("Child", &attempt, nil)
 		if err == nil {
 			t.Errorf("parent ID injection attempt %d succeeded when it should have failed", i)
 		}

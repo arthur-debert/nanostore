@@ -8,14 +8,14 @@ import (
 )
 
 func TestEmptyTitle(t *testing.T) {
-	store, err := nanostore.New(":memory:")
+	store, err := nanostore.NewTestStore(":memory:")
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
 	defer func() { _ = store.Close() }()
 
 	// Empty title should be allowed
-	id, err := store.Add("", nil)
+	id, err := store.Add("", nil, nil)
 	if err != nil {
 		t.Fatalf("failed to add document with empty title: %v", err)
 	}
@@ -34,7 +34,7 @@ func TestEmptyTitle(t *testing.T) {
 }
 
 func TestVeryLongTitle(t *testing.T) {
-	store, err := nanostore.New(":memory:")
+	store, err := nanostore.NewTestStore(":memory:")
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
@@ -43,7 +43,7 @@ func TestVeryLongTitle(t *testing.T) {
 	// Create a very long title
 	longTitle := strings.Repeat("A very long title ", 1000)
 
-	id, err := store.Add(longTitle, nil)
+	id, err := store.Add(longTitle, nil, nil)
 	if err != nil {
 		t.Fatalf("failed to add document with long title: %v", err)
 	}
@@ -62,7 +62,7 @@ func TestVeryLongTitle(t *testing.T) {
 }
 
 func TestSpecialCharactersInTitle(t *testing.T) {
-	store, err := nanostore.New(":memory:")
+	store, err := nanostore.NewTestStore(":memory:")
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
@@ -79,7 +79,7 @@ func TestSpecialCharactersInTitle(t *testing.T) {
 	}
 
 	for i, title := range specialTitles {
-		id, err := store.Add(title, nil)
+		id, err := store.Add(title, nil, nil)
 		if err != nil {
 			t.Errorf("failed to add document with special title %d: %v", i, err)
 			continue
@@ -115,7 +115,7 @@ func TestSpecialCharactersInTitle(t *testing.T) {
 }
 
 func TestManyDocuments(t *testing.T) {
-	store, err := nanostore.New(":memory:")
+	store, err := nanostore.NewTestStore(":memory:")
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
@@ -126,7 +126,7 @@ func TestManyDocuments(t *testing.T) {
 
 	// Add many documents
 	for i := 0; i < count; i++ {
-		id, err := store.Add(string(rune('A'+i%26)), nil)
+		id, err := store.Add(string(rune('A'+i%26)), nil, nil)
 		if err != nil {
 			t.Fatalf("failed to add document %d: %v", i, err)
 		}
@@ -157,14 +157,14 @@ func TestManyDocuments(t *testing.T) {
 }
 
 func TestCircularReference(t *testing.T) {
-	store, err := nanostore.New(":memory:")
+	store, err := nanostore.NewTestStore(":memory:")
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
 	defer func() { _ = store.Close() }()
 
 	// Create a document
-	_, err = store.Add("Document 1", nil)
+	_, err = store.Add("Document 1", nil, nil)
 	if err != nil {
 		t.Fatalf("failed to add document: %v", err)
 	}
@@ -176,14 +176,14 @@ func TestCircularReference(t *testing.T) {
 }
 
 func TestNullValues(t *testing.T) {
-	store, err := nanostore.New(":memory:")
+	store, err := nanostore.NewTestStore(":memory:")
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
 	defer func() { _ = store.Close() }()
 
 	// Add document
-	id, err := store.Add("Test", nil)
+	id, err := store.Add("Test", nil, nil)
 	if err != nil {
 		t.Fatalf("failed to add document: %v", err)
 	}
@@ -209,14 +209,14 @@ func TestNullValues(t *testing.T) {
 }
 
 func TestUpdateToEmptyString(t *testing.T) {
-	store, err := nanostore.New(":memory:")
+	store, err := nanostore.NewTestStore(":memory:")
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
 	defer func() { _ = store.Close() }()
 
 	// Add document with content
-	id, err := store.Add("Original Title", nil)
+	id, err := store.Add("Original Title", nil, nil)
 	if err != nil {
 		t.Fatalf("failed to add document: %v", err)
 	}
@@ -254,7 +254,7 @@ func TestUpdateToEmptyString(t *testing.T) {
 // List operation edge cases
 
 func TestListEmptyDatabase(t *testing.T) {
-	store, err := nanostore.New(":memory:")
+	store, err := nanostore.NewTestStore(":memory:")
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
@@ -272,7 +272,7 @@ func TestListEmptyDatabase(t *testing.T) {
 }
 
 func TestListWithMixedStatuses(t *testing.T) {
-	store, err := nanostore.New(":memory:")
+	store, err := nanostore.NewTestStore(":memory:")
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
@@ -281,7 +281,7 @@ func TestListWithMixedStatuses(t *testing.T) {
 	// Create documents with different statuses
 	pendingIDs := make([]string, 5)
 	for i := 0; i < 5; i++ {
-		id, err := store.Add("Pending "+string(rune('A'+i)), nil)
+		id, err := store.Add("Pending "+string(rune('A'+i)), nil, nil)
 		if err != nil {
 			t.Fatalf("failed to add pending document %d: %v", i, err)
 		}
@@ -290,7 +290,7 @@ func TestListWithMixedStatuses(t *testing.T) {
 
 	completedIDs := make([]string, 3)
 	for i := 0; i < 3; i++ {
-		id, err := store.Add("Completed "+string(rune('A'+i)), nil)
+		id, err := store.Add("Completed "+string(rune('A'+i)), nil, nil)
 		if err != nil {
 			t.Fatalf("failed to add completed document %d: %v", i, err)
 		}
@@ -340,26 +340,26 @@ func TestListWithMixedStatuses(t *testing.T) {
 }
 
 func TestListLargeHierarchy(t *testing.T) {
-	store, err := nanostore.New(":memory:")
+	store, err := nanostore.NewTestStore(":memory:")
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
 	defer func() { _ = store.Close() }()
 
 	// Create a document tree with many siblings at each level
-	root1, err := store.Add("Root 1", nil)
+	root1, err := store.Add("Root 1", nil, nil)
 	if err != nil {
 		t.Fatalf("failed to add root 1: %v", err)
 	}
 
-	root2, err := store.Add("Root 2", nil)
+	root2, err := store.Add("Root 2", nil, nil)
 	if err != nil {
 		t.Fatalf("failed to add root 2: %v", err)
 	}
 
 	// Add many children to root1
 	for i := 0; i < 20; i++ {
-		_, err := store.Add("Child 1."+string(rune('A'+i)), &root1)
+		_, err := store.Add("Child 1."+string(rune('A'+i)), &root1, nil)
 		if err != nil {
 			t.Fatalf("failed to add child %d: %v", i, err)
 		}
@@ -367,7 +367,7 @@ func TestListLargeHierarchy(t *testing.T) {
 
 	// Add children to root2
 	for i := 0; i < 15; i++ {
-		_, err := store.Add("Child 2."+string(rune('A'+i)), &root2)
+		_, err := store.Add("Child 2."+string(rune('A'+i)), &root2, nil)
 		if err != nil {
 			t.Fatalf("failed to add child to root2 %d: %v", i, err)
 		}
@@ -424,7 +424,7 @@ func TestListLargeHierarchy(t *testing.T) {
 }
 
 func TestListOrderStability(t *testing.T) {
-	store, err := nanostore.New(":memory:")
+	store, err := nanostore.NewTestStore(":memory:")
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
@@ -433,7 +433,7 @@ func TestListOrderStability(t *testing.T) {
 	// Add documents
 	ids := make([]string, 10)
 	for i := 0; i < 10; i++ {
-		id, err := store.Add("Doc "+string(rune('A'+i)), nil)
+		id, err := store.Add("Doc "+string(rune('A'+i)), nil, nil)
 		if err != nil {
 			t.Fatalf("failed to add document %d: %v", i, err)
 		}

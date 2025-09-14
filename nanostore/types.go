@@ -24,3 +24,18 @@ type ListOptions = types.ListOptions
 
 // UpdateRequest specifies fields to update on a document
 type UpdateRequest = types.UpdateRequest
+
+// Config defines the dimension configuration for the store
+type Config = types.Config
+
+// DimensionConfig defines a single dimension for ID generation
+type DimensionConfig = types.DimensionConfig
+
+// DimensionType represents the type of dimension
+type DimensionType = types.DimensionType
+
+// Dimension type constants
+const (
+	Enumerated   = types.Enumerated
+	Hierarchical = types.Hierarchical
+)

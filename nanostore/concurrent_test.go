@@ -15,7 +15,7 @@ func TestConcurrentReads(t *testing.T) {
 	tmpDir := t.TempDir()
 	dbPath := filepath.Join(tmpDir, "concurrent.db")
 
-	store, err := nanostore.New(dbPath)
+	store, err := nanostore.NewTestStore(dbPath)
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
@@ -23,7 +23,7 @@ func TestConcurrentReads(t *testing.T) {
 
 	// Add some documents
 	for i := 0; i < 10; i++ {
-		_, err := store.Add(fmt.Sprintf("Document %d", i), nil)
+		_, err := store.Add(fmt.Sprintf("Document %d", i), nil, nil)
 		if err != nil {
 			t.Fatalf("failed to add document %d: %v", i, err)
 		}
@@ -60,7 +60,7 @@ func TestConcurrentReads(t *testing.T) {
 func TestConcurrentWrites(t *testing.T) {
 	// Skip concurrent tests - SQLite in-memory database issues with concurrent connections
 	t.Skip("Skipping concurrent write test - requires shared cache mode")
-	store, err := nanostore.New(":memory:")
+	store, err := nanostore.NewTestStore(":memory:")
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
@@ -75,7 +75,7 @@ func TestConcurrentWrites(t *testing.T) {
 		wg.Add(1)
 		go func(n int) {
 			defer wg.Done()
-			id, err := store.Add(fmt.Sprintf("Concurrent %d", n), nil)
+			id, err := store.Add(fmt.Sprintf("Concurrent %d", n), nil, nil)
 			if err != nil {
 				errors <- err
 				return
@@ -119,7 +119,7 @@ func TestConcurrentWrites(t *testing.T) {
 
 func TestConcurrentMixedOperations(t *testing.T) {
 	t.Skip("Skipping concurrent test - requires shared cache mode")
-	store, err := nanostore.New(":memory:")
+	store, err := nanostore.NewTestStore(":memory:")
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
@@ -128,7 +128,7 @@ func TestConcurrentMixedOperations(t *testing.T) {
 	// Create initial documents
 	initialIDs := make([]string, 10)
 	for i := 0; i < 10; i++ {
-		id, err := store.Add(fmt.Sprintf("Initial %d", i), nil)
+		id, err := store.Add(fmt.Sprintf("Initial %d", i), nil, nil)
 		if err != nil {
 			t.Fatalf("failed to add initial document %d: %v", i, err)
 		}
@@ -155,7 +155,7 @@ func TestConcurrentMixedOperations(t *testing.T) {
 		wg.Add(1)
 		go func(n int) {
 			defer wg.Done()
-			_, err := store.Add(fmt.Sprintf("New %d", n), nil)
+			_, err := store.Add(fmt.Sprintf("New %d", n), nil, nil)
 			if err != nil {
 				errors <- fmt.Errorf("add error: %v", err)
 			}
@@ -234,7 +234,7 @@ func TestConcurrentMixedOperations(t *testing.T) {
 
 func TestConcurrentHierarchicalOperations(t *testing.T) {
 	t.Skip("Skipping concurrent test - requires shared cache mode")
-	store, err := nanostore.New(":memory:")
+	store, err := nanostore.NewTestStore(":memory:")
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
@@ -243,7 +243,7 @@ func TestConcurrentHierarchicalOperations(t *testing.T) {
 	// Create root documents
 	roots := make([]string, 5)
 	for i := 0; i < 5; i++ {
-		id, err := store.Add(fmt.Sprintf("Root %d", i), nil)
+		id, err := store.Add(fmt.Sprintf("Root %d", i), nil, nil)
 		if err != nil {
 			t.Fatalf("failed to add root %d: %v", i, err)
 		}
@@ -259,7 +259,7 @@ func TestConcurrentHierarchicalOperations(t *testing.T) {
 		go func(n int) {
 			defer wg.Done()
 			parent := roots[n%5]
-			_, err := store.Add(fmt.Sprintf("Child %d", n), &parent)
+			_, err := store.Add(fmt.Sprintf("Child %d", n), &parent, nil)
 			if err != nil {
 				errors <- fmt.Errorf("add child error: %v", err)
 			}

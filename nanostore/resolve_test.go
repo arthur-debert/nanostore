@@ -7,7 +7,7 @@ import (
 )
 
 func TestResolveUUID(t *testing.T) {
-	store, err := nanostore.New(":memory:")
+	store, err := nanostore.NewTestStore(":memory:")
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
@@ -15,9 +15,9 @@ func TestResolveUUID(t *testing.T) {
 
 	// Create test documents
 	// Root documents
-	id1, _ := store.Add("First", nil)
-	id2, _ := store.Add("Second", nil)
-	id3, _ := store.Add("Third", nil)
+	id1, _ := store.Add("First", nil, nil)
+	id2, _ := store.Add("Second", nil, nil)
+	id3, _ := store.Add("Third", nil, nil)
 
 	// Mark one as completed
 	_ = store.SetStatus(id3, nanostore.StatusCompleted)
@@ -46,23 +46,23 @@ func TestResolveUUID(t *testing.T) {
 }
 
 func TestResolveHierarchicalUUID(t *testing.T) {
-	store, err := nanostore.New(":memory:")
+	store, err := nanostore.NewTestStore(":memory:")
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
 	defer func() { _ = store.Close() }()
 
 	// Create hierarchical structure
-	parentID, _ := store.Add("Parent", nil)
-	child1ID, _ := store.Add("Child 1", &parentID)
-	child2ID, _ := store.Add("Child 2", &parentID)
-	child3ID, _ := store.Add("Child 3", &parentID)
+	parentID, _ := store.Add("Parent", nil, nil)
+	child1ID, _ := store.Add("Child 1", &parentID, nil)
+	child2ID, _ := store.Add("Child 2", &parentID, nil)
+	child3ID, _ := store.Add("Child 3", &parentID, nil)
 
 	// Mark one child as completed
 	_ = store.SetStatus(child3ID, nanostore.StatusCompleted)
 
 	// Nested child
-	grandchildID, _ := store.Add("Grandchild", &child1ID)
+	grandchildID, _ := store.Add("Grandchild", &child1ID, nil)
 
 	// Test cases
 	tests := []struct {
@@ -90,7 +90,7 @@ func TestResolveHierarchicalUUID(t *testing.T) {
 }
 
 func TestResolveInvalidID(t *testing.T) {
-	store, err := nanostore.New(":memory:")
+	store, err := nanostore.NewTestStore(":memory:")
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
