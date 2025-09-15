@@ -43,12 +43,14 @@ func TestDelete(t *testing.T) {
 		}
 		defer func() { _ = store.Close() }()
 
-		// Try to delete non-existent document
-		err = store.Delete("non-existent-uuid", false)
+		// Try to delete non-existent document (use proper UUID format)
+		nonExistentUUID := "00000000-0000-0000-0000-000000000001"
+		err = store.Delete(nonExistentUUID, false)
 		if err == nil {
 			t.Error("expected error when deleting non-existent document")
 		}
-		if err.Error() != "document not found: non-existent-uuid" {
+		expectedError := "document not found: " + nonExistentUUID
+		if err.Error() != expectedError {
 			t.Errorf("unexpected error: %v", err)
 		}
 	})

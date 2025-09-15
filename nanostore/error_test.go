@@ -71,7 +71,8 @@ func TestInvalidInputs(t *testing.T) {
 
 	t.Run("UpdateNonExistentDocument", func(t *testing.T) {
 		title := "New Title"
-		err := store.Update("non-existent-uuid", nanostore.UpdateRequest{
+		nonExistentUUID := "00000000-0000-0000-0000-000000000001"
+		err := store.Update(nonExistentUUID, nanostore.UpdateRequest{
 			Title: &title,
 		})
 		if err == nil {
@@ -83,7 +84,8 @@ func TestInvalidInputs(t *testing.T) {
 	})
 
 	t.Run("SetStatusNonExistentDocument", func(t *testing.T) {
-		err := nanostore.SetStatus(store, "non-existent-uuid", "completed")
+		nonExistentUUID := "00000000-0000-0000-0000-000000000001"
+		err := nanostore.SetStatus(store, nonExistentUUID, "completed")
 		if err == nil {
 			t.Fatal("expected error setting status on non-existent document")
 		}

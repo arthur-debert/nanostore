@@ -254,6 +254,12 @@ func (s *store) addWithDimensions(title string, dimensionValues map[string]inter
 
 // Update modifies an existing document
 func (s *store) Update(id string, updates UpdateRequest) error {
+	// Resolve ID to UUID (handles both UUIDs and user-facing IDs)
+	actualUUID, err := s.resolveIDToUUID(id)
+	if err != nil {
+		return err
+	}
+
 	tx, err := s.db.Begin()
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
@@ -265,13 +271,13 @@ func (s *store) Update(id string, updates UpdateRequest) error {
 	if hierDim != nil && updates.Dimensions != nil {
 		if parentValue, hasParent := updates.Dimensions[hierDim.RefField]; hasParent {
 			if parentValue != "" {
-				if parentValue == id {
+				if parentValue == actualUUID {
 					return fmt.Errorf("cannot set document as its own parent")
 				}
 
 				// Check for circular references using embedded SQL
 				var cycle int
-				err = tx.QueryRow(checkCircularReferenceSQL, parentValue, id).Scan(&cycle)
+				err = tx.QueryRow(checkCircularReferenceSQL, parentValue, actualUUID).Scan(&cycle)
 				if err != nil {
 					return fmt.Errorf("failed to check for circular reference: %w", err)
 				}
@@ -339,7 +345,7 @@ func (s *store) Update(id string, updates UpdateRequest) error {
 	}
 
 	// Use SQL builder for safe query construction
-	query, args, err := s.sqlBuilder.buildDynamicUpdate(columns, values, id)
+	query, args, err := s.sqlBuilder.buildDynamicUpdate(columns, values, actualUUID)
 	if err != nil {
 		return fmt.Errorf("failed to build update query: %w", err)
 	}
@@ -390,6 +396,12 @@ func (s *store) ResolveUUID(userFacingID string) (string, error) {
 
 // Delete removes a document and optionally its children
 func (s *store) Delete(id string, cascade bool) error {
+	// Resolve ID to UUID (handles both UUIDs and user-facing IDs)
+	actualUUID, err := s.resolveIDToUUID(id)
+	if err != nil {
+		return err
+	}
+
 	tx, err := s.db.Begin()
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
@@ -402,7 +414,7 @@ func (s *store) Delete(id string, cascade bool) error {
 			// Use recursive CTE to delete all descendants from embedded SQL
 			query := fmt.Sprintf(deleteCascadeSQL, hierDim.RefField)
 
-			result, err := tx.Exec(query, id)
+			result, err := tx.Exec(query, actualUUID)
 			if err != nil {
 				return fmt.Errorf("failed to delete with cascade: %w", err)
 			}
@@ -417,7 +429,7 @@ func (s *store) Delete(id string, cascade bool) error {
 			}
 		} else {
 			// No hierarchy - just delete the single document
-			result, err := tx.Exec("DELETE FROM documents WHERE uuid = ?", id)
+			result, err := tx.Exec("DELETE FROM documents WHERE uuid = ?", actualUUID)
 			if err != nil {
 				return fmt.Errorf("failed to delete document: %w", err)
 			}
@@ -437,7 +449,7 @@ func (s *store) Delete(id string, cascade bool) error {
 		if hierDim != nil {
 			var hasChildren int
 			// Use SQL builder for count query
-			query, args, err := s.sqlBuilder.buildSelectCount("documents", squirrel.Eq{hierDim.RefField: id})
+			query, args, err := s.sqlBuilder.buildSelectCount("documents", squirrel.Eq{hierDim.RefField: actualUUID})
 			if err != nil {
 				return fmt.Errorf("failed to build count query: %w", err)
 			}
@@ -452,7 +464,7 @@ func (s *store) Delete(id string, cascade bool) error {
 		}
 
 		// Delete single document
-		result, err := tx.Exec("DELETE FROM documents WHERE uuid = ?", id)
+		result, err := tx.Exec("DELETE FROM documents WHERE uuid = ?", actualUUID)
 		if err != nil {
 			return fmt.Errorf("failed to delete document: %w", err)
 		}
@@ -859,6 +871,46 @@ func (s *store) resolveChildUUID(parentUUID string, level parsedLevel) (string, 
 	err := s.db.QueryRow(query, args...).Scan(&uuid)
 	if err != nil {
 		return "", fmt.Errorf("child document not found")
+	}
+
+	return uuid, nil
+}
+
+// isUUIDFormat checks if a string matches UUID format (8-4-4-4-12 hex digits with dashes)
+func isUUIDFormat(id string) bool {
+	// UUID format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx (36 characters)
+	if len(id) != 36 {
+		return false
+	}
+
+	// Check dash positions
+	if id[8] != '-' || id[13] != '-' || id[18] != '-' || id[23] != '-' {
+		return false
+	}
+
+	// Check that non-dash characters are hex digits
+	for i, r := range id {
+		if i == 8 || i == 13 || i == 18 || i == 23 {
+			continue // Skip dashes
+		}
+		if (r < '0' || r > '9') && (r < 'a' || r > 'f') && (r < 'A' || r > 'F') {
+			return false
+		}
+	}
+
+	return true
+}
+
+// resolveIDToUUID resolves either a UUID or user-facing ID to a UUID
+func (s *store) resolveIDToUUID(id string) (string, error) {
+	if isUUIDFormat(id) {
+		return id, nil
+	}
+
+	// Not a UUID, try to resolve as user-facing ID
+	uuid, err := s.ResolveUUID(id)
+	if err != nil {
+		return "", fmt.Errorf("invalid ID '%s': %w", id, err)
 	}
 
 	return uuid, nil
