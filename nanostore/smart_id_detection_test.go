@@ -52,7 +52,22 @@ func TestIsUUIDFormat(t *testing.T) {
 			// Test UUID detection indirectly through API behavior
 			// We can infer the detection result based on whether methods
 			// try to resolve the ID or use it directly
-			store, err := nanostore.NewTestStore(":memory:")
+			store, err := nanostore.New(":memory:", nanostore.Config{
+				Dimensions: []nanostore.DimensionConfig{
+					{
+						Name:         "status",
+						Type:         nanostore.Enumerated,
+						Values:       []string{"pending", "completed"},
+						Prefixes:     map[string]string{"completed": "c"},
+						DefaultValue: "pending",
+					},
+					{
+						Name:     "parent",
+						Type:     nanostore.Hierarchical,
+						RefField: "parent_uuid",
+					},
+				},
+			})
 			if err != nil {
 				t.Fatalf("failed to create store: %v", err)
 			}
@@ -79,7 +94,22 @@ func TestIsUUIDFormat(t *testing.T) {
 }
 
 func TestUpdateWithSmartIDDetection(t *testing.T) {
-	store, err := nanostore.NewTestStore(":memory:")
+	store, err := nanostore.New(":memory:", nanostore.Config{
+		Dimensions: []nanostore.DimensionConfig{
+			{
+				Name:         "status",
+				Type:         nanostore.Enumerated,
+				Values:       []string{"pending", "completed"},
+				Prefixes:     map[string]string{"completed": "c"},
+				DefaultValue: "pending",
+			},
+			{
+				Name:     "parent",
+				Type:     nanostore.Hierarchical,
+				RefField: "parent_uuid",
+			},
+		},
+	})
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
@@ -192,7 +222,22 @@ func TestDeleteWithSmartIDDetection(t *testing.T) {
 		{
 			name: "delete with UUID",
 			setupFn: func(t *testing.T) (nanostore.Store, string) {
-				store, err := nanostore.NewTestStore(":memory:")
+				store, err := nanostore.New(":memory:", nanostore.Config{
+					Dimensions: []nanostore.DimensionConfig{
+						{
+							Name:         "status",
+							Type:         nanostore.Enumerated,
+							Values:       []string{"pending", "completed"},
+							Prefixes:     map[string]string{"completed": "c"},
+							DefaultValue: "pending",
+						},
+						{
+							Name:     "parent",
+							Type:     nanostore.Hierarchical,
+							RefField: "parent_uuid",
+						},
+					},
+				})
 				if err != nil {
 					t.Fatalf("failed to create store: %v", err)
 				}
@@ -206,7 +251,22 @@ func TestDeleteWithSmartIDDetection(t *testing.T) {
 		{
 			name: "delete with user-facing ID",
 			setupFn: func(t *testing.T) (nanostore.Store, string) {
-				store, err := nanostore.NewTestStore(":memory:")
+				store, err := nanostore.New(":memory:", nanostore.Config{
+					Dimensions: []nanostore.DimensionConfig{
+						{
+							Name:         "status",
+							Type:         nanostore.Enumerated,
+							Values:       []string{"pending", "completed"},
+							Prefixes:     map[string]string{"completed": "c"},
+							DefaultValue: "pending",
+						},
+						{
+							Name:     "parent",
+							Type:     nanostore.Hierarchical,
+							RefField: "parent_uuid",
+						},
+					},
+				})
 				if err != nil {
 					t.Fatalf("failed to create store: %v", err)
 				}
@@ -224,7 +284,22 @@ func TestDeleteWithSmartIDDetection(t *testing.T) {
 		{
 			name: "delete with invalid UUID",
 			setupFn: func(t *testing.T) (nanostore.Store, string) {
-				store, err := nanostore.NewTestStore(":memory:")
+				store, err := nanostore.New(":memory:", nanostore.Config{
+					Dimensions: []nanostore.DimensionConfig{
+						{
+							Name:         "status",
+							Type:         nanostore.Enumerated,
+							Values:       []string{"pending", "completed"},
+							Prefixes:     map[string]string{"completed": "c"},
+							DefaultValue: "pending",
+						},
+						{
+							Name:     "parent",
+							Type:     nanostore.Hierarchical,
+							RefField: "parent_uuid",
+						},
+					},
+				})
 				if err != nil {
 					t.Fatalf("failed to create store: %v", err)
 				}
@@ -236,7 +311,22 @@ func TestDeleteWithSmartIDDetection(t *testing.T) {
 		{
 			name: "delete with invalid user-facing ID",
 			setupFn: func(t *testing.T) (nanostore.Store, string) {
-				store, err := nanostore.NewTestStore(":memory:")
+				store, err := nanostore.New(":memory:", nanostore.Config{
+					Dimensions: []nanostore.DimensionConfig{
+						{
+							Name:         "status",
+							Type:         nanostore.Enumerated,
+							Values:       []string{"pending", "completed"},
+							Prefixes:     map[string]string{"completed": "c"},
+							DefaultValue: "pending",
+						},
+						{
+							Name:     "parent",
+							Type:     nanostore.Hierarchical,
+							RefField: "parent_uuid",
+						},
+					},
+				})
 				if err != nil {
 					t.Fatalf("failed to create store: %v", err)
 				}
@@ -248,7 +338,22 @@ func TestDeleteWithSmartIDDetection(t *testing.T) {
 		{
 			name: "delete with malformed ID",
 			setupFn: func(t *testing.T) (nanostore.Store, string) {
-				store, err := nanostore.NewTestStore(":memory:")
+				store, err := nanostore.New(":memory:", nanostore.Config{
+					Dimensions: []nanostore.DimensionConfig{
+						{
+							Name:         "status",
+							Type:         nanostore.Enumerated,
+							Values:       []string{"pending", "completed"},
+							Prefixes:     map[string]string{"completed": "c"},
+							DefaultValue: "pending",
+						},
+						{
+							Name:     "parent",
+							Type:     nanostore.Hierarchical,
+							RefField: "parent_uuid",
+						},
+					},
+				})
 				if err != nil {
 					t.Fatalf("failed to create store: %v", err)
 				}
@@ -282,7 +387,22 @@ func TestDeleteWithSmartIDDetection(t *testing.T) {
 }
 
 func TestSetStatusWithSmartIDDetection(t *testing.T) {
-	store, err := nanostore.NewTestStore(":memory:")
+	store, err := nanostore.New(":memory:", nanostore.Config{
+		Dimensions: []nanostore.DimensionConfig{
+			{
+				Name:         "status",
+				Type:         nanostore.Enumerated,
+				Values:       []string{"pending", "completed"},
+				Prefixes:     map[string]string{"completed": "c"},
+				DefaultValue: "pending",
+			},
+			{
+				Name:     "parent",
+				Type:     nanostore.Hierarchical,
+				RefField: "parent_uuid",
+			},
+		},
+	})
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
@@ -336,7 +456,22 @@ func TestSetStatusWithSmartIDDetection(t *testing.T) {
 }
 
 func TestMixedIDOperations(t *testing.T) {
-	store, err := nanostore.NewTestStore(":memory:")
+	store, err := nanostore.New(":memory:", nanostore.Config{
+		Dimensions: []nanostore.DimensionConfig{
+			{
+				Name:         "status",
+				Type:         nanostore.Enumerated,
+				Values:       []string{"pending", "completed"},
+				Prefixes:     map[string]string{"completed": "c"},
+				DefaultValue: "pending",
+			},
+			{
+				Name:     "parent",
+				Type:     nanostore.Hierarchical,
+				RefField: "parent_uuid",
+			},
+		},
+	})
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}

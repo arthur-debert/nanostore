@@ -16,7 +16,22 @@ func TestConcurrentReads(t *testing.T) {
 	dbPath := filepath.Join(tmpDir, "concurrent_test.db")
 
 	// Create and populate store
-	store, err := nanostore.NewTestStore(dbPath)
+	store, err := nanostore.New(dbPath, nanostore.Config{
+		Dimensions: []nanostore.DimensionConfig{
+			{
+				Name:         "status",
+				Type:         nanostore.Enumerated,
+				Values:       []string{"pending", "completed"},
+				Prefixes:     map[string]string{"completed": "c"},
+				DefaultValue: "pending",
+			},
+			{
+				Name:     "parent",
+				Type:     nanostore.Hierarchical,
+				RefField: "parent_uuid",
+			},
+		},
+	})
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
@@ -40,7 +55,22 @@ func TestConcurrentReads(t *testing.T) {
 			defer wg.Done()
 
 			// Each goroutine opens its own connection
-			s, err := nanostore.NewTestStore(dbPath)
+			s, err := nanostore.New(dbPath, nanostore.Config{
+				Dimensions: []nanostore.DimensionConfig{
+					{
+						Name:         "status",
+						Type:         nanostore.Enumerated,
+						Values:       []string{"pending", "completed"},
+						Prefixes:     map[string]string{"completed": "c"},
+						DefaultValue: "pending",
+					},
+					{
+						Name:     "parent",
+						Type:     nanostore.Hierarchical,
+						RefField: "parent_uuid",
+					},
+				},
+			})
 			if err != nil {
 				errors <- fmt.Errorf("goroutine %d: failed to open store: %v", n, err)
 				return

@@ -9,7 +9,22 @@ import (
 // TestBatchIDResolution demonstrates the behavior when completing multiple items
 // by their user-facing IDs. This test documents issue #16.
 func TestBatchIDResolution(t *testing.T) {
-	store, err := nanostore.New(":memory:", nanostore.DefaultTestConfig())
+	store, err := nanostore.New(":memory:", nanostore.Config{
+		Dimensions: []nanostore.DimensionConfig{
+			{
+				Name:         "status",
+				Type:         nanostore.Enumerated,
+				Values:       []string{"pending", "completed"},
+				Prefixes:     map[string]string{"completed": "c"},
+				DefaultValue: "pending",
+			},
+			{
+				Name:     "parent",
+				Type:     nanostore.Hierarchical,
+				RefField: "parent_uuid",
+			},
+		},
+	})
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
@@ -68,7 +83,22 @@ func TestBatchIDResolution(t *testing.T) {
 
 // TestBatchIDResolutionPattern demonstrates the correct pattern for batch operations
 func TestBatchIDResolutionPattern(t *testing.T) {
-	store, err := nanostore.New(":memory:", nanostore.DefaultTestConfig())
+	store, err := nanostore.New(":memory:", nanostore.Config{
+		Dimensions: []nanostore.DimensionConfig{
+			{
+				Name:         "status",
+				Type:         nanostore.Enumerated,
+				Values:       []string{"pending", "completed"},
+				Prefixes:     map[string]string{"completed": "c"},
+				DefaultValue: "pending",
+			},
+			{
+				Name:     "parent",
+				Type:     nanostore.Hierarchical,
+				RefField: "parent_uuid",
+			},
+		},
+	})
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
@@ -126,7 +156,22 @@ func TestBatchIDResolutionPattern(t *testing.T) {
 
 	t.Run("incorrect batch pattern - resolving IDs one at a time", func(t *testing.T) {
 		// Reset by creating new store
-		store2, _ := nanostore.New(":memory:", nanostore.DefaultTestConfig())
+		store2, _ := nanostore.New(":memory:", nanostore.Config{
+			Dimensions: []nanostore.DimensionConfig{
+				{
+					Name:         "status",
+					Type:         nanostore.Enumerated,
+					Values:       []string{"pending", "completed"},
+					Prefixes:     map[string]string{"completed": "c"},
+					DefaultValue: "pending",
+				},
+				{
+					Name:     "parent",
+					Type:     nanostore.Hierarchical,
+					RefField: "parent_uuid",
+				},
+			},
+		})
 		defer func() { _ = store2.Close() }()
 
 		uuid1, _ := store2.Add("Item 1", nil)
@@ -157,7 +202,22 @@ func TestBatchIDResolutionPattern(t *testing.T) {
 // TestBatchOperationStrategies demonstrates different strategies for handling batch operations
 func TestBatchOperationStrategies(t *testing.T) {
 	t.Run("reverse order strategy", func(t *testing.T) {
-		store, _ := nanostore.New(":memory:", nanostore.DefaultTestConfig())
+		store, _ := nanostore.New(":memory:", nanostore.Config{
+			Dimensions: []nanostore.DimensionConfig{
+				{
+					Name:         "status",
+					Type:         nanostore.Enumerated,
+					Values:       []string{"pending", "completed"},
+					Prefixes:     map[string]string{"completed": "c"},
+					DefaultValue: "pending",
+				},
+				{
+					Name:     "parent",
+					Type:     nanostore.Hierarchical,
+					RefField: "parent_uuid",
+				},
+			},
+		})
 		defer func() { _ = store.Close() }()
 
 		// Create items
@@ -190,7 +250,22 @@ func TestBatchOperationStrategies(t *testing.T) {
 	})
 
 	t.Run("pre-resolution with validation", func(t *testing.T) {
-		store, _ := nanostore.New(":memory:", nanostore.DefaultTestConfig())
+		store, _ := nanostore.New(":memory:", nanostore.Config{
+			Dimensions: []nanostore.DimensionConfig{
+				{
+					Name:         "status",
+					Type:         nanostore.Enumerated,
+					Values:       []string{"pending", "completed"},
+					Prefixes:     map[string]string{"completed": "c"},
+					DefaultValue: "pending",
+				},
+				{
+					Name:     "parent",
+					Type:     nanostore.Hierarchical,
+					RefField: "parent_uuid",
+				},
+			},
+		})
 		defer func() { _ = store.Close() }()
 
 		// Create items
