@@ -39,13 +39,22 @@ BREAKING CHANGES
 
 3. SetStatus Method
    OLD: store.SetStatus(id, status) - method on Store interface
-   NEW: nanostore.SetStatus(store, id, status) - helper function
+   NEW: Removed from core API - use generic Update method or domain-specific helpers
 
    // v0.2.0
    store.SetStatus(uuid, "completed")
    
-   // v0.3.0
-   nanostore.SetStatus(store, uuid, "completed")
+   // v0.3.0 and later
+   store.Update(uuid, nanostore.UpdateRequest{
+       Dimensions: map[string]string{"status": "completed"},
+   })
+   
+   // Or create domain-specific helpers in your application:
+   func SetStatus(store nanostore.Store, id, status string) error {
+       return store.Update(id, nanostore.UpdateRequest{
+           Dimensions: map[string]string{"status": status},
+       })
+   }
 
 4. List Filtering
    OLD: FilterByStatus []Status, FilterByParent *string fields
@@ -119,12 +128,12 @@ BREAKING CHANGES
 MIGRATION HELPERS
 -----------------
 
-For easier migration, v0.3.0 provides several helpers:
+For easier migration, v0.3.0+ provides several helpers:
 
 1. TodoConfig() - Returns a configuration matching v0.2.0 behavior
-2. SetStatus() - Helper function replacing the old method
-3. GetStatus() and GetParentUUID() - Convenience methods on Document
-4. TestAdd() - Test helper maintaining old Add signature
+2. GetStatus() and GetParentUUID() - Convenience methods on Document
+3. TestAdd() and TestSetStatus() - Test helpers for backward compatibility
+4. Domain-specific SetStatus() helpers in examples/apps/ packages
 
 STEP-BY-STEP MIGRATION
 ----------------------
@@ -140,7 +149,8 @@ STEP-BY-STEP MIGRATION
    - Change map[string]string to map[string]interface{} if needed
 
 4. Update SetStatus calls:
-   - store.SetStatus(...) -> nanostore.SetStatus(store, ...)
+   - Replace store.SetStatus(...) with store.Update(...) using dimensions
+   - Or create domain-specific helpers in your application
 
 5. Update List filtering:
    - Convert FilterByStatus/FilterByParent to Filters map
@@ -186,7 +196,9 @@ After (v0.3.0):
         })
         
         // Complete a task
-        nanostore.SetStatus(store, id, "completed")
+        store.Update(id, nanostore.UpdateRequest{
+            Dimensions: map[string]string{"status": "completed"},
+        })
     }
 
 CUSTOM CONFIGURATIONS

@@ -61,7 +61,7 @@ func TestSmartIDDetectionDemo(t *testing.T) {
 
 	// Set status using user-facing ID
 	fmt.Printf("3. Setting status with user-facing ID (%s)...\n", userFacingID)
-	err = nanostore.SetStatus(store, userFacingID, "completed")
+	err = nanostore.TestSetStatusUpdate(store, userFacingID, "completed")
 	if err != nil {
 		t.Errorf("failed to set status with user-facing ID: %v", err)
 	} else {

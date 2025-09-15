@@ -47,8 +47,8 @@ func ExampleNew() {
 	task2, _ := store.Add("Implement backend", map[string]interface{}{"parent_uuid": epic})
 
 	// Update statuses
-	_ = nanostore.SetStatus(store, task1, "done")
-	_ = nanostore.SetStatus(store, task2, "in_progress")
+	_ = nanostore.TestSetStatusUpdate(store, task1, "done")
+	_ = nanostore.TestSetStatusUpdate(store, task2, "in_progress")
 
 	// List all documents
 	docs, _ := store.List(nanostore.ListOptions{})

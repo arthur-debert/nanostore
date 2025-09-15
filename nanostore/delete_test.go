@@ -267,7 +267,7 @@ func TestDelete(t *testing.T) {
 		}
 
 		// Set one child as completed
-		err = nanostore.SetStatus(store, child2ID, "completed")
+		err = nanostore.TestSetStatusUpdate(store, child2ID, "completed")
 		if err != nil {
 			t.Fatalf("failed to set status: %v", err)
 		}

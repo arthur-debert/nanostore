@@ -214,11 +214,3 @@ func New(dbPath string, config Config) (Store, error) {
 	}
 	return newConfigurableStore(dbPath, config)
 }
-
-// SetStatus is a helper function to set the status dimension of a document
-// This is equivalent to: store.Update(id, UpdateRequest{Dimensions: {"status": status}})
-func SetStatus(store Store, id string, status string) error {
-	return store.Update(id, UpdateRequest{
-		Dimensions: map[string]string{"status": status},
-	})
-}

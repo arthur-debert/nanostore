@@ -47,7 +47,7 @@ func TestListWithIDs(t *testing.T) {
 		t.Fatalf("failed to add third document: %v", err)
 	}
 
-	err = nanostore.SetStatus(store, id3, "completed")
+	err = nanostore.TestSetStatusUpdate(store, id3, "completed")
 	if err != nil {
 		t.Fatalf("failed to set status: %v", err)
 	}
@@ -111,7 +111,7 @@ func TestListHierarchical(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to add child 3: %v", err)
 	}
-	err = nanostore.SetStatus(store, child3ID, "completed")
+	err = nanostore.TestSetStatusUpdate(store, child3ID, "completed")
 	if err != nil {
 		t.Fatalf("failed to set status: %v", err)
 	}
@@ -160,10 +160,10 @@ func TestListFilteredIDs(t *testing.T) {
 	pending3, _ := store.Add("Pending 3", nil)
 
 	completed1, _ := store.Add("Completed 1", nil)
-	_ = nanostore.SetStatus(store, completed1, "completed")
+	_ = nanostore.TestSetStatusUpdate(store, completed1, "completed")
 
 	completed2, _ := store.Add("Completed 2", nil)
-	_ = nanostore.SetStatus(store, completed2, "completed")
+	_ = nanostore.TestSetStatusUpdate(store, completed2, "completed")
 
 	// Add more pending after completed
 	pending4, _ := store.Add("Pending 4", nil)
@@ -246,14 +246,14 @@ func TestListFilteredHierarchicalIDs(t *testing.T) {
 	// Children of root1
 	child1_1, _ := store.Add("Child 1.1", map[string]interface{}{"parent_uuid": root1})
 	child1_2, _ := store.Add("Child 1.2", map[string]interface{}{"parent_uuid": root1})
-	_ = nanostore.SetStatus(store, child1_2, "completed")
+	_ = nanostore.TestSetStatusUpdate(store, child1_2, "completed")
 	child1_3, _ := store.Add("Child 1.3", map[string]interface{}{"parent_uuid": root1})
 
 	// Children of root2 (all completed)
 	child2_1, _ := store.Add("Child 2.1", map[string]interface{}{"parent_uuid": root2})
-	_ = nanostore.SetStatus(store, child2_1, "completed")
+	_ = nanostore.TestSetStatusUpdate(store, child2_1, "completed")
 	child2_2, _ := store.Add("Child 2.2", map[string]interface{}{"parent_uuid": root2})
-	_ = nanostore.SetStatus(store, child2_2, "completed")
+	_ = nanostore.TestSetStatusUpdate(store, child2_2, "completed")
 
 	// Grandchildren
 	grandchild, _ := store.Add("Grandchild", map[string]interface{}{"parent_uuid": child1_1})
@@ -303,12 +303,12 @@ func TestListFilterByParentIDs(t *testing.T) {
 	// Create structure
 	root1, _ := store.Add("Root 1", nil)
 	root2, _ := store.Add("Root 2", nil)
-	_ = nanostore.SetStatus(store, root2, "completed")
+	_ = nanostore.TestSetStatusUpdate(store, root2, "completed")
 	root3, _ := store.Add("Root 3", nil)
 
 	child1, _ := store.Add("Child 1", map[string]interface{}{"parent_uuid": root1})
 	child2, _ := store.Add("Child 2", map[string]interface{}{"parent_uuid": root1})
-	_ = nanostore.SetStatus(store, child2, "completed")
+	_ = nanostore.TestSetStatusUpdate(store, child2, "completed")
 
 	// Test: Get only root documents
 	rootDocs, err := store.List(nanostore.ListOptions{
@@ -380,11 +380,11 @@ func TestListCombinedFilters(t *testing.T) {
 	// Create test data
 	root1, _ := store.Add("Project Alpha", nil)
 	root2, _ := store.Add("Project Beta", nil)
-	_ = nanostore.SetStatus(store, root2, "completed")
+	_ = nanostore.TestSetStatusUpdate(store, root2, "completed")
 
 	task1, _ := store.Add("Design mockups", map[string]interface{}{"parent_uuid": root1})
 	task2, _ := store.Add("Write tests", map[string]interface{}{"parent_uuid": root1})
-	_ = nanostore.SetStatus(store, task2, "completed")
+	_ = nanostore.TestSetStatusUpdate(store, task2, "completed")
 	task3, _ := store.Add("Deploy to production", map[string]interface{}{"parent_uuid": root1})
 
 	// Test: Search + Status filter
