@@ -48,19 +48,6 @@ func NewListOptions() ListOptions {
 	}
 }
 
-// WithParentFilter adds a parent filter to ListOptions
-func (opts ListOptions) WithParentFilter(parentUUID *string) ListOptions {
-	if opts.Filters == nil {
-		opts.Filters = make(map[string]interface{})
-	}
-	if parentUUID != nil {
-		opts.Filters["parent_uuid"] = *parentUUID
-	} else {
-		opts.Filters["parent_uuid"] = nil
-	}
-	return opts
-}
-
 // UpdateRequest specifies fields to update on a document
 type UpdateRequest struct {
 	Title      *string
