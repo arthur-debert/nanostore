@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/arthur-debert/nanostore/nanostore"
-	_ "github.com/mattn/go-sqlite3"
+	_ "modernc.org/sqlite"
 )
 
 func TestDatabaseConsistencyAfterPanic(t *testing.T) {
@@ -38,7 +38,7 @@ func TestDatabaseConsistencyAfterPanic(t *testing.T) {
 	}
 
 	// Simulate a crash by opening the database directly and leaving a transaction open
-	db, err := sql.Open("sqlite3", dbPath)
+	db, err := sql.Open("sqlite", dbPath)
 	if err != nil {
 		t.Fatalf("failed to open database: %v", err)
 	}
