@@ -1,0 +1,483 @@
+package main
+
+/*
+#include <stdlib.h>
+*/
+import "C"
+import (
+	"encoding/json"
+	"testing"
+	"unsafe"
+
+	"github.com/arthur-debert/nanostore/nanostore"
+)
+
+// Test the exact C API contract that language bindings use
+// This ensures we have a reference for what the bindings should test
+
+func TestBindingCore_NewStore(t *testing.T) {
+	// Test creating a store with enumerated dimensions
+	config := nanostore.Config{
+		Dimensions: []nanostore.DimensionConfig{
+			{
+				Name:         "status",
+				Type:         nanostore.Enumerated,
+				Values:       []string{"active", "archived"},
+				Prefixes:     map[string]string{"archived": "a"},
+				DefaultValue: "active",
+			},
+		},
+	}
+
+	configJSON, _ := json.Marshal(config)
+	buffer := make([]byte, 4096)
+
+	result := nanostore_new(
+		(*C.char)(unsafe.Pointer(&[]byte(":memory:")[0])),
+		(*C.char)(unsafe.Pointer(&configJSON[0])),
+		(*C.char)(unsafe.Pointer(&buffer[0])),
+		4096,
+	)
+
+	if result < 0 {
+		t.Fatal("Buffer too small")
+	}
+
+	var response map[string]interface{}
+	if err := json.Unmarshal(buffer[:result], &response); err != nil {
+		t.Fatalf("Failed to parse response: %v", err)
+	}
+
+	if errMsg, hasError := response["error"]; hasError {
+		t.Fatalf("Expected success, got error: %v", errMsg)
+	}
+
+	if handle, ok := response["handle"].(string); !ok || handle == "" {
+		t.Fatal("Expected valid handle in response")
+	}
+}
+
+func TestBindingCore_TodoConfig(t *testing.T) {
+	// Test the todo-app configuration that both Python and Node.js expose
+	config := nanostore.Config{
+		Dimensions: []nanostore.DimensionConfig{
+			{
+				Name:         "status",
+				Type:         nanostore.Enumerated,
+				Values:       []string{"pending", "completed"},
+				Prefixes:     map[string]string{"completed": "c"},
+				DefaultValue: "pending",
+			},
+			{
+				Name:     "parent",
+				Type:     nanostore.Hierarchical,
+				RefField: "parent_uuid",
+			},
+		},
+	}
+
+	configJSON, _ := json.Marshal(config)
+	buffer := make([]byte, 4096)
+
+	result := nanostore_new(
+		(*C.char)(unsafe.Pointer(&[]byte(":memory:")[0])),
+		(*C.char)(unsafe.Pointer(&configJSON[0])),
+		(*C.char)(unsafe.Pointer(&buffer[0])),
+		4096,
+	)
+
+	if result < 0 {
+		t.Fatal("Buffer too small")
+	}
+
+	var response map[string]interface{}
+	if err := json.Unmarshal(buffer[:result], &response); err != nil {
+		t.Fatalf("Failed to parse response: %v", err)
+	}
+
+	if errMsg, hasError := response["error"]; hasError {
+		t.Fatalf("Expected success, got error: %v", errMsg)
+	}
+}
+
+func TestBindingCore_CRUD(t *testing.T) {
+	// Setup
+	handle := createTestStore(t)
+	defer closeStore(handle)
+
+	// Test Add
+	t.Run("Add", func(t *testing.T) {
+		dimensions := map[string]interface{}{
+			"status": "active",
+		}
+		dimensionsJSON, _ := json.Marshal(dimensions)
+		buffer := make([]byte, 4096)
+
+		result := nanostore_add(
+			(*C.char)(unsafe.Pointer(&[]byte(handle)[0])),
+			(*C.char)(unsafe.Pointer(&[]byte("Test Document")[0])),
+			(*C.char)(unsafe.Pointer(&dimensionsJSON[0])),
+			(*C.char)(unsafe.Pointer(&buffer[0])),
+			4096,
+		)
+
+		if result < 0 {
+			t.Fatal("Buffer too small")
+		}
+
+		var response map[string]interface{}
+		if err := json.Unmarshal(buffer[:result], &response); err != nil {
+			t.Fatalf("Failed to parse response: %v", err)
+		}
+
+		if errMsg, hasError := response["error"]; hasError {
+			t.Fatalf("Add failed: %v", errMsg)
+		}
+
+		if uuid, ok := response["uuid"].(string); !ok || uuid == "" {
+			t.Fatal("Expected valid UUID in response")
+		}
+	})
+
+	// Test List
+	t.Run("List", func(t *testing.T) {
+		filtersJSON := []byte("{}")
+		buffer := make([]byte, 65536)
+
+		result := nanostore_list(
+			(*C.char)(unsafe.Pointer(&[]byte(handle)[0])),
+			(*C.char)(unsafe.Pointer(&filtersJSON[0])),
+			(*C.char)(unsafe.Pointer(&buffer[0])),
+			65536,
+		)
+
+		if result < 0 {
+			t.Fatal("Buffer too small")
+		}
+
+		var response []interface{}
+		if err := json.Unmarshal(buffer[:result], &response); err != nil {
+			t.Fatalf("Failed to parse response: %v", err)
+		}
+
+		if len(response) == 0 {
+			t.Fatal("Expected at least one document")
+		}
+	})
+
+	// Test Update
+	t.Run("Update", func(t *testing.T) {
+		// First get a document to update
+		uuid := getFirstDocumentUUID(t, handle)
+
+		updates := map[string]interface{}{
+			"title": "Updated Title",
+			"dimensions": map[string]string{
+				"status": "archived",
+			},
+		}
+		updatesJSON, _ := json.Marshal(updates)
+		buffer := make([]byte, 4096)
+
+		result := nanostore_update(
+			(*C.char)(unsafe.Pointer(&[]byte(handle)[0])),
+			(*C.char)(unsafe.Pointer(&[]byte(uuid)[0])),
+			(*C.char)(unsafe.Pointer(&updatesJSON[0])),
+			(*C.char)(unsafe.Pointer(&buffer[0])),
+			4096,
+		)
+
+		if result < 0 {
+			t.Fatal("Buffer too small")
+		}
+
+		var response map[string]interface{}
+		if err := json.Unmarshal(buffer[:result], &response); err != nil {
+			t.Fatalf("Failed to parse response: %v", err)
+		}
+
+		if errMsg, hasError := response["error"]; hasError {
+			t.Fatalf("Update failed: %v", errMsg)
+		}
+	})
+
+	// Test Delete
+	t.Run("Delete", func(t *testing.T) {
+		// Add a document to delete
+		uuid := addTestDocument(t, handle, "To Delete")
+
+		buffer := make([]byte, 4096)
+
+		result := nanostore_delete(
+			(*C.char)(unsafe.Pointer(&[]byte(handle)[0])),
+			(*C.char)(unsafe.Pointer(&[]byte(uuid)[0])),
+			0, // cascade = false
+			(*C.char)(unsafe.Pointer(&buffer[0])),
+			4096,
+		)
+
+		if result < 0 {
+			t.Fatal("Buffer too small")
+		}
+
+		var response map[string]interface{}
+		if err := json.Unmarshal(buffer[:result], &response); err != nil {
+			t.Fatalf("Failed to parse response: %v", err)
+		}
+
+		if errMsg, hasError := response["error"]; hasError {
+			t.Fatalf("Delete failed: %v", errMsg)
+		}
+	})
+}
+
+func TestBindingCore_ResolveUUID(t *testing.T) {
+	handle := createTestStore(t)
+	defer closeStore(handle)
+
+	// Add a document and get its user-facing ID
+	uuid := addTestDocument(t, handle, "Test")
+	userFacingID := getUserFacingID(t, handle, uuid)
+
+	// Test resolving user-facing ID back to UUID
+	buffer := make([]byte, 4096)
+
+	result := nanostore_resolve_uuid(
+		(*C.char)(unsafe.Pointer(&[]byte(handle)[0])),
+		(*C.char)(unsafe.Pointer(&[]byte(userFacingID)[0])),
+		(*C.char)(unsafe.Pointer(&buffer[0])),
+		4096,
+	)
+
+	if result < 0 {
+		t.Fatal("Buffer too small")
+	}
+
+	var response map[string]interface{}
+	if err := json.Unmarshal(buffer[:result], &response); err != nil {
+		t.Fatalf("Failed to parse response: %v", err)
+	}
+
+	if errMsg, hasError := response["error"]; hasError {
+		t.Fatalf("ResolveUUID failed: %v", errMsg)
+	}
+
+	if resolvedUUID, ok := response["uuid"].(string); !ok || resolvedUUID != uuid {
+		t.Fatalf("Expected UUID %s, got %s", uuid, resolvedUUID)
+	}
+}
+
+func TestBindingCore_BufferOverflow(t *testing.T) {
+	// Test that small buffers are handled correctly
+	config := nanostore.Config{
+		Dimensions: []nanostore.DimensionConfig{
+			{
+				Name:         "status",
+				Type:         nanostore.Enumerated,
+				Values:       []string{"active"},
+				DefaultValue: "active",
+			},
+		},
+	}
+
+	configJSON, _ := json.Marshal(config)
+	buffer := make([]byte, 10) // Intentionally small buffer
+
+	result := nanostore_new(
+		(*C.char)(unsafe.Pointer(&[]byte(":memory:")[0])),
+		(*C.char)(unsafe.Pointer(&configJSON[0])),
+		(*C.char)(unsafe.Pointer(&buffer[0])),
+		10,
+	)
+
+	if result >= 0 {
+		t.Fatal("Expected buffer too small error")
+	}
+}
+
+func TestBindingCore_ErrorHandling(t *testing.T) {
+	t.Run("InvalidHandle", func(t *testing.T) {
+		buffer := make([]byte, 4096)
+
+		result := nanostore_add(
+			(*C.char)(unsafe.Pointer(&[]byte("invalid_handle")[0])),
+			(*C.char)(unsafe.Pointer(&[]byte("Test")[0])),
+			(*C.char)(unsafe.Pointer(&[]byte("{}")[0])),
+			(*C.char)(unsafe.Pointer(&buffer[0])),
+			4096,
+		)
+
+		if result < 0 {
+			t.Fatal("Buffer too small")
+		}
+
+		var response map[string]interface{}
+		if err := json.Unmarshal(buffer[:result], &response); err != nil {
+			t.Fatalf("Failed to parse response: %v", err)
+		}
+
+		if _, hasError := response["error"]; !hasError {
+			t.Fatal("Expected error for invalid handle")
+		}
+	})
+
+	t.Run("InvalidJSON", func(t *testing.T) {
+		buffer := make([]byte, 4096)
+
+		result := nanostore_new(
+			(*C.char)(unsafe.Pointer(&[]byte(":memory:")[0])),
+			(*C.char)(unsafe.Pointer(&[]byte("invalid json")[0])),
+			(*C.char)(unsafe.Pointer(&buffer[0])),
+			4096,
+		)
+
+		if result < 0 {
+			t.Fatal("Buffer too small")
+		}
+
+		var response map[string]interface{}
+		if err := json.Unmarshal(buffer[:result], &response); err != nil {
+			t.Fatalf("Failed to parse response: %v", err)
+		}
+
+		if _, hasError := response["error"]; !hasError {
+			t.Fatal("Expected error for invalid JSON")
+		}
+	})
+}
+
+// Helper functions
+
+func createTestStore(t *testing.T) string {
+	config := nanostore.Config{
+		Dimensions: []nanostore.DimensionConfig{
+			{
+				Name:         "status",
+				Type:         nanostore.Enumerated,
+				Values:       []string{"active", "archived"},
+				Prefixes:     map[string]string{"archived": "a"},
+				DefaultValue: "active",
+			},
+		},
+	}
+
+	configJSON, _ := json.Marshal(config)
+	buffer := make([]byte, 4096)
+
+	result := nanostore_new(
+		(*C.char)(unsafe.Pointer(&[]byte(":memory:")[0])),
+		(*C.char)(unsafe.Pointer(&configJSON[0])),
+		(*C.char)(unsafe.Pointer(&buffer[0])),
+		4096,
+	)
+
+	if result < 0 {
+		t.Fatal("Buffer too small")
+	}
+
+	var response map[string]interface{}
+	if err := json.Unmarshal(buffer[:result], &response); err != nil {
+		t.Fatalf("Failed to parse response: %v", err)
+	}
+
+	if errMsg, hasError := response["error"]; hasError {
+		t.Fatalf("Failed to create store: %v", errMsg)
+	}
+
+	return response["handle"].(string)
+}
+
+func closeStore(handle string) {
+	buffer := make([]byte, 4096)
+	nanostore_close(
+		(*C.char)(unsafe.Pointer(&[]byte(handle)[0])),
+		(*C.char)(unsafe.Pointer(&buffer[0])),
+		4096,
+	)
+}
+
+func addTestDocument(t *testing.T, handle, title string) string {
+	dimensions := map[string]interface{}{"status": "active"}
+	dimensionsJSON, _ := json.Marshal(dimensions)
+	buffer := make([]byte, 4096)
+
+	result := nanostore_add(
+		(*C.char)(unsafe.Pointer(&[]byte(handle)[0])),
+		(*C.char)(unsafe.Pointer(&[]byte(title)[0])),
+		(*C.char)(unsafe.Pointer(&dimensionsJSON[0])),
+		(*C.char)(unsafe.Pointer(&buffer[0])),
+		4096,
+	)
+
+	if result < 0 {
+		t.Fatal("Buffer too small")
+	}
+
+	var response map[string]interface{}
+	if err := json.Unmarshal(buffer[:result], &response); err != nil {
+		t.Fatalf("Failed to parse response: %v", err)
+	}
+
+	if errMsg, hasError := response["error"]; hasError {
+		t.Fatalf("Add failed: %v", errMsg)
+	}
+
+	return response["uuid"].(string)
+}
+
+func getFirstDocumentUUID(t *testing.T, handle string) string {
+	filtersJSON := []byte("{}")
+	buffer := make([]byte, 65536)
+
+	result := nanostore_list(
+		(*C.char)(unsafe.Pointer(&[]byte(handle)[0])),
+		(*C.char)(unsafe.Pointer(&filtersJSON[0])),
+		(*C.char)(unsafe.Pointer(&buffer[0])),
+		65536,
+	)
+
+	if result < 0 {
+		t.Fatal("Buffer too small")
+	}
+
+	var docs []map[string]interface{}
+	if err := json.Unmarshal(buffer[:result], &docs); err != nil {
+		t.Fatalf("Failed to parse response: %v", err)
+	}
+
+	if len(docs) == 0 {
+		t.Fatal("No documents found")
+	}
+
+	return docs[0]["uuid"].(string)
+}
+
+func getUserFacingID(t *testing.T, handle, uuid string) string {
+	filtersJSON := []byte("{}")
+	buffer := make([]byte, 65536)
+
+	result := nanostore_list(
+		(*C.char)(unsafe.Pointer(&[]byte(handle)[0])),
+		(*C.char)(unsafe.Pointer(&filtersJSON[0])),
+		(*C.char)(unsafe.Pointer(&buffer[0])),
+		65536,
+	)
+
+	if result < 0 {
+		t.Fatal("Buffer too small")
+	}
+
+	var docs []map[string]interface{}
+	if err := json.Unmarshal(buffer[:result], &docs); err != nil {
+		t.Fatalf("Failed to parse response: %v", err)
+	}
+
+	for _, doc := range docs {
+		if doc["uuid"].(string) == uuid {
+			return doc["user_facing_id"].(string)
+		}
+	}
+
+	t.Fatalf("Document with UUID %s not found", uuid)
+	return ""
+}
