@@ -15,10 +15,30 @@ type Todo struct {
 	store nanostore.Store
 }
 
+// todoConfig returns a configuration suitable for todo applications
+func todoConfig() nanostore.Config {
+	return nanostore.Config{
+		Dimensions: []nanostore.DimensionConfig{
+			{
+				Name:         "status",
+				Type:         nanostore.Enumerated,
+				Values:       []string{"pending", "completed"},
+				Prefixes:     map[string]string{"completed": "c"},
+				DefaultValue: "pending",
+			},
+			{
+				Name:     "parent",
+				Type:     nanostore.Hierarchical,
+				RefField: "parent_uuid",
+			},
+		},
+	}
+}
+
 // New creates a new Todo instance
 func New(dbPath string) (*Todo, error) {
-	// Use the default config which has status (pending/completed) and hierarchy
-	store, err := nanostore.New(dbPath, nanostore.DefaultTestConfig())
+	// Use the todo-specific configuration
+	store, err := nanostore.New(dbPath, todoConfig())
 	if err != nil {
 		return nil, fmt.Errorf("failed to create store: %w", err)
 	}

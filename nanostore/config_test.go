@@ -6,24 +6,27 @@ import (
 	"github.com/arthur-debert/nanostore/nanostore"
 )
 
-func TestTodoConfig(t *testing.T) {
-	config := nanostore.TodoConfig()
+// TestTodoConfig has been removed - TodoConfig is no longer part of the core library
+// Example configurations should be defined in application code
+
+func TestExampleConfig(t *testing.T) {
+	config := nanostore.ExampleConfig()
 
 	// Should have exactly 2 dimensions
 	if len(config.Dimensions) != 2 {
 		t.Errorf("expected 2 dimensions, got %d", len(config.Dimensions))
 	}
 
-	// First dimension should be status
-	statusDim := config.Dimensions[0]
-	if statusDim.Name != "status" {
-		t.Errorf("expected first dimension to be 'status', got '%s'", statusDim.Name)
+	// First dimension should be category
+	categoryDim := config.Dimensions[0]
+	if categoryDim.Name != "category" {
+		t.Errorf("expected first dimension to be 'category', got '%s'", categoryDim.Name)
 	}
-	if statusDim.Type != nanostore.Enumerated {
-		t.Errorf("expected status dimension to be Enumerated, got %d", statusDim.Type)
+	if categoryDim.Type != nanostore.Enumerated {
+		t.Errorf("expected category dimension to be Enumerated, got %d", categoryDim.Type)
 	}
-	if len(statusDim.Values) != 2 {
-		t.Errorf("expected status dimension to have 2 values, got %d", len(statusDim.Values))
+	if len(categoryDim.Values) != 2 {
+		t.Errorf("expected category dimension to have 2 values, got %d", len(categoryDim.Values))
 	}
 
 	// Second dimension should be parent

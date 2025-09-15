@@ -26,27 +26,6 @@ func ExampleConfig() Config {
 	}
 }
 
-// TodoConfig returns a configuration suitable for todo applications
-// This serves as a practical example of how to configure dimensions
-func TodoConfig() Config {
-	return Config{
-		Dimensions: []DimensionConfig{
-			{
-				Name:         "status",
-				Type:         Enumerated,
-				Values:       []string{"pending", "completed"},
-				Prefixes:     map[string]string{"completed": "c"},
-				DefaultValue: "pending",
-			},
-			{
-				Name:     "parent",
-				Type:     Hierarchical,
-				RefField: "parent_uuid",
-			},
-		},
-	}
-}
-
 // ValidateConfig checks the configuration for consistency and completeness
 func ValidateConfig(c Config) error {
 	if len(c.Dimensions) == 0 {
