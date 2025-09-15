@@ -50,7 +50,7 @@ func New(dbPath string) (*Todo, error) {
 // This is equivalent to: store.Update(id, UpdateRequest{Dimensions: {"status": status}})
 func SetStatus(store nanostore.Store, id string, status string) error {
 	return store.Update(id, nanostore.UpdateRequest{
-		Dimensions: map[string]string{"status": status},
+		Dimensions: map[string]interface{}{"status": status},
 	})
 }
 
@@ -183,7 +183,7 @@ func (t *Todo) Move(userFacingID string, newParentID *string) error {
 	}
 
 	updates := nanostore.UpdateRequest{
-		Dimensions: map[string]string{"parent_uuid": ""},
+		Dimensions: map[string]interface{}{"parent_uuid": ""},
 	}
 	if newParentUUID != nil {
 		updates.Dimensions["parent_uuid"] = *newParentUUID

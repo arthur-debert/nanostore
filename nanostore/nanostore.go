@@ -40,7 +40,7 @@ func NewListOptions() ListOptions {
 type UpdateRequest struct {
 	Title      *string
 	Body       *string
-	Dimensions map[string]string // Optional: dimension values to update (e.g., "status": "completed", "parent_uuid": "some-uuid")
+	Dimensions map[string]interface{} // Optional: dimension values to update (e.g., "status": "completed", "parent_uuid": "some-uuid")
 }
 
 // DimensionType defines the type of dimension for ID partitioning

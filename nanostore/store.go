@@ -297,6 +297,22 @@ func (s *store) Update(id string, updates UpdateRequest) error {
 		return err
 	}
 
+	// Pre-resolve parent IDs before starting transaction
+	hierDim := s.findHierarchicalDimension()
+	if hierDim != nil && updates.Dimensions != nil {
+		if parentValue, hasParent := updates.Dimensions[hierDim.RefField]; hasParent && parentValue != nil && parentValue != "" {
+			parentStr := fmt.Sprintf("%v", parentValue)
+			if !isUUIDFormat(parentStr) {
+				// Resolve user-facing ID to UUID before transaction
+				resolvedUUID, err := s.resolveIDToUUID(parentStr)
+				if err != nil {
+					return fmt.Errorf("invalid parent ID '%s': %w", parentStr, err)
+				}
+				updates.Dimensions[hierDim.RefField] = resolvedUUID
+			}
+		}
+	}
+
 	tx, err := s.db.Begin()
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
@@ -304,17 +320,17 @@ func (s *store) Update(id string, updates UpdateRequest) error {
 	defer func() { _ = tx.Rollback() }()
 
 	// Check for circular references if updating parent through hierarchical dimension
-	hierDim := s.findHierarchicalDimension()
 	if hierDim != nil && updates.Dimensions != nil {
 		if parentValue, hasParent := updates.Dimensions[hierDim.RefField]; hasParent {
-			if parentValue != "" {
-				if parentValue == actualUUID {
+			parentStr := fmt.Sprintf("%v", parentValue)
+			if parentStr != "" {
+				if parentStr == actualUUID {
 					return fmt.Errorf("cannot set document as its own parent")
 				}
 
 				// Check for circular references using embedded SQL
 				var cycle int
-				err = tx.QueryRow(checkCircularReferenceSQL, parentValue, actualUUID).Scan(&cycle)
+				err = tx.QueryRow(checkCircularReferenceSQL, parentStr, actualUUID).Scan(&cycle)
 				if err != nil {
 					return fmt.Errorf("failed to check for circular reference: %w", err)
 				}
@@ -343,13 +359,17 @@ func (s *store) Update(id string, updates UpdateRequest) error {
 	// Handle dimension updates
 	if updates.Dimensions != nil {
 		for dimName, dimValue := range updates.Dimensions {
+			// Convert to string
+			dimValueStr := fmt.Sprintf("%v", dimValue)
+
 			// Handle hierarchical dimensions (parent updates)
 			if hierDim != nil && dimName == hierDim.RefField {
 				columns = append(columns, dimName)
-				if dimValue == "" {
+				if dimValueStr == "" {
 					values = append(values, nil)
 				} else {
-					values = append(values, dimValue)
+					// Parent ID was already resolved before transaction started
+					values = append(values, dimValueStr)
 				}
 				continue
 			}
@@ -362,16 +382,16 @@ func (s *store) Update(id string, updates UpdateRequest) error {
 					// Validate the value
 					validValue := false
 					for _, allowedVal := range dim.Values {
-						if dimValue == allowedVal {
+						if dimValueStr == allowedVal {
 							validValue = true
 							break
 						}
 					}
 					if !validValue {
-						return fmt.Errorf("invalid value '%s' for dimension '%s'", dimValue, dimName)
+						return fmt.Errorf("invalid value '%s' for dimension '%s'", dimValueStr, dimName)
 					}
 					columns = append(columns, dimName)
-					values = append(values, dimValue)
+					values = append(values, dimValueStr)
 					break
 				}
 			}
@@ -749,18 +769,36 @@ func (s *store) buildUpdateColumnsAndValues(updates UpdateRequest) ([]string, []
 		values = append(values, *updates.Body)
 	}
 
+	// Pre-resolve parent IDs if needed
+	hierDim := s.findHierarchicalDimension()
+	if hierDim != nil && updates.Dimensions != nil {
+		if parentValue, hasParent := updates.Dimensions[hierDim.RefField]; hasParent && parentValue != nil && parentValue != "" {
+			parentStr := fmt.Sprintf("%v", parentValue)
+			if !isUUIDFormat(parentStr) {
+				// Resolve user-facing ID to UUID
+				resolvedUUID, err := s.resolveIDToUUID(parentStr)
+				if err != nil {
+					return nil, nil, fmt.Errorf("invalid parent ID '%s': %w", parentStr, err)
+				}
+				updates.Dimensions[hierDim.RefField] = resolvedUUID
+			}
+		}
+	}
+
 	// Handle dimension updates
 	if updates.Dimensions != nil {
-		hierDim := s.findHierarchicalDimension()
-
 		for dimName, dimValue := range updates.Dimensions {
+			// Convert to string
+			dimValueStr := fmt.Sprintf("%v", dimValue)
+
 			// Handle hierarchical dimensions (parent updates)
 			if hierDim != nil && dimName == hierDim.RefField {
 				columns = append(columns, dimName)
-				if dimValue == "" {
+				if dimValueStr == "" {
 					values = append(values, nil)
 				} else {
-					values = append(values, dimValue)
+					// Parent ID was already resolved above
+					values = append(values, dimValueStr)
 				}
 				continue
 			}
@@ -773,16 +811,16 @@ func (s *store) buildUpdateColumnsAndValues(updates UpdateRequest) ([]string, []
 					// Validate the value
 					validValue := false
 					for _, v := range dim.Values {
-						if v == dimValue {
+						if v == dimValueStr {
 							validValue = true
 							break
 						}
 					}
 					if !validValue {
-						return nil, nil, fmt.Errorf("invalid value '%s' for dimension '%s'", dimValue, dimName)
+						return nil, nil, fmt.Errorf("invalid value '%s' for dimension '%s'", dimValueStr, dimName)
 					}
 					columns = append(columns, dimName)
-					values = append(values, dimValue)
+					values = append(values, dimValueStr)
 					break
 				}
 			}

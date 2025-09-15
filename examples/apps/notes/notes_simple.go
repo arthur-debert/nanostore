@@ -51,7 +51,7 @@ func (n *SimpleNotes) Close() error {
 // This is equivalent to: store.Update(id, UpdateRequest{Dimensions: {"status": status}})
 func SetStatus(store nanostore.Store, id string, status string) error {
 	return store.Update(id, nanostore.UpdateRequest{
-		Dimensions: map[string]string{"status": status},
+		Dimensions: map[string]interface{}{"status": status},
 	})
 }
 

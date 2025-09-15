@@ -47,7 +47,7 @@ func TestUpdateParent(t *testing.T) {
 
 		// Move child from parent1 to parent2
 		err = store.Update(childID, nanostore.UpdateRequest{
-			Dimensions: map[string]string{"parent_uuid": parent2ID},
+			Dimensions: map[string]interface{}{"parent_uuid": parent2ID},
 		})
 		if err != nil {
 			t.Errorf("failed to update parent: %v", err)
@@ -108,7 +108,7 @@ func TestUpdateParent(t *testing.T) {
 
 		// Make child a root document
 		err = store.Update(childID, nanostore.UpdateRequest{
-			Dimensions: map[string]string{"parent_uuid": ""},
+			Dimensions: map[string]interface{}{"parent_uuid": ""},
 		})
 		if err != nil {
 			t.Errorf("failed to make child root: %v", err)
@@ -169,7 +169,7 @@ func TestUpdateParent(t *testing.T) {
 
 		// Make root2 a child of root1
 		err = store.Update(root2ID, nanostore.UpdateRequest{
-			Dimensions: map[string]string{"parent_uuid": root1ID},
+			Dimensions: map[string]interface{}{"parent_uuid": root1ID},
 		})
 		if err != nil {
 			t.Errorf("failed to make root a child: %v", err)
@@ -225,7 +225,7 @@ func TestUpdateParent(t *testing.T) {
 
 		// Try to make it its own parent
 		err = store.Update(docID, nanostore.UpdateRequest{
-			Dimensions: map[string]string{"parent_uuid": docID},
+			Dimensions: map[string]interface{}{"parent_uuid": docID},
 		})
 		if err == nil {
 			t.Error("expected error when setting document as its own parent")
@@ -275,7 +275,7 @@ func TestUpdateParent(t *testing.T) {
 
 		// Try to make A a child of C (would create cycle)
 		err = store.Update(aID, nanostore.UpdateRequest{
-			Dimensions: map[string]string{"parent_uuid": cID},
+			Dimensions: map[string]interface{}{"parent_uuid": cID},
 		})
 		if err == nil {
 			t.Error("expected error when creating circular reference")
@@ -322,7 +322,7 @@ func TestUpdateParent(t *testing.T) {
 		newTitle := "Updated Child"
 		err = store.Update(childID, nanostore.UpdateRequest{
 			Title:      &newTitle,
-			Dimensions: map[string]string{"parent_uuid": ""},
+			Dimensions: map[string]interface{}{"parent_uuid": ""},
 		})
 		if err != nil {
 			t.Errorf("failed to update: %v", err)
@@ -378,7 +378,7 @@ func TestUpdateParent(t *testing.T) {
 		// Try to set non-existent parent
 		fakeParent := "non-existent-uuid"
 		err = store.Update(docID, nanostore.UpdateRequest{
-			Dimensions: map[string]string{"parent_uuid": fakeParent},
+			Dimensions: map[string]interface{}{"parent_uuid": fakeParent},
 		})
 		if err == nil {
 			t.Error("expected error when setting non-existent parent")
@@ -485,7 +485,7 @@ func TestUpdateParentComplexHierarchy(t *testing.T) {
 	t.Run("move subtree to different root", func(t *testing.T) {
 		// Move Child1 (and its subtree) to Root2
 		err := store.Update(child1ID, nanostore.UpdateRequest{
-			Dimensions: map[string]string{"parent_uuid": root2ID},
+			Dimensions: map[string]interface{}{"parent_uuid": root2ID},
 		})
 		if err != nil {
 			t.Errorf("failed to move subtree: %v", err)

@@ -51,7 +51,7 @@ func TestUpdateByDimension(t *testing.T) {
 		newTitle := "Updated Task"
 		updated, err := store.UpdateByDimension("status", "pending", nanostore.UpdateRequest{
 			Title: &newTitle,
-			Dimensions: map[string]string{
+			Dimensions: map[string]interface{}{
 				"status": "in_progress",
 			},
 		})
@@ -107,7 +107,7 @@ func TestUpdateByDimension(t *testing.T) {
 		newBody := "This task has been escalated"
 		updated, err := store.UpdateByDimension("priority", "low", nanostore.UpdateRequest{
 			Body: &newBody,
-			Dimensions: map[string]string{
+			Dimensions: map[string]interface{}{
 				"priority": "medium",
 			},
 		})
@@ -144,7 +144,7 @@ func TestUpdateByDimension(t *testing.T) {
 		_, _ = store.Add("Task", map[string]interface{}{})
 
 		_, err = store.UpdateByDimension("invalid_dimension", "value", nanostore.UpdateRequest{
-			Dimensions: map[string]string{"status": "completed"},
+			Dimensions: map[string]interface{}{"status": "completed"},
 		})
 		if err == nil {
 			t.Error("expected error for invalid dimension, got nil")
@@ -164,7 +164,7 @@ func TestUpdateByDimension(t *testing.T) {
 		_, _ = store.Add("Task", map[string]interface{}{"status": "pending"})
 
 		_, err = store.UpdateByDimension("status", "invalid_status", nanostore.UpdateRequest{
-			Dimensions: map[string]string{"priority": "high"},
+			Dimensions: map[string]interface{}{"priority": "high"},
 		})
 		if err == nil {
 			t.Error("expected error for invalid dimension value, got nil")
@@ -317,7 +317,7 @@ func TestUpdateWhere(t *testing.T) {
 		newBody := "Urgent task"
 		updated, err := store.UpdateWhere("(status = ? OR status = ?) AND priority = ?", nanostore.UpdateRequest{
 			Body: &newBody,
-			Dimensions: map[string]string{
+			Dimensions: map[string]interface{}{
 				"priority": "medium", // Downgrade priority
 			},
 		}, "pending", "in_progress", "high")
@@ -359,7 +359,7 @@ func TestUpdateWhere(t *testing.T) {
 		// Update all documents with title starting with "Project"
 		newStatus := "in_progress"
 		updated, err := store.UpdateWhere("title LIKE ?", nanostore.UpdateRequest{
-			Dimensions: map[string]string{
+			Dimensions: map[string]interface{}{
 				"status": newStatus,
 			},
 		}, "Project%")
@@ -431,7 +431,7 @@ func TestUpdateWhere(t *testing.T) {
 		_, _ = store.Add("Task", map[string]interface{}{})
 
 		_, err = store.UpdateWhere("status = ?", nanostore.UpdateRequest{
-			Dimensions: map[string]string{
+			Dimensions: map[string]interface{}{
 				"invalid_dimension": "value",
 			},
 		}, "pending")
@@ -459,7 +459,7 @@ func TestUpdateWhere(t *testing.T) {
 		// Update specific documents by UUID
 		newPriority := "high"
 		updated, err := store.UpdateWhere("uuid IN (?, ?, ?)", nanostore.UpdateRequest{
-			Dimensions: map[string]string{
+			Dimensions: map[string]interface{}{
 				"priority": newPriority,
 			},
 		}, id1, id2, id3)
@@ -521,7 +521,7 @@ func TestBulkUpdatePerformance(t *testing.T) {
 	// Update all pending documents
 	newStatus := "completed"
 	updated, err := store.UpdateByDimension("status", "pending", nanostore.UpdateRequest{
-		Dimensions: map[string]string{
+		Dimensions: map[string]interface{}{
 			"status": newStatus,
 		},
 	})

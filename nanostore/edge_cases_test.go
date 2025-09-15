@@ -430,7 +430,7 @@ func TestListWithMixedStatuses(t *testing.T) {
 			t.Fatalf("failed to add completed document %d: %v", i, err)
 		}
 		err = store.Update(id, nanostore.UpdateRequest{
-			Dimensions: map[string]string{"status": "completed"},
+			Dimensions: map[string]interface{}{"status": "completed"},
 		})
 		if err != nil {
 			t.Fatalf("failed to set status: %v", err)

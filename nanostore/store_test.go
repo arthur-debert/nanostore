@@ -97,7 +97,7 @@ func TestSetStatus(t *testing.T) {
 
 	// Change its status using the generic Update method
 	err = store.Update(id, nanostore.UpdateRequest{
-		Dimensions: map[string]string{"status": "completed"},
+		Dimensions: map[string]interface{}{"status": "completed"},
 	})
 	if err != nil {
 		t.Fatalf("failed to set status: %v", err)

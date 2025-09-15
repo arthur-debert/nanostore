@@ -99,7 +99,7 @@ func TestSetStatusTransactionFailure(t *testing.T) {
 
 	// Try to set status on closed store (should fail)
 	err = store.Update(docID, nanostore.UpdateRequest{
-		Dimensions: map[string]string{"status": "completed"},
+		Dimensions: map[string]interface{}{"status": "completed"},
 	})
 	if err == nil {
 		t.Error("expected error when setting status on closed store")
@@ -132,7 +132,7 @@ func TestListWithComplexFilterCombinations(t *testing.T) {
 	parentID, _ := store.Add("Parent", nil)
 	childID, _ := store.Add("Child with searchable content", map[string]interface{}{"parent_uuid": parentID})
 	_ = store.Update(childID, nanostore.UpdateRequest{
-		Dimensions: map[string]string{"status": "completed"},
+		Dimensions: map[string]interface{}{"status": "completed"},
 	})
 
 	// Test complex filter combinations that might expose edge cases
@@ -274,7 +274,7 @@ func TestUpdateWithNonExistentParent(t *testing.T) {
 	// Try to set a non-existent parent (should fail due to foreign key constraint)
 	nonExistentParent := "00000000-0000-0000-0000-000000000000"
 	err = store.Update(docID, nanostore.UpdateRequest{
-		Dimensions: map[string]string{"parent_uuid": nonExistentParent},
+		Dimensions: map[string]interface{}{"parent_uuid": nonExistentParent},
 	})
 	if err == nil {
 		t.Error("expected error when setting non-existent parent")
@@ -392,7 +392,7 @@ func TestConcurrentCircularReferenceCheck(t *testing.T) {
 		defer func() { _ = s.Close() }()
 
 		err = s.Update(aID, nanostore.UpdateRequest{
-			Dimensions: map[string]string{"parent_uuid": cID},
+			Dimensions: map[string]interface{}{"parent_uuid": cID},
 		})
 		errChan <- err
 	}()
@@ -422,7 +422,7 @@ func TestConcurrentCircularReferenceCheck(t *testing.T) {
 		defer func() { _ = s.Close() }()
 
 		err = s.Update(bID, nanostore.UpdateRequest{
-			Dimensions: map[string]string{"parent_uuid": cID},
+			Dimensions: map[string]interface{}{"parent_uuid": cID},
 		})
 		errChan <- err
 	}()

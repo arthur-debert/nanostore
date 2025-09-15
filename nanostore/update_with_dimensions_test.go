@@ -40,7 +40,7 @@ func TestUpdateWithDimensions(t *testing.T) {
 
 	// Update with new dimension values
 	err = store.Update(docID, nanostore.UpdateRequest{
-		Dimensions: map[string]string{
+		Dimensions: map[string]interface{}{
 			"priority": "high",
 			"category": "work",
 		},
@@ -67,7 +67,7 @@ func TestUpdateWithDimensions(t *testing.T) {
 
 	// Test updating with invalid dimension value
 	err = store.Update(docID, nanostore.UpdateRequest{
-		Dimensions: map[string]string{
+		Dimensions: map[string]interface{}{
 			"priority": "urgent", // invalid
 		},
 	})

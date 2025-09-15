@@ -155,13 +155,13 @@ func TestDeleteCompletedUsingDeleteByDimension(t *testing.T) {
 
 	// Complete some items
 	_ = store.Update(uuid1, nanostore.UpdateRequest{
-		Dimensions: map[string]string{"status": "completed"},
+		Dimensions: map[string]interface{}{"status": "completed"},
 	})
 	_ = store.Update(uuid2, nanostore.UpdateRequest{
-		Dimensions: map[string]string{"status": "completed"},
+		Dimensions: map[string]interface{}{"status": "completed"},
 	})
 	_ = store.Update(uuid3, nanostore.UpdateRequest{
-		Dimensions: map[string]string{"status": "completed"},
+		Dimensions: map[string]interface{}{"status": "completed"},
 	})
 
 	// Delete all completed using DeleteByDimension

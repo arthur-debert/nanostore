@@ -48,10 +48,10 @@ func ExampleNew() {
 
 	// Update statuses
 	_ = store.Update(task1, nanostore.UpdateRequest{
-		Dimensions: map[string]string{"status": "done"},
+		Dimensions: map[string]interface{}{"status": "done"},
 	})
 	_ = store.Update(task2, nanostore.UpdateRequest{
-		Dimensions: map[string]string{"status": "in_progress"},
+		Dimensions: map[string]interface{}{"status": "in_progress"},
 	})
 
 	// List all documents

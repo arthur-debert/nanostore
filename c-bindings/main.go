@@ -172,12 +172,7 @@ func nanostore_update(handle *C.char, id *C.char, updatesJSON *C.char, outBuffer
 		updates.Body = &body
 	}
 	if dims, ok := updateData["dimensions"].(map[string]interface{}); ok {
-		updates.Dimensions = make(map[string]string)
-		for k, v := range dims {
-			if strVal, ok := v.(string); ok {
-				updates.Dimensions[k] = strVal
-			}
-		}
+		updates.Dimensions = dims
 	}
 
 	// Update document
