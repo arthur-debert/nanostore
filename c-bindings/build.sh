@@ -37,3 +37,14 @@ else
 fi
 
 echo "C library build complete!"
+
+# Build CLI wrapper if requested
+if [ "${BUILD_CLI:-false}" = "true" ]; then
+    echo "Building CLI wrapper..."
+    if go build -o "$OUTPUT_DIR/nanostore-cli" cli.go; then
+        echo "✓ Built CLI wrapper: $OUTPUT_DIR/nanostore-cli"
+    else
+        echo "∅ Failed to build CLI wrapper"
+        exit 1
+    fi
+fi

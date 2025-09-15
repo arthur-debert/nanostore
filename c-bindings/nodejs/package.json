@@ -1,0 +1,28 @@
+{
+  "name": "nanostore",
+  "version": "0.1.0",
+  "description": "Node.js bindings for nanostore - a lightweight document and ID store",
+  "main": "lib/index.js",
+  "scripts": {
+    "test": "mocha test/*.test.js --timeout 5000",
+    "example": "node examples/example.js"
+  },
+  "keywords": [
+    "nanostore",
+    "document-store",
+    "id-generation",
+    "sqlite"
+  ],
+  "author": "Arthur Debert",
+  "license": "MIT",
+  "dependencies": {
+    "koffi": "^2.8.0"
+  },
+  "devDependencies": {
+    "chai": "^4.3.7",
+    "mocha": "^10.2.0"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  }
+}

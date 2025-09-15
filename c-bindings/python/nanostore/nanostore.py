@@ -152,6 +152,15 @@ class Store:
                         library_path = lib_path
                         break
             
+            # Also try bin directory
+            if library_path is None:
+                bin_dir = os.path.join(current_dir, "..", "..", "..", "bin")
+                for lib_name in lib_names:
+                    lib_path = os.path.join(bin_dir, lib_name)
+                    if os.path.exists(lib_path):
+                        library_path = lib_path
+                        break
+            
             if library_path is None:
                 raise RuntimeError(
                     "Could not find nanostore library. "

@@ -29,9 +29,9 @@ fi
 # Activate virtual environment and install dependencies
 source venv/bin/activate
 
-# Install the package in development mode
-echo "Installing nanostore Python package..."
-pip install -e . > /dev/null 2>&1
+# Install the package in development mode with test dependencies
+echo "Installing nanostore Python package with test dependencies..."
+pip install -e ".[test]" > /dev/null 2>&1
 
 # Run tests
 echo "Running Python tests..."

@@ -24,12 +24,21 @@ if [ -d "examples/apps/notes" ]; then
     cd "$SCRIPT_DIR"
 fi
 
-# Run C binding tests if test script exists
+# Run C binding tests if test scripts exist
 if [ -f "c-bindings/python/test.sh" ]; then
     # Run Python tests but suppress output for gotestsum (it expects JSON)
     if ./c-bindings/python/test.sh > /dev/null 2>&1; then
         echo '{"Time":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'","Action":"pass","Package":"c-bindings/python","Test":"TestPythonBindings","Elapsed":1}'
     else
         echo '{"Time":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'","Action":"fail","Package":"c-bindings/python","Test":"TestPythonBindings","Elapsed":1}'
+    fi
+fi
+
+if [ -f "c-bindings/nodejs/test.sh" ]; then
+    # Run Node.js tests but suppress output for gotestsum (it expects JSON)
+    if ./c-bindings/nodejs/test.sh > /dev/null 2>&1; then
+        echo '{"Time":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'","Action":"pass","Package":"c-bindings/nodejs","Test":"TestNodeJSBindings","Elapsed":1}'
+    else
+        echo '{"Time":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'","Action":"fail","Package":"c-bindings/nodejs","Test":"TestNodeJSBindings","Elapsed":1}'
     fi
 fi
