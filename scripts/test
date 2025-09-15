@@ -29,11 +29,20 @@ else
     fi
     
     # Test C bindings if they exist
-    if [ -f "$PROJECT_ROOT/c-bindings/python/test.sh" ]; then
-        echo -e "\nRunning C binding tests..."
-        cd "$PROJECT_ROOT"
+    echo -e "\nRunning C binding tests..."
+    cd "$PROJECT_ROOT"
+    
+    if [ -f "c-bindings/python/test.sh" ]; then
+        echo -e "\nRunning Python binding tests..."
         ./c-bindings/python/test.sh
     else
-        echo -e "\nSkipping C binding tests (test script not found)"
+        echo -e "\nSkipping Python binding tests (test script not found)"
+    fi
+    
+    if [ -f "c-bindings/nodejs/test.sh" ]; then
+        echo -e "\nRunning Node.js binding tests..."
+        ./c-bindings/nodejs/test.sh
+    else
+        echo -e "\nSkipping Node.js binding tests (test script not found)"
     fi
 fi
