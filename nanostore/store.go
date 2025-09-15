@@ -318,8 +318,9 @@ func (s *store) Update(id string, updates UpdateRequest) error {
 				}
 
 				// Check for circular references using embedded SQL
+				query := fmt.Sprintf(checkCircularReferenceSQL, hierDim.RefField, hierDim.RefField, hierDim.RefField)
 				var cycle int
-				err = tx.QueryRow(checkCircularReferenceSQL, parentStr, actualUUID).Scan(&cycle)
+				err = tx.QueryRow(query, parentStr, actualUUID).Scan(&cycle)
 				if err != nil {
 					return fmt.Errorf("failed to check for circular reference: %w", err)
 				}
