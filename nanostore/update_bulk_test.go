@@ -49,7 +49,7 @@ func TestUpdateByDimension(t *testing.T) {
 
 		// Update all pending items to in_progress
 		newTitle := "Updated Task"
-		updated, err := store.UpdateByDimension("status", "pending", nanostore.UpdateRequest{
+		updated, err := store.UpdateByDimension(map[string]interface{}{"status": "pending"}, nanostore.UpdateRequest{
 			Title: &newTitle,
 			Dimensions: map[string]interface{}{
 				"status": "in_progress",
@@ -105,7 +105,7 @@ func TestUpdateByDimension(t *testing.T) {
 
 		// Update all low priority items to medium
 		newBody := "This task has been escalated"
-		updated, err := store.UpdateByDimension("priority", "low", nanostore.UpdateRequest{
+		updated, err := store.UpdateByDimension(map[string]interface{}{"priority": "low"}, nanostore.UpdateRequest{
 			Body: &newBody,
 			Dimensions: map[string]interface{}{
 				"priority": "medium",
@@ -143,7 +143,7 @@ func TestUpdateByDimension(t *testing.T) {
 
 		_, _ = store.Add("Task", map[string]interface{}{})
 
-		_, err = store.UpdateByDimension("invalid_dimension", "value", nanostore.UpdateRequest{
+		_, err = store.UpdateByDimension(map[string]interface{}{"invalid_dimension": "value"}, nanostore.UpdateRequest{
 			Dimensions: map[string]interface{}{"status": "completed"},
 		})
 		if err == nil {
@@ -163,7 +163,7 @@ func TestUpdateByDimension(t *testing.T) {
 
 		_, _ = store.Add("Task", map[string]interface{}{"status": "pending"})
 
-		_, err = store.UpdateByDimension("status", "invalid_status", nanostore.UpdateRequest{
+		_, err = store.UpdateByDimension(map[string]interface{}{"status": "invalid_status"}, nanostore.UpdateRequest{
 			Dimensions: map[string]interface{}{"priority": "high"},
 		})
 		if err == nil {
@@ -186,7 +186,7 @@ func TestUpdateByDimension(t *testing.T) {
 		_, _ = store.Add("Task 2", map[string]interface{}{"status": "completed"})
 
 		newTitle := "Won't be applied"
-		updated, err := store.UpdateByDimension("status", "archived", nanostore.UpdateRequest{
+		updated, err := store.UpdateByDimension(map[string]interface{}{"status": "archived"}, nanostore.UpdateRequest{
 			Title: &newTitle,
 		})
 		if err != nil {
@@ -212,7 +212,7 @@ func TestUpdateByDimension(t *testing.T) {
 		// Update only title and body, not dimensions
 		newTitle := "Updated Title"
 		newBody := "Updated Body"
-		updated, err := store.UpdateByDimension("status", "pending", nanostore.UpdateRequest{
+		updated, err := store.UpdateByDimension(map[string]interface{}{"status": "pending"}, nanostore.UpdateRequest{
 			Title: &newTitle,
 			Body:  &newBody,
 		})
@@ -520,7 +520,7 @@ func TestBulkUpdatePerformance(t *testing.T) {
 
 	// Update all pending documents
 	newStatus := "completed"
-	updated, err := store.UpdateByDimension("status", "pending", nanostore.UpdateRequest{
+	updated, err := store.UpdateByDimension(map[string]interface{}{"status": "pending"}, nanostore.UpdateRequest{
 		Dimensions: map[string]interface{}{
 			"status": newStatus,
 		},

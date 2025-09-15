@@ -143,10 +143,11 @@ type Store interface {
 	// If cascade is false and the document has children, an error is returned
 	Delete(id string, cascade bool) error
 
-	// DeleteByDimension removes all documents matching a specific dimension value
-	// For example: DeleteByDimension("status", "archived") or DeleteByDimension("priority", "low")
+	// DeleteByDimension removes all documents matching dimension filters
+	// For example: DeleteByDimension(map[string]interface{}{"status": "archived"})
+	// Multiple filters are combined with AND
 	// Returns the number of documents deleted
-	DeleteByDimension(dimension string, value string) (int, error)
+	DeleteByDimension(filters map[string]interface{}) (int, error)
 
 	// DeleteWhere removes all documents matching a custom WHERE clause
 	// The where clause should not include the "WHERE" keyword itself
@@ -155,10 +156,11 @@ type Store interface {
 	// Returns the number of documents deleted
 	DeleteWhere(whereClause string, args ...interface{}) (int, error)
 
-	// UpdateByDimension updates all documents matching a specific dimension value
-	// For example: UpdateByDimension("status", "pending", UpdateRequest{Title: &newTitle})
+	// UpdateByDimension updates all documents matching dimension filters
+	// For example: UpdateByDimension(map[string]interface{}{"status": "pending"}, UpdateRequest{Title: &newTitle})
+	// Multiple filters are combined with AND
 	// Returns the number of documents updated
-	UpdateByDimension(dimension string, value string, updates UpdateRequest) (int, error)
+	UpdateByDimension(filters map[string]interface{}, updates UpdateRequest) (int, error)
 
 	// UpdateWhere updates all documents matching a custom WHERE clause
 	// The where clause should not include the "WHERE" keyword itself

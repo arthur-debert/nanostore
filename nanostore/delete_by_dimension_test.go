@@ -41,7 +41,7 @@ func TestDeleteByDimension(t *testing.T) {
 
 	t.Run("delete by status dimension", func(t *testing.T) {
 		// Delete all completed items
-		deleted, err := store.DeleteByDimension("status", "completed")
+		deleted, err := store.DeleteByDimension(map[string]interface{}{"status": "completed"})
 		if err != nil {
 			t.Fatalf("failed to delete by dimension: %v", err)
 		}
@@ -71,7 +71,7 @@ func TestDeleteByDimension(t *testing.T) {
 
 	t.Run("delete by priority dimension", func(t *testing.T) {
 		// Delete all low priority items
-		deleted, err := store.DeleteByDimension("priority", "low")
+		deleted, err := store.DeleteByDimension(map[string]interface{}{"priority": "low"})
 		if err != nil {
 			t.Fatalf("failed to delete by priority: %v", err)
 		}
@@ -93,14 +93,14 @@ func TestDeleteByDimension(t *testing.T) {
 	})
 
 	t.Run("delete with invalid dimension", func(t *testing.T) {
-		_, err := store.DeleteByDimension("invalid_dimension", "value")
+		_, err := store.DeleteByDimension(map[string]interface{}{"invalid_dimension": "value"})
 		if err == nil {
 			t.Error("expected error for invalid dimension, got nil")
 		}
 	})
 
 	t.Run("delete with invalid value", func(t *testing.T) {
-		_, err := store.DeleteByDimension("status", "invalid_status")
+		_, err := store.DeleteByDimension(map[string]interface{}{"status": "invalid_status"})
 		if err == nil {
 			t.Error("expected error for invalid status value, got nil")
 		}
@@ -109,10 +109,10 @@ func TestDeleteByDimension(t *testing.T) {
 	t.Run("delete when no matches", func(t *testing.T) {
 		// Note: archived items still exist from initial setup (Task 3)
 		// First delete them
-		_, _ = store.DeleteByDimension("status", "archived")
+		_, _ = store.DeleteByDimension(map[string]interface{}{"status": "archived"})
 
 		// Now try to delete archived items again (should be none)
-		deleted, err := store.DeleteByDimension("status", "archived")
+		deleted, err := store.DeleteByDimension(map[string]interface{}{"status": "archived"})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -165,7 +165,7 @@ func TestDeleteCompletedUsingDeleteByDimension(t *testing.T) {
 	})
 
 	// Delete all completed using DeleteByDimension
-	deleted, err := store.DeleteByDimension("status", "completed")
+	deleted, err := store.DeleteByDimension(map[string]interface{}{"status": "completed"})
 	if err != nil {
 		t.Fatalf("failed to delete completed: %v", err)
 	}
@@ -233,7 +233,7 @@ func TestDeleteByDimensionWithHierarchy(t *testing.T) {
 	}
 
 	// Delete all inactive items
-	deleted, err := store.DeleteByDimension("status", "inactive")
+	deleted, err := store.DeleteByDimension(map[string]interface{}{"status": "inactive"})
 	if err != nil {
 		t.Fatalf("failed to delete inactive items: %v", err)
 	}

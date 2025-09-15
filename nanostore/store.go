@@ -548,32 +548,43 @@ func (s *store) Delete(id string, cascade bool) error {
 	return nil
 }
 
-// DeleteByDimension removes all documents matching a specific dimension value
-func (s *store) DeleteByDimension(dimension string, value string) (int, error) {
-	// Validate that the dimension exists in the configuration
-	dimensionExists := false
-	for _, dim := range s.config.Dimensions {
-		if dim.Name == dimension {
-			dimensionExists = true
-			// For enumerated dimensions, validate the value
-			if dim.Type == Enumerated {
-				valueValid := false
-				for _, v := range dim.Values {
-					if v == value {
-						valueValid = true
-						break
-					}
-				}
-				if !valueValid {
-					return 0, fmt.Errorf("invalid value '%s' for dimension '%s'", value, dimension)
-				}
-			}
-			break
-		}
+// DeleteByDimension removes all documents matching dimension filters
+func (s *store) DeleteByDimension(filters map[string]interface{}) (int, error) {
+	if len(filters) == 0 {
+		return 0, fmt.Errorf("no filters provided")
 	}
 
-	if !dimensionExists {
-		return 0, fmt.Errorf("dimension '%s' not found in configuration", dimension)
+	// Validate dimensions and values
+	conditions := squirrel.Eq{}
+	for dimension, value := range filters {
+		// Validate that the dimension exists in the configuration
+		dimensionExists := false
+		for _, dim := range s.config.Dimensions {
+			if dim.Name == dimension {
+				dimensionExists = true
+				// For enumerated dimensions, validate the value
+				if dim.Type == Enumerated {
+					strValue := fmt.Sprintf("%v", value)
+					valueValid := false
+					for _, v := range dim.Values {
+						if v == strValue {
+							valueValid = true
+							break
+						}
+					}
+					if !valueValid {
+						return 0, fmt.Errorf("invalid value '%s' for dimension '%s'", strValue, dimension)
+					}
+				}
+				break
+			}
+		}
+
+		if !dimensionExists {
+			return 0, fmt.Errorf("dimension '%s' not found in configuration", dimension)
+		}
+
+		conditions[dimension] = value
 	}
 
 	tx, err := s.db.Begin()
@@ -583,14 +594,14 @@ func (s *store) DeleteByDimension(dimension string, value string) (int, error) {
 	defer func() { _ = tx.Rollback() }()
 
 	// Build query using SQL builder
-	query, args, err := s.sqlBuilder.buildDelete("documents", squirrel.Eq{dimension: value})
+	query, args, err := s.sqlBuilder.buildDelete("documents", conditions)
 	if err != nil {
 		return 0, fmt.Errorf("failed to build delete query: %w", err)
 	}
 
 	result, err := tx.Exec(query, args...)
 	if err != nil {
-		return 0, fmt.Errorf("failed to delete documents where %s='%s': %w", dimension, value, err)
+		return 0, fmt.Errorf("failed to delete documents: %w", err)
 	}
 
 	rowsAffected, err := result.RowsAffected()
@@ -640,32 +651,43 @@ func (s *store) DeleteWhere(whereClause string, args ...interface{}) (int, error
 	return int(rowsAffected), nil
 }
 
-// UpdateByDimension updates all documents matching a specific dimension value
-func (s *store) UpdateByDimension(dimension string, value string, updates UpdateRequest) (int, error) {
-	// Validate that the dimension exists in the configuration
-	dimensionExists := false
-	for _, dim := range s.config.Dimensions {
-		if dim.Name == dimension {
-			dimensionExists = true
-			// For enumerated dimensions, validate the value
-			if dim.Type == Enumerated {
-				valueValid := false
-				for _, v := range dim.Values {
-					if v == value {
-						valueValid = true
-						break
-					}
-				}
-				if !valueValid {
-					return 0, fmt.Errorf("invalid value '%s' for dimension '%s'", value, dimension)
-				}
-			}
-			break
-		}
+// UpdateByDimension updates all documents matching dimension filters
+func (s *store) UpdateByDimension(filters map[string]interface{}, updates UpdateRequest) (int, error) {
+	if len(filters) == 0 {
+		return 0, fmt.Errorf("no filters provided")
 	}
 
-	if !dimensionExists {
-		return 0, fmt.Errorf("dimension '%s' not found in configuration", dimension)
+	// Validate dimensions and values
+	conditions := squirrel.Eq{}
+	for dimension, value := range filters {
+		// Validate that the dimension exists in the configuration
+		dimensionExists := false
+		for _, dim := range s.config.Dimensions {
+			if dim.Name == dimension {
+				dimensionExists = true
+				// For enumerated dimensions, validate the value
+				if dim.Type == Enumerated {
+					strValue := fmt.Sprintf("%v", value)
+					valueValid := false
+					for _, v := range dim.Values {
+						if v == strValue {
+							valueValid = true
+							break
+						}
+					}
+					if !valueValid {
+						return 0, fmt.Errorf("invalid value '%s' for dimension '%s'", strValue, dimension)
+					}
+				}
+				break
+			}
+		}
+
+		if !dimensionExists {
+			return 0, fmt.Errorf("dimension '%s' not found in configuration", dimension)
+		}
+
+		conditions[dimension] = value
 	}
 
 	tx, err := s.db.Begin()
@@ -685,14 +707,14 @@ func (s *store) UpdateByDimension(dimension string, value string, updates Update
 	values = append(values, time.Now().Unix())
 
 	// Build query using SQL builder
-	query, args, err := s.sqlBuilder.buildUpdateByCondition("documents", columns, values, squirrel.Eq{dimension: value})
+	query, args, err := s.sqlBuilder.buildUpdateByCondition("documents", columns, values, conditions)
 	if err != nil {
 		return 0, fmt.Errorf("failed to build update query: %w", err)
 	}
 
 	result, err := tx.Exec(query, args...)
 	if err != nil {
-		return 0, fmt.Errorf("failed to update documents where %s='%s': %w", dimension, value, err)
+		return 0, fmt.Errorf("failed to update documents: %w", err)
 	}
 
 	rowsAffected, err := result.RowsAffected()
