@@ -18,14 +18,6 @@ type Document struct {
 	UpdatedAt    time.Time              // Last update timestamp
 }
 
-// GetStatus returns the status dimension value, if it exists
-func (d *Document) GetStatus() string {
-	if status, ok := d.Dimensions["status"].(string); ok {
-		return status
-	}
-	return ""
-}
-
 // GetParentUUID returns the parent UUID from hierarchical dimension, if it exists
 func (d *Document) GetParentUUID() *string {
 	// Check common parent field names

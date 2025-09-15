@@ -315,7 +315,8 @@ func TestListWithMixedStatuses(t *testing.T) {
 	pendingCount := 0
 	completedCount := 0
 	for _, doc := range allDocs {
-		switch doc.GetStatus() {
+		status, _ := doc.Dimensions["status"].(string)
+		switch status {
 		case "pending":
 			pendingCount++
 			// Pending docs should have numeric IDs: 1, 2, 3, 4, 5

@@ -152,7 +152,8 @@ func TestBulkStatusChange(t *testing.T) {
 	pendingCount := 0
 	completedCount := 0
 	for _, doc := range docs {
-		switch doc.GetStatus() {
+		status, _ := doc.Dimensions["status"].(string)
+		switch status {
 		case "pending":
 			pendingCount++
 		case "completed":

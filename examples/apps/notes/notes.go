@@ -202,9 +202,12 @@ func (n *Notes) List(opts ListOptions) ([]*Note, error) {
 			Document: doc,
 			// Infer status from user-facing ID prefix
 			// Nanostore's ID generation includes status prefixes
-			IsPinned:   strings.HasPrefix(doc.UserFacingID, "p"),
-			IsArchived: doc.GetStatus() == "completed",
-			IsDeleted:  false, // deleted notes are removed from store
+			IsPinned: strings.HasPrefix(doc.UserFacingID, "p"),
+			IsArchived: func() bool {
+				status, _ := doc.Dimensions["status"].(string)
+				return status == "completed"
+			}(),
+			IsDeleted: false, // deleted notes are removed from store
 		}
 
 		// Parse tags from body if present

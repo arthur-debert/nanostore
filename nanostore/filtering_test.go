@@ -51,8 +51,9 @@ func TestFilterByStatus(t *testing.T) {
 	}
 
 	for _, doc := range pendingDocs {
-		if doc.GetStatus() != "pending" {
-			t.Errorf("expected pending status, got %s", doc.GetStatus())
+		status, _ := doc.Dimensions["status"].(string)
+		if status != "pending" {
+			t.Errorf("expected pending status, got %s", status)
 		}
 	}
 

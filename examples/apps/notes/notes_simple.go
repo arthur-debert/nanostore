@@ -131,8 +131,11 @@ func (n *SimpleNotes) List(showArchived bool) ([]*SimpleNote, error) {
 	var notes []*SimpleNote
 	for _, doc := range docs {
 		note := &SimpleNote{
-			Document:   doc,
-			IsArchived: doc.GetStatus() == "completed",
+			Document: doc,
+			IsArchived: func() bool {
+				status, _ := doc.Dimensions["status"].(string)
+				return status == "completed"
+			}(),
 		}
 
 		// Parse tags

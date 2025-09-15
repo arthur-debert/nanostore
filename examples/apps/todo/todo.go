@@ -225,9 +225,12 @@ func (t *Todo) List(opts ListOptions) ([]*TodoItem, error) {
 
 	for i, doc := range docs {
 		item := &TodoItem{
-			Document:    doc,
-			IsCompleted: doc.GetStatus() == "completed",
-			Children:    []*TodoItem{},
+			Document: doc,
+			IsCompleted: func() bool {
+				status, _ := doc.Dimensions["status"].(string)
+				return status == "completed"
+			}(),
+			Children: []*TodoItem{},
 		}
 
 		if item.IsCompleted {

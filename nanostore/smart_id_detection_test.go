@@ -425,8 +425,9 @@ func TestMixedIDOperations(t *testing.T) {
 			if doc.Title != "Updated Child" {
 				t.Errorf("child 1 title not updated correctly, got: %s", doc.Title)
 			}
-			if doc.GetStatus() != "completed" {
-				t.Errorf("child 1 status not updated correctly, got: %s", doc.GetStatus())
+			status, _ := doc.Dimensions["status"].(string)
+			if status != "completed" {
+				t.Errorf("child 1 status not updated correctly, got: %s", status)
 			}
 		}
 	}

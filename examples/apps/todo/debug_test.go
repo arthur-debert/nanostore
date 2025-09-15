@@ -46,8 +46,9 @@ func TestDebugHierarchicalIDs(t *testing.T) {
 		if parentUUID := doc.GetParentUUID(); parentUUID != nil {
 			parentInfo = *parentUUID
 		}
+		status, _ := doc.Dimensions["status"].(string)
 		t.Logf("  ID: %s, Title: %s, UUID: %s, Parent: %s, Status: %s",
-			doc.UserFacingID, doc.Title, doc.UUID, parentInfo, doc.GetStatus())
+			doc.UserFacingID, doc.Title, doc.UUID, parentInfo, status)
 	}
 
 	// Check if we got hierarchical IDs

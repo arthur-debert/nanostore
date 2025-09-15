@@ -79,7 +79,8 @@ func TestConfigurableStore(t *testing.T) {
 		foundDone := false
 		t.Logf("After setting status to 'done':")
 		for _, doc := range docs {
-			t.Logf("  %s: %s (status: %s)", doc.UserFacingID, doc.Title, doc.GetStatus())
+			status, _ := doc.Dimensions["status"].(string)
+			t.Logf("  %s: %s (status: %s)", doc.UserFacingID, doc.Title, status)
 			if doc.UUID == doc1 {
 				if doc.UserFacingID == "d1" {
 					foundDone = true

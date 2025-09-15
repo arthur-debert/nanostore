@@ -72,7 +72,8 @@ func TestResolveAfterComplete(t *testing.T) {
 	docs, _ := store.List(nanostore.ListOptions{})
 	t.Logf("After completing first todo:")
 	for _, doc := range docs {
-		t.Logf("  %s: %s (UUID: %s, Status: %s)", doc.UserFacingID, doc.Title, doc.UUID, doc.GetStatus())
+		status, _ := doc.Dimensions["status"].(string)
+		t.Logf("  %s: %s (UUID: %s, Status: %s)", doc.UserFacingID, doc.Title, doc.UUID, status)
 	}
 }
 
@@ -123,7 +124,8 @@ func TestCompleteMultiple(t *testing.T) {
 	docs, _ := store.List(nanostore.ListOptions{})
 	t.Logf("After completing all:")
 	for _, doc := range docs {
-		t.Logf("  %s: %s (UUID: %s, Status: %s)", doc.UserFacingID, doc.Title, doc.UUID, doc.GetStatus())
+		status, _ := doc.Dimensions["status"].(string)
+		t.Logf("  %s: %s (UUID: %s, Status: %s)", doc.UserFacingID, doc.Title, doc.UUID, status)
 	}
 
 	// All should be completed
@@ -131,8 +133,9 @@ func TestCompleteMultiple(t *testing.T) {
 		t.Errorf("expected 3 todos, got %d", len(docs))
 	}
 	for _, doc := range docs {
-		if doc.GetStatus() != "completed" {
-			t.Errorf("expected %s to be completed, but status is %s", doc.Title, doc.GetStatus())
+		status, _ := doc.Dimensions["status"].(string)
+		if status != "completed" {
+			t.Errorf("expected %s to be completed, but status is %s", doc.Title, status)
 		}
 	}
 }
