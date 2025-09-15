@@ -27,14 +27,7 @@ jobs:
           echo "GH_USER=arthur-debert" >> $GITHUB_ENV
           echo "GIT_REPO=arthur-debert/nanostore" >> $GITHUB_ENV
 
-      - name: Generate completions and man pages
-        run: |
-          if [ -f scripts/gen-completion ]; then
-            ./scripts/gen-completion
-          fi
-          if [ -f scripts/gen-manpage ]; then
-            ./scripts/gen-manpage
-          fi
+      # No CLI to generate completions for - this is a library project
 
       - uses: goreleaser/goreleaser-action@v6
         with:
