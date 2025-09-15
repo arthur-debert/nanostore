@@ -9,7 +9,7 @@ import (
 
 	"github.com/Masterminds/squirrel"
 	"github.com/google/uuid"
-	_ "github.com/mattn/go-sqlite3"
+	_ "modernc.org/sqlite"
 )
 
 // Embedded SQL files
@@ -34,16 +34,43 @@ type store struct {
 
 // newConfigurableStore creates a new store instance with custom dimension configuration
 func newConfigurableStore(dbPath string, config Config) (Store, error) {
-	db, err := sql.Open("sqlite3", dbPath)
+	db, err := sql.Open("sqlite", dbPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
 
-	// Enable foreign keys
-	if _, err := db.Exec("PRAGMA foreign_keys = ON"); err != nil {
+	// Configure SQLite for better concurrency with modernc.org/sqlite
+	// Set busy timeout first to help with concurrent access during initialization
+	if _, err := db.Exec("PRAGMA busy_timeout = 5000"); err != nil {
 		_ = db.Close()
-		return nil, fmt.Errorf("failed to enable foreign keys: %w", err)
+		return nil, fmt.Errorf("failed to set busy timeout: %w", err)
 	}
+
+	// Configure other pragmas
+	pragmas := []string{
+		"PRAGMA foreign_keys = ON",
+		"PRAGMA journal_mode = WAL",   // Write-Ahead Logging for better concurrency
+		"PRAGMA synchronous = NORMAL", // Balance between safety and performance
+		"PRAGMA cache_size = -2000",   // 2MB cache
+		"PRAGMA temp_store = MEMORY",  // Use memory for temp tables
+	}
+
+	for _, pragma := range pragmas {
+		if _, err := db.Exec(pragma); err != nil {
+			// For WAL mode, ignore "database is locked" errors on secondary connections
+			// as the first connection will have already set it
+			if pragma == "PRAGMA journal_mode = WAL" && strings.Contains(err.Error(), "database is locked") {
+				continue
+			}
+			_ = db.Close()
+			return nil, fmt.Errorf("failed to execute %s: %w", pragma, err)
+		}
+	}
+
+	// Configure connection pool for modernc.org/sqlite
+	db.SetMaxOpenConns(1)    // Single writer connection for SQLite
+	db.SetMaxIdleConns(1)    // Keep connection alive
+	db.SetConnMaxLifetime(0) // Don't close connections automatically
 
 	s := &store{
 		db:           db,
