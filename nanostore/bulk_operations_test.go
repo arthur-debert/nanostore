@@ -11,7 +11,22 @@ import (
 )
 
 func TestBulkAdd(t *testing.T) {
-	store, err := nanostore.NewTestStore(":memory:")
+	store, err := nanostore.New(":memory:", nanostore.Config{
+		Dimensions: []nanostore.DimensionConfig{
+			{
+				Name:         "status",
+				Type:         nanostore.Enumerated,
+				Values:       []string{"pending", "completed"},
+				Prefixes:     map[string]string{"completed": "c"},
+				DefaultValue: "pending",
+			},
+			{
+				Name:     "parent",
+				Type:     nanostore.Hierarchical,
+				RefField: "parent_uuid",
+			},
+		},
+	})
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
@@ -55,7 +70,22 @@ func TestBulkAdd(t *testing.T) {
 }
 
 func TestBulkUpdate(t *testing.T) {
-	store, err := nanostore.NewTestStore(":memory:")
+	store, err := nanostore.New(":memory:", nanostore.Config{
+		Dimensions: []nanostore.DimensionConfig{
+			{
+				Name:         "status",
+				Type:         nanostore.Enumerated,
+				Values:       []string{"pending", "completed"},
+				Prefixes:     map[string]string{"completed": "c"},
+				DefaultValue: "pending",
+			},
+			{
+				Name:     "parent",
+				Type:     nanostore.Hierarchical,
+				RefField: "parent_uuid",
+			},
+		},
+	})
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
@@ -110,7 +140,22 @@ func TestBulkUpdate(t *testing.T) {
 }
 
 func TestBulkStatusChange(t *testing.T) {
-	store, err := nanostore.NewTestStore(":memory:")
+	store, err := nanostore.New(":memory:", nanostore.Config{
+		Dimensions: []nanostore.DimensionConfig{
+			{
+				Name:         "status",
+				Type:         nanostore.Enumerated,
+				Values:       []string{"pending", "completed"},
+				Prefixes:     map[string]string{"completed": "c"},
+				DefaultValue: "pending",
+			},
+			{
+				Name:     "parent",
+				Type:     nanostore.Hierarchical,
+				RefField: "parent_uuid",
+			},
+		},
+	})
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
@@ -132,7 +177,9 @@ func TestBulkStatusChange(t *testing.T) {
 	statusChanges := 0
 	for i, id := range ids {
 		if i%2 == 0 {
-			err := nanostore.TestSetStatusUpdate(store, id, "completed")
+			err := store.Update(id, nanostore.UpdateRequest{
+				Dimensions: map[string]string{"status": "completed"},
+			})
 			if err != nil {
 				t.Fatalf("failed to set status for document %d: %v", i, err)
 			}
@@ -152,7 +199,8 @@ func TestBulkStatusChange(t *testing.T) {
 	pendingCount := 0
 	completedCount := 0
 	for _, doc := range docs {
-		switch doc.GetStatus() {
+		status, _ := doc.Dimensions["status"].(string)
+		switch status {
 		case "pending":
 			pendingCount++
 		case "completed":
@@ -169,7 +217,22 @@ func TestBulkStatusChange(t *testing.T) {
 }
 
 func TestBulkHierarchicalCreation(t *testing.T) {
-	store, err := nanostore.NewTestStore(":memory:")
+	store, err := nanostore.New(":memory:", nanostore.Config{
+		Dimensions: []nanostore.DimensionConfig{
+			{
+				Name:         "status",
+				Type:         nanostore.Enumerated,
+				Values:       []string{"pending", "completed"},
+				Prefixes:     map[string]string{"completed": "c"},
+				DefaultValue: "pending",
+			},
+			{
+				Name:     "parent",
+				Type:     nanostore.Hierarchical,
+				RefField: "parent_uuid",
+			},
+		},
+	})
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
@@ -216,7 +279,8 @@ func TestBulkHierarchicalCreation(t *testing.T) {
 	roots := 0
 	children := 0
 	for _, doc := range docs {
-		if doc.GetParentUUID() == nil {
+		parentUUID, hasParent := doc.Dimensions["parent_uuid"].(string)
+		if !hasParent || parentUUID == "" {
 			roots++
 		} else {
 			children++
@@ -238,7 +302,22 @@ func TestConcurrentBulkOperations(t *testing.T) {
 	tmpDir := t.TempDir()
 	dbPath := filepath.Join(tmpDir, "concurrent_bulk.db")
 
-	store, err := nanostore.NewTestStore(dbPath)
+	store, err := nanostore.New(dbPath, nanostore.Config{
+		Dimensions: []nanostore.DimensionConfig{
+			{
+				Name:         "status",
+				Type:         nanostore.Enumerated,
+				Values:       []string{"pending", "completed"},
+				Prefixes:     map[string]string{"completed": "c"},
+				DefaultValue: "pending",
+			},
+			{
+				Name:     "parent",
+				Type:     nanostore.Hierarchical,
+				RefField: "parent_uuid",
+			},
+		},
+	})
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
@@ -325,7 +404,22 @@ func TestBulkOperationMemoryUsage(t *testing.T) {
 		t.Skip("Skipping memory usage test in short mode")
 	}
 
-	store, err := nanostore.NewTestStore(":memory:")
+	store, err := nanostore.New(":memory:", nanostore.Config{
+		Dimensions: []nanostore.DimensionConfig{
+			{
+				Name:         "status",
+				Type:         nanostore.Enumerated,
+				Values:       []string{"pending", "completed"},
+				Prefixes:     map[string]string{"completed": "c"},
+				DefaultValue: "pending",
+			},
+			{
+				Name:     "parent",
+				Type:     nanostore.Hierarchical,
+				RefField: "parent_uuid",
+			},
+		},
+	})
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}

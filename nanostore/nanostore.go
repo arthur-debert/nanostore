@@ -18,26 +18,6 @@ type Document struct {
 	UpdatedAt    time.Time              // Last update timestamp
 }
 
-// GetStatus returns the status dimension value, if it exists
-func (d *Document) GetStatus() string {
-	if status, ok := d.Dimensions["status"].(string); ok {
-		return status
-	}
-	return ""
-}
-
-// GetParentUUID returns the parent UUID from hierarchical dimension, if it exists
-func (d *Document) GetParentUUID() *string {
-	// Check common parent field names
-	parentFields := []string{"parent_uuid", "parent"}
-	for _, field := range parentFields {
-		if parent, ok := d.Dimensions[field].(string); ok && parent != "" {
-			return &parent
-		}
-	}
-	return nil
-}
-
 // ListOptions configures how documents are listed
 type ListOptions struct {
 	// Filters allows filtering by any configured dimension
@@ -54,32 +34,6 @@ func NewListOptions() ListOptions {
 	return ListOptions{
 		Filters: make(map[string]interface{}),
 	}
-}
-
-// WithStatusFilter adds a status filter to ListOptions
-func (opts ListOptions) WithStatusFilter(statuses ...string) ListOptions {
-	if opts.Filters == nil {
-		opts.Filters = make(map[string]interface{})
-	}
-	if len(statuses) == 1 {
-		opts.Filters["status"] = statuses[0]
-	} else {
-		opts.Filters["status"] = statuses
-	}
-	return opts
-}
-
-// WithParentFilter adds a parent filter to ListOptions
-func (opts ListOptions) WithParentFilter(parentUUID *string) ListOptions {
-	if opts.Filters == nil {
-		opts.Filters = make(map[string]interface{})
-	}
-	if parentUUID != nil {
-		opts.Filters["parent_uuid"] = *parentUUID
-	} else {
-		opts.Filters["parent_uuid"] = nil
-	}
-	return opts
 }
 
 // UpdateRequest specifies fields to update on a document

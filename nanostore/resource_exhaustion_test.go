@@ -16,7 +16,22 @@ func TestResourceExhaustionLargeDocuments(t *testing.T) {
 		t.Skip("skipping resource exhaustion test in short mode")
 	}
 
-	store, err := nanostore.NewTestStore(":memory:")
+	store, err := nanostore.New(":memory:", nanostore.Config{
+		Dimensions: []nanostore.DimensionConfig{
+			{
+				Name:         "status",
+				Type:         nanostore.Enumerated,
+				Values:       []string{"pending", "completed"},
+				Prefixes:     map[string]string{"completed": "c"},
+				DefaultValue: "pending",
+			},
+			{
+				Name:     "parent",
+				Type:     nanostore.Hierarchical,
+				RefField: "parent_uuid",
+			},
+		},
+	})
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
@@ -64,7 +79,22 @@ func TestResourceExhaustionDeepHierarchy(t *testing.T) {
 		t.Skip("skipping resource exhaustion test in short mode")
 	}
 
-	store, err := nanostore.NewTestStore(":memory:")
+	store, err := nanostore.New(":memory:", nanostore.Config{
+		Dimensions: []nanostore.DimensionConfig{
+			{
+				Name:         "status",
+				Type:         nanostore.Enumerated,
+				Values:       []string{"pending", "completed"},
+				Prefixes:     map[string]string{"completed": "c"},
+				DefaultValue: "pending",
+			},
+			{
+				Name:     "parent",
+				Type:     nanostore.Hierarchical,
+				RefField: "parent_uuid",
+			},
+		},
+	})
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
@@ -113,7 +143,22 @@ func TestResourceExhaustionManyRoots(t *testing.T) {
 		t.Skip("skipping resource exhaustion test in short mode")
 	}
 
-	store, err := nanostore.NewTestStore(":memory:")
+	store, err := nanostore.New(":memory:", nanostore.Config{
+		Dimensions: []nanostore.DimensionConfig{
+			{
+				Name:         "status",
+				Type:         nanostore.Enumerated,
+				Values:       []string{"pending", "completed"},
+				Prefixes:     map[string]string{"completed": "c"},
+				DefaultValue: "pending",
+			},
+			{
+				Name:     "parent",
+				Type:     nanostore.Hierarchical,
+				RefField: "parent_uuid",
+			},
+		},
+	})
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
@@ -161,7 +206,22 @@ func TestResourceExhaustionConcurrentOperations(t *testing.T) {
 
 	// Use file-based DB for concurrent access
 	tmpFile := t.TempDir() + "/concurrent.db"
-	store, err := nanostore.NewTestStore(tmpFile)
+	store, err := nanostore.New(tmpFile, nanostore.Config{
+		Dimensions: []nanostore.DimensionConfig{
+			{
+				Name:         "status",
+				Type:         nanostore.Enumerated,
+				Values:       []string{"pending", "completed"},
+				Prefixes:     map[string]string{"completed": "c"},
+				DefaultValue: "pending",
+			},
+			{
+				Name:     "parent",
+				Type:     nanostore.Hierarchical,
+				RefField: "parent_uuid",
+			},
+		},
+	})
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
@@ -193,7 +253,22 @@ func TestResourceExhaustionConcurrentOperations(t *testing.T) {
 			defer wg.Done()
 
 			// Each goroutine creates its own connection
-			s, err := nanostore.NewTestStore(tmpFile)
+			s, err := nanostore.New(tmpFile, nanostore.Config{
+				Dimensions: []nanostore.DimensionConfig{
+					{
+						Name:         "status",
+						Type:         nanostore.Enumerated,
+						Values:       []string{"pending", "completed"},
+						Prefixes:     map[string]string{"completed": "c"},
+						DefaultValue: "pending",
+					},
+					{
+						Name:     "parent",
+						Type:     nanostore.Hierarchical,
+						RefField: "parent_uuid",
+					},
+				},
+			})
 			if err != nil {
 				errors <- fmt.Errorf("worker %d: failed to open store: %v", workerID, err)
 				return
@@ -263,7 +338,22 @@ func TestResourceExhaustionComplexFilters(t *testing.T) {
 		t.Skip("skipping resource exhaustion test in short mode")
 	}
 
-	store, err := nanostore.NewTestStore(":memory:")
+	store, err := nanostore.New(":memory:", nanostore.Config{
+		Dimensions: []nanostore.DimensionConfig{
+			{
+				Name:         "status",
+				Type:         nanostore.Enumerated,
+				Values:       []string{"pending", "completed"},
+				Prefixes:     map[string]string{"completed": "c"},
+				DefaultValue: "pending",
+			},
+			{
+				Name:     "parent",
+				Type:     nanostore.Hierarchical,
+				RefField: "parent_uuid",
+			},
+		},
+	})
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
@@ -279,7 +369,9 @@ func TestResourceExhaustionComplexFilters(t *testing.T) {
 
 		// Set half as completed
 		if i%2 == 0 {
-			err = nanostore.TestSetStatusUpdate(store, id, "completed")
+			err = store.Update(id, nanostore.UpdateRequest{
+				Dimensions: map[string]string{"status": "completed"},
+			})
 			if err != nil {
 				t.Fatalf("failed to set status: %v", err)
 			}

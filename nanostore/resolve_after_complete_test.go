@@ -7,7 +7,22 @@ import (
 )
 
 func TestResolveAfterComplete(t *testing.T) {
-	store, err := nanostore.NewTestStore(":memory:")
+	store, err := nanostore.New(":memory:", nanostore.Config{
+		Dimensions: []nanostore.DimensionConfig{
+			{
+				Name:         "status",
+				Type:         nanostore.Enumerated,
+				Values:       []string{"pending", "completed"},
+				Prefixes:     map[string]string{"completed": "c"},
+				DefaultValue: "pending",
+			},
+			{
+				Name:     "parent",
+				Type:     nanostore.Hierarchical,
+				RefField: "parent_uuid",
+			},
+		},
+	})
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
@@ -31,7 +46,9 @@ func TestResolveAfterComplete(t *testing.T) {
 	}
 
 	// Complete the first one
-	err = nanostore.TestSetStatusUpdate(store, id1, "completed")
+	err = store.Update(id1, nanostore.UpdateRequest{
+		Dimensions: map[string]string{"status": "completed"},
+	})
 	if err != nil {
 		t.Fatalf("failed to complete first todo: %v", err)
 	}
@@ -72,12 +89,28 @@ func TestResolveAfterComplete(t *testing.T) {
 	docs, _ := store.List(nanostore.ListOptions{})
 	t.Logf("After completing first todo:")
 	for _, doc := range docs {
-		t.Logf("  %s: %s (UUID: %s, Status: %s)", doc.UserFacingID, doc.Title, doc.UUID, doc.GetStatus())
+		status, _ := doc.Dimensions["status"].(string)
+		t.Logf("  %s: %s (UUID: %s, Status: %s)", doc.UserFacingID, doc.Title, doc.UUID, status)
 	}
 }
 
 func TestCompleteMultiple(t *testing.T) {
-	store, err := nanostore.NewTestStore(":memory:")
+	store, err := nanostore.New(":memory:", nanostore.Config{
+		Dimensions: []nanostore.DimensionConfig{
+			{
+				Name:         "status",
+				Type:         nanostore.Enumerated,
+				Values:       []string{"pending", "completed"},
+				Prefixes:     map[string]string{"completed": "c"},
+				DefaultValue: "pending",
+			},
+			{
+				Name:     "parent",
+				Type:     nanostore.Hierarchical,
+				RefField: "parent_uuid",
+			},
+		},
+	})
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
@@ -89,7 +122,9 @@ func TestCompleteMultiple(t *testing.T) {
 	_, _ = store.Add("Third", nil)  // was id3
 
 	// Complete first one
-	err = nanostore.TestSetStatusUpdate(store, id1, "completed")
+	err = store.Update(id1, nanostore.UpdateRequest{
+		Dimensions: map[string]string{"status": "completed"},
+	})
 	if err != nil {
 		t.Fatalf("failed to complete first todo: %v", err)
 	}
@@ -113,7 +148,9 @@ func TestCompleteMultiple(t *testing.T) {
 
 	// Complete them
 	for _, uuid := range uuids {
-		err = nanostore.TestSetStatusUpdate(store, uuid, "completed")
+		err = store.Update(uuid, nanostore.UpdateRequest{
+			Dimensions: map[string]string{"status": "completed"},
+		})
 		if err != nil {
 			t.Errorf("failed to complete UUID %s: %v", uuid, err)
 		}
@@ -123,7 +160,8 @@ func TestCompleteMultiple(t *testing.T) {
 	docs, _ := store.List(nanostore.ListOptions{})
 	t.Logf("After completing all:")
 	for _, doc := range docs {
-		t.Logf("  %s: %s (UUID: %s, Status: %s)", doc.UserFacingID, doc.Title, doc.UUID, doc.GetStatus())
+		status, _ := doc.Dimensions["status"].(string)
+		t.Logf("  %s: %s (UUID: %s, Status: %s)", doc.UserFacingID, doc.Title, doc.UUID, status)
 	}
 
 	// All should be completed
@@ -131,8 +169,9 @@ func TestCompleteMultiple(t *testing.T) {
 		t.Errorf("expected 3 todos, got %d", len(docs))
 	}
 	for _, doc := range docs {
-		if doc.GetStatus() != "completed" {
-			t.Errorf("expected %s to be completed, but status is %s", doc.Title, doc.GetStatus())
+		status, _ := doc.Dimensions["status"].(string)
+		if status != "completed" {
+			t.Errorf("expected %s to be completed, but status is %s", doc.Title, status)
 		}
 	}
 }

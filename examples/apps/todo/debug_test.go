@@ -8,7 +8,22 @@ import (
 
 func TestDebugHierarchicalIDs(t *testing.T) {
 	// Create store directly with default config
-	store, err := nanostore.New(":memory:", nanostore.DefaultTestConfig())
+	store, err := nanostore.New(":memory:", nanostore.Config{
+		Dimensions: []nanostore.DimensionConfig{
+			{
+				Name:         "status",
+				Type:         nanostore.Enumerated,
+				Values:       []string{"pending", "completed"},
+				Prefixes:     map[string]string{"completed": "c"},
+				DefaultValue: "pending",
+			},
+			{
+				Name:     "parent",
+				Type:     nanostore.Hierarchical,
+				RefField: "parent_uuid",
+			},
+		},
+	})
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
@@ -43,11 +58,12 @@ func TestDebugHierarchicalIDs(t *testing.T) {
 	t.Logf("\nAll documents:")
 	for _, doc := range docs {
 		parentInfo := "nil"
-		if parentUUID := doc.GetParentUUID(); parentUUID != nil {
-			parentInfo = *parentUUID
+		if parentUUID, hasParent := doc.Dimensions["parent_uuid"].(string); hasParent && parentUUID != "" {
+			parentInfo = parentUUID
 		}
+		status, _ := doc.Dimensions["status"].(string)
 		t.Logf("  ID: %s, Title: %s, UUID: %s, Parent: %s, Status: %s",
-			doc.UserFacingID, doc.Title, doc.UUID, parentInfo, doc.GetStatus())
+			doc.UserFacingID, doc.Title, doc.UUID, parentInfo, status)
 	}
 
 	// Check if we got hierarchical IDs

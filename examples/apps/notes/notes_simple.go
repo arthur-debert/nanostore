@@ -16,11 +16,25 @@ type SimpleNotes struct {
 	store nanostore.Store
 }
 
-// NewSimple creates a new SimpleNotes instance using default config
-// We use the TodoConfig here which provides "pending"/"completed" status values
-// that map well to active/archived notes
+// notesConfig returns a configuration suitable for notes applications
+func notesConfig() nanostore.Config {
+	return nanostore.Config{
+		Dimensions: []nanostore.DimensionConfig{
+			{
+				Name:         "status",
+				Type:         nanostore.Enumerated,
+				Values:       []string{"pending", "completed"},
+				Prefixes:     map[string]string{"completed": "c"},
+				DefaultValue: "pending",
+			},
+		},
+	}
+}
+
+// NewSimple creates a new SimpleNotes instance using notes config
+// We use pending/completed status values that map to active/archived notes
 func NewSimple(dbPath string) (*SimpleNotes, error) {
-	store, err := nanostore.New(dbPath, nanostore.TodoConfig())
+	store, err := nanostore.New(dbPath, notesConfig())
 	if err != nil {
 		return nil, fmt.Errorf("failed to create store: %w", err)
 	}
@@ -131,8 +145,11 @@ func (n *SimpleNotes) List(showArchived bool) ([]*SimpleNote, error) {
 	var notes []*SimpleNote
 	for _, doc := range docs {
 		note := &SimpleNote{
-			Document:   doc,
-			IsArchived: doc.GetStatus() == "completed",
+			Document: doc,
+			IsArchived: func() bool {
+				status, _ := doc.Dimensions["status"].(string)
+				return status == "completed"
+			}(),
 		}
 
 		// Parse tags

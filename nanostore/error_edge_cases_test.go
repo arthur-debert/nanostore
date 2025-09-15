@@ -9,7 +9,22 @@ import (
 
 func TestNewWithInvalidPath(t *testing.T) {
 	// Try to create store with invalid database path
-	_, err := nanostore.NewTestStore("/root/nonexistent/invalid.db")
+	_, err := nanostore.New("/root/nonexistent/invalid.db", nanostore.Config{
+		Dimensions: []nanostore.DimensionConfig{
+			{
+				Name:         "status",
+				Type:         nanostore.Enumerated,
+				Values:       []string{"pending", "completed"},
+				Prefixes:     map[string]string{"completed": "c"},
+				DefaultValue: "pending",
+			},
+			{
+				Name:     "parent",
+				Type:     nanostore.Hierarchical,
+				RefField: "parent_uuid",
+			},
+		},
+	})
 	if err == nil {
 		t.Error("expected error when creating store with invalid path")
 	}
@@ -30,14 +45,44 @@ func TestNewWithReadOnlyDirectory(t *testing.T) {
 
 	// Try to create database in read-only directory
 	dbPath := tmpDir + "/test.db"
-	_, err := nanostore.NewTestStore(dbPath)
+	_, err := nanostore.New(dbPath, nanostore.Config{
+		Dimensions: []nanostore.DimensionConfig{
+			{
+				Name:         "status",
+				Type:         nanostore.Enumerated,
+				Values:       []string{"pending", "completed"},
+				Prefixes:     map[string]string{"completed": "c"},
+				DefaultValue: "pending",
+			},
+			{
+				Name:     "parent",
+				Type:     nanostore.Hierarchical,
+				RefField: "parent_uuid",
+			},
+		},
+	})
 	if err == nil {
 		t.Error("expected error when creating store in read-only directory")
 	}
 }
 
 func TestSetStatusTransactionFailure(t *testing.T) {
-	store, err := nanostore.NewTestStore(":memory:")
+	store, err := nanostore.New(":memory:", nanostore.Config{
+		Dimensions: []nanostore.DimensionConfig{
+			{
+				Name:         "status",
+				Type:         nanostore.Enumerated,
+				Values:       []string{"pending", "completed"},
+				Prefixes:     map[string]string{"completed": "c"},
+				DefaultValue: "pending",
+			},
+			{
+				Name:     "parent",
+				Type:     nanostore.Hierarchical,
+				RefField: "parent_uuid",
+			},
+		},
+	})
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
@@ -53,14 +98,31 @@ func TestSetStatusTransactionFailure(t *testing.T) {
 	_ = store.Close()
 
 	// Try to set status on closed store (should fail)
-	err = nanostore.TestSetStatusUpdate(store, docID, "completed")
+	err = store.Update(docID, nanostore.UpdateRequest{
+		Dimensions: map[string]string{"status": "completed"},
+	})
 	if err == nil {
 		t.Error("expected error when setting status on closed store")
 	}
 }
 
 func TestListWithComplexFilterCombinations(t *testing.T) {
-	store, err := nanostore.NewTestStore(":memory:")
+	store, err := nanostore.New(":memory:", nanostore.Config{
+		Dimensions: []nanostore.DimensionConfig{
+			{
+				Name:         "status",
+				Type:         nanostore.Enumerated,
+				Values:       []string{"pending", "completed"},
+				Prefixes:     map[string]string{"completed": "c"},
+				DefaultValue: "pending",
+			},
+			{
+				Name:     "parent",
+				Type:     nanostore.Hierarchical,
+				RefField: "parent_uuid",
+			},
+		},
+	})
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
@@ -69,7 +131,9 @@ func TestListWithComplexFilterCombinations(t *testing.T) {
 	// Create test documents
 	parentID, _ := store.Add("Parent", nil)
 	childID, _ := store.Add("Child with searchable content", map[string]interface{}{"parent_uuid": parentID})
-	_ = nanostore.TestSetStatusUpdate(store, childID, "completed")
+	_ = store.Update(childID, nanostore.UpdateRequest{
+		Dimensions: map[string]string{"status": "completed"},
+	})
 
 	// Test complex filter combinations that might expose edge cases
 	testCases := []struct {
@@ -129,7 +193,22 @@ func TestAddWithExtremelyLongParentChain(t *testing.T) {
 		t.Skip("skipping long parent chain test in short mode")
 	}
 
-	store, err := nanostore.NewTestStore(":memory:")
+	store, err := nanostore.New(":memory:", nanostore.Config{
+		Dimensions: []nanostore.DimensionConfig{
+			{
+				Name:         "status",
+				Type:         nanostore.Enumerated,
+				Values:       []string{"pending", "completed"},
+				Prefixes:     map[string]string{"completed": "c"},
+				DefaultValue: "pending",
+			},
+			{
+				Name:     "parent",
+				Type:     nanostore.Hierarchical,
+				RefField: "parent_uuid",
+			},
+		},
+	})
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
@@ -165,7 +244,22 @@ func TestAddWithExtremelyLongParentChain(t *testing.T) {
 }
 
 func TestUpdateWithNonExistentParent(t *testing.T) {
-	store, err := nanostore.NewTestStore(":memory:")
+	store, err := nanostore.New(":memory:", nanostore.Config{
+		Dimensions: []nanostore.DimensionConfig{
+			{
+				Name:         "status",
+				Type:         nanostore.Enumerated,
+				Values:       []string{"pending", "completed"},
+				Prefixes:     map[string]string{"completed": "c"},
+				DefaultValue: "pending",
+			},
+			{
+				Name:     "parent",
+				Type:     nanostore.Hierarchical,
+				RefField: "parent_uuid",
+			},
+		},
+	})
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
@@ -188,7 +282,22 @@ func TestUpdateWithNonExistentParent(t *testing.T) {
 }
 
 func TestResolveUUIDWithMalformedInput(t *testing.T) {
-	store, err := nanostore.NewTestStore(":memory:")
+	store, err := nanostore.New(":memory:", nanostore.Config{
+		Dimensions: []nanostore.DimensionConfig{
+			{
+				Name:         "status",
+				Type:         nanostore.Enumerated,
+				Values:       []string{"pending", "completed"},
+				Prefixes:     map[string]string{"completed": "c"},
+				DefaultValue: "pending",
+			},
+			{
+				Name:     "parent",
+				Type:     nanostore.Hierarchical,
+				RefField: "parent_uuid",
+			},
+		},
+	})
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
@@ -227,7 +336,22 @@ func TestConcurrentCircularReferenceCheck(t *testing.T) {
 	}
 
 	tmpFile := t.TempDir() + "/concurrent.db"
-	store, err := nanostore.NewTestStore(tmpFile)
+	store, err := nanostore.New(tmpFile, nanostore.Config{
+		Dimensions: []nanostore.DimensionConfig{
+			{
+				Name:         "status",
+				Type:         nanostore.Enumerated,
+				Values:       []string{"pending", "completed"},
+				Prefixes:     map[string]string{"completed": "c"},
+				DefaultValue: "pending",
+			},
+			{
+				Name:     "parent",
+				Type:     nanostore.Hierarchical,
+				RefField: "parent_uuid",
+			},
+		},
+	})
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
@@ -245,7 +369,22 @@ func TestConcurrentCircularReferenceCheck(t *testing.T) {
 
 	// Goroutine 1: Try to make A child of C
 	go func() {
-		s, err := nanostore.NewTestStore(tmpFile)
+		s, err := nanostore.New(tmpFile, nanostore.Config{
+			Dimensions: []nanostore.DimensionConfig{
+				{
+					Name:         "status",
+					Type:         nanostore.Enumerated,
+					Values:       []string{"pending", "completed"},
+					Prefixes:     map[string]string{"completed": "c"},
+					DefaultValue: "pending",
+				},
+				{
+					Name:     "parent",
+					Type:     nanostore.Hierarchical,
+					RefField: "parent_uuid",
+				},
+			},
+		})
 		if err != nil {
 			errChan <- err
 			return
@@ -260,7 +399,22 @@ func TestConcurrentCircularReferenceCheck(t *testing.T) {
 
 	// Goroutine 2: Try to make B child of C (also creates circle)
 	go func() {
-		s, err := nanostore.NewTestStore(tmpFile)
+		s, err := nanostore.New(tmpFile, nanostore.Config{
+			Dimensions: []nanostore.DimensionConfig{
+				{
+					Name:         "status",
+					Type:         nanostore.Enumerated,
+					Values:       []string{"pending", "completed"},
+					Prefixes:     map[string]string{"completed": "c"},
+					DefaultValue: "pending",
+				},
+				{
+					Name:     "parent",
+					Type:     nanostore.Hierarchical,
+					RefField: "parent_uuid",
+				},
+			},
+		})
 		if err != nil {
 			errChan <- err
 			return

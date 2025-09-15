@@ -7,7 +7,22 @@ import (
 )
 
 func TestUpdateEmptyRequest(t *testing.T) {
-	store, err := nanostore.NewTestStore(":memory:")
+	store, err := nanostore.New(":memory:", nanostore.Config{
+		Dimensions: []nanostore.DimensionConfig{
+			{
+				Name:         "status",
+				Type:         nanostore.Enumerated,
+				Values:       []string{"pending", "completed"},
+				Prefixes:     map[string]string{"completed": "c"},
+				DefaultValue: "pending",
+			},
+			{
+				Name:     "parent",
+				Type:     nanostore.Hierarchical,
+				RefField: "parent_uuid",
+			},
+		},
+	})
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
@@ -53,7 +68,9 @@ func TestUpdateEmptyRequest(t *testing.T) {
 			if doc.Body != origDoc.Body {
 				t.Errorf("body changed: was %q, now %q", origDoc.Body, doc.Body)
 			}
-			if doc.GetParentUUID() != origDoc.GetParentUUID() {
+			origParentUUID, origHasParent := origDoc.Dimensions["parent_uuid"].(string)
+			currParentUUID, currHasParent := doc.Dimensions["parent_uuid"].(string)
+			if origHasParent != currHasParent || origParentUUID != currParentUUID {
 				t.Error("parent changed when it shouldn't have")
 			}
 			// UpdatedAt should be newer or the same (SQLite might optimize away no-op updates)
@@ -65,7 +82,22 @@ func TestUpdateEmptyRequest(t *testing.T) {
 }
 
 func TestUpdateEmptyRequestWithParent(t *testing.T) {
-	store, err := nanostore.NewTestStore(":memory:")
+	store, err := nanostore.New(":memory:", nanostore.Config{
+		Dimensions: []nanostore.DimensionConfig{
+			{
+				Name:         "status",
+				Type:         nanostore.Enumerated,
+				Values:       []string{"pending", "completed"},
+				Prefixes:     map[string]string{"completed": "c"},
+				DefaultValue: "pending",
+			},
+			{
+				Name:     "parent",
+				Type:     nanostore.Hierarchical,
+				RefField: "parent_uuid",
+			},
+		},
+	})
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
@@ -100,7 +132,8 @@ func TestUpdateEmptyRequestWithParent(t *testing.T) {
 
 	for _, doc := range docs {
 		if doc.UUID == childID {
-			if doc.GetParentUUID() == nil || *doc.GetParentUUID() != parentID {
+			parentUUID, hasParent := doc.Dimensions["parent_uuid"].(string)
+			if !hasParent || parentUUID != parentID {
 				t.Error("parent relationship changed with nil ParentID")
 			}
 		}

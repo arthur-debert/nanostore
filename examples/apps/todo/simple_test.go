@@ -8,7 +8,22 @@ import (
 
 func TestSimpleHierarchy(t *testing.T) {
 	// Create store directly with default config
-	store, err := nanostore.New(":memory:", nanostore.DefaultTestConfig())
+	store, err := nanostore.New(":memory:", nanostore.Config{
+		Dimensions: []nanostore.DimensionConfig{
+			{
+				Name:         "status",
+				Type:         nanostore.Enumerated,
+				Values:       []string{"pending", "completed"},
+				Prefixes:     map[string]string{"completed": "c"},
+				DefaultValue: "pending",
+			},
+			{
+				Name:     "parent",
+				Type:     nanostore.Hierarchical,
+				RefField: "parent_uuid",
+			},
+		},
+	})
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
@@ -34,8 +49,8 @@ func TestSimpleHierarchy(t *testing.T) {
 	t.Logf("\nDocuments from nanostore:")
 	for _, doc := range docs {
 		parentInfo := "nil"
-		if parentUUID := doc.GetParentUUID(); parentUUID != nil {
-			parentInfo = *parentUUID
+		if parentUUID, hasParent := doc.Dimensions["parent_uuid"].(string); hasParent && parentUUID != "" {
+			parentInfo = parentUUID
 		}
 		t.Logf("  ID: %-5s Title: %-15s Parent: %s", doc.UserFacingID, doc.Title, parentInfo)
 	}

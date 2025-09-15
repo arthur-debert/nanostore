@@ -12,7 +12,22 @@ import (
 func TestDatabaseErrors(t *testing.T) {
 	t.Run("InvalidDatabasePath", func(t *testing.T) {
 		// Try to create database in non-existent directory
-		_, err := nanostore.NewTestStore("/non/existent/path/db.sqlite")
+		_, err := nanostore.New("/non/existent/path/db.sqlite", nanostore.Config{
+			Dimensions: []nanostore.DimensionConfig{
+				{
+					Name:         "status",
+					Type:         nanostore.Enumerated,
+					Values:       []string{"pending", "completed"},
+					Prefixes:     map[string]string{"completed": "c"},
+					DefaultValue: "pending",
+				},
+				{
+					Name:     "parent",
+					Type:     nanostore.Hierarchical,
+					RefField: "parent_uuid",
+				},
+			},
+		})
 		if err == nil {
 			t.Fatal("expected error for invalid path")
 		}
@@ -29,7 +44,22 @@ func TestDatabaseErrors(t *testing.T) {
 		dbPath := filepath.Join(tmpDir, "readonly.db")
 
 		// Create database first
-		store, err := nanostore.NewTestStore(dbPath)
+		store, err := nanostore.New(dbPath, nanostore.Config{
+			Dimensions: []nanostore.DimensionConfig{
+				{
+					Name:         "status",
+					Type:         nanostore.Enumerated,
+					Values:       []string{"pending", "completed"},
+					Prefixes:     map[string]string{"completed": "c"},
+					DefaultValue: "pending",
+				},
+				{
+					Name:     "parent",
+					Type:     nanostore.Hierarchical,
+					RefField: "parent_uuid",
+				},
+			},
+		})
 		if err != nil {
 			t.Fatalf("failed to create store: %v", err)
 		}
@@ -42,7 +72,22 @@ func TestDatabaseErrors(t *testing.T) {
 		}
 
 		// Opening read-only database should succeed for reads
-		store2, err := nanostore.NewTestStore(dbPath)
+		store2, err := nanostore.New(dbPath, nanostore.Config{
+			Dimensions: []nanostore.DimensionConfig{
+				{
+					Name:         "status",
+					Type:         nanostore.Enumerated,
+					Values:       []string{"pending", "completed"},
+					Prefixes:     map[string]string{"completed": "c"},
+					DefaultValue: "pending",
+				},
+				{
+					Name:     "parent",
+					Type:     nanostore.Hierarchical,
+					RefField: "parent_uuid",
+				},
+			},
+		})
 		if err != nil {
 			t.Fatalf("failed to open read-only database: %v", err)
 		}
@@ -63,7 +108,22 @@ func TestDatabaseErrors(t *testing.T) {
 }
 
 func TestInvalidInputs(t *testing.T) {
-	store, err := nanostore.NewTestStore(":memory:")
+	store, err := nanostore.New(":memory:", nanostore.Config{
+		Dimensions: []nanostore.DimensionConfig{
+			{
+				Name:         "status",
+				Type:         nanostore.Enumerated,
+				Values:       []string{"pending", "completed"},
+				Prefixes:     map[string]string{"completed": "c"},
+				DefaultValue: "pending",
+			},
+			{
+				Name:     "parent",
+				Type:     nanostore.Hierarchical,
+				RefField: "parent_uuid",
+			},
+		},
+	})
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
@@ -85,7 +145,9 @@ func TestInvalidInputs(t *testing.T) {
 
 	t.Run("SetStatusNonExistentDocument", func(t *testing.T) {
 		nonExistentUUID := "00000000-0000-0000-0000-000000000001"
-		err := nanostore.TestSetStatusUpdate(store, nonExistentUUID, "completed")
+		err := store.Update(nonExistentUUID, nanostore.UpdateRequest{
+			Dimensions: map[string]string{"status": "completed"},
+		})
 		if err == nil {
 			t.Fatal("expected error setting status on non-existent document")
 		}
@@ -132,7 +194,22 @@ func TestInvalidInputs(t *testing.T) {
 }
 
 func TestDatabaseIntegrityErrors(t *testing.T) {
-	store, err := nanostore.NewTestStore(":memory:")
+	store, err := nanostore.New(":memory:", nanostore.Config{
+		Dimensions: []nanostore.DimensionConfig{
+			{
+				Name:         "status",
+				Type:         nanostore.Enumerated,
+				Values:       []string{"pending", "completed"},
+				Prefixes:     map[string]string{"completed": "c"},
+				DefaultValue: "pending",
+			},
+			{
+				Name:     "parent",
+				Type:     nanostore.Hierarchical,
+				RefField: "parent_uuid",
+			},
+		},
+	})
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
@@ -170,7 +247,22 @@ func TestConcurrentDatabaseAccess(t *testing.T) {
 	// Create multiple stores accessing the same database
 	stores := make([]nanostore.Store, 3)
 	for i := 0; i < 3; i++ {
-		store, err := nanostore.NewTestStore(dbPath)
+		store, err := nanostore.New(dbPath, nanostore.Config{
+			Dimensions: []nanostore.DimensionConfig{
+				{
+					Name:         "status",
+					Type:         nanostore.Enumerated,
+					Values:       []string{"pending", "completed"},
+					Prefixes:     map[string]string{"completed": "c"},
+					DefaultValue: "pending",
+				},
+				{
+					Name:     "parent",
+					Type:     nanostore.Hierarchical,
+					RefField: "parent_uuid",
+				},
+			},
+		})
 		if err != nil {
 			t.Fatalf("failed to create store %d: %v", i, err)
 		}
@@ -201,7 +293,22 @@ func TestConcurrentDatabaseAccess(t *testing.T) {
 }
 
 func TestClosedStoreErrors(t *testing.T) {
-	store, err := nanostore.NewTestStore(":memory:")
+	store, err := nanostore.New(":memory:", nanostore.Config{
+		Dimensions: []nanostore.DimensionConfig{
+			{
+				Name:         "status",
+				Type:         nanostore.Enumerated,
+				Values:       []string{"pending", "completed"},
+				Prefixes:     map[string]string{"completed": "c"},
+				DefaultValue: "pending",
+			},
+			{
+				Name:     "parent",
+				Type:     nanostore.Hierarchical,
+				RefField: "parent_uuid",
+			},
+		},
+	})
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}

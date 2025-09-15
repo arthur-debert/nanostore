@@ -15,10 +15,30 @@ type Todo struct {
 	store nanostore.Store
 }
 
+// todoConfig returns a configuration suitable for todo applications
+func todoConfig() nanostore.Config {
+	return nanostore.Config{
+		Dimensions: []nanostore.DimensionConfig{
+			{
+				Name:         "status",
+				Type:         nanostore.Enumerated,
+				Values:       []string{"pending", "completed"},
+				Prefixes:     map[string]string{"completed": "c"},
+				DefaultValue: "pending",
+			},
+			{
+				Name:     "parent",
+				Type:     nanostore.Hierarchical,
+				RefField: "parent_uuid",
+			},
+		},
+	}
+}
+
 // New creates a new Todo instance
 func New(dbPath string) (*Todo, error) {
-	// Use the default config which has status (pending/completed) and hierarchy
-	store, err := nanostore.New(dbPath, nanostore.DefaultTestConfig())
+	// Use the todo-specific configuration
+	store, err := nanostore.New(dbPath, todoConfig())
 	if err != nil {
 		return nil, fmt.Errorf("failed to create store: %w", err)
 	}
@@ -225,9 +245,12 @@ func (t *Todo) List(opts ListOptions) ([]*TodoItem, error) {
 
 	for i, doc := range docs {
 		item := &TodoItem{
-			Document:    doc,
-			IsCompleted: doc.GetStatus() == "completed",
-			Children:    []*TodoItem{},
+			Document: doc,
+			IsCompleted: func() bool {
+				status, _ := doc.Dimensions["status"].(string)
+				return status == "completed"
+			}(),
+			Children: []*TodoItem{},
 		}
 
 		if item.IsCompleted {
@@ -243,11 +266,11 @@ func (t *Todo) List(opts ListOptions) ([]*TodoItem, error) {
 	// Build hierarchy
 	var roots []*TodoItem
 	for _, item := range items {
-		parentUUID := item.Document.GetParentUUID()
-		if parentUUID == nil {
+		parentUUID, hasParent := item.Document.Dimensions["parent_uuid"].(string)
+		if !hasParent || parentUUID == "" {
 			roots = append(roots, item)
 		} else {
-			if parent, ok := itemMap[*parentUUID]; ok {
+			if parent, ok := itemMap[parentUUID]; ok {
 				parent.Children = append(parent.Children, item)
 			}
 		}

@@ -7,7 +7,22 @@ import (
 )
 
 func TestResolveUUID(t *testing.T) {
-	store, err := nanostore.NewTestStore(":memory:")
+	store, err := nanostore.New(":memory:", nanostore.Config{
+		Dimensions: []nanostore.DimensionConfig{
+			{
+				Name:         "status",
+				Type:         nanostore.Enumerated,
+				Values:       []string{"pending", "completed"},
+				Prefixes:     map[string]string{"completed": "c"},
+				DefaultValue: "pending",
+			},
+			{
+				Name:     "parent",
+				Type:     nanostore.Hierarchical,
+				RefField: "parent_uuid",
+			},
+		},
+	})
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
@@ -20,7 +35,9 @@ func TestResolveUUID(t *testing.T) {
 	id3, _ := store.Add("Third", nil)
 
 	// Mark one as completed
-	_ = nanostore.TestSetStatusUpdate(store, id3, "completed")
+	_ = store.Update(id3, nanostore.UpdateRequest{
+		Dimensions: map[string]string{"status": "completed"},
+	})
 
 	// Test cases
 	tests := []struct {
@@ -46,7 +63,22 @@ func TestResolveUUID(t *testing.T) {
 }
 
 func TestResolveHierarchicalUUID(t *testing.T) {
-	store, err := nanostore.NewTestStore(":memory:")
+	store, err := nanostore.New(":memory:", nanostore.Config{
+		Dimensions: []nanostore.DimensionConfig{
+			{
+				Name:         "status",
+				Type:         nanostore.Enumerated,
+				Values:       []string{"pending", "completed"},
+				Prefixes:     map[string]string{"completed": "c"},
+				DefaultValue: "pending",
+			},
+			{
+				Name:     "parent",
+				Type:     nanostore.Hierarchical,
+				RefField: "parent_uuid",
+			},
+		},
+	})
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
@@ -59,7 +91,9 @@ func TestResolveHierarchicalUUID(t *testing.T) {
 	child3ID, _ := store.Add("Child 3", map[string]interface{}{"parent_uuid": parentID})
 
 	// Mark one child as completed
-	_ = nanostore.TestSetStatusUpdate(store, child3ID, "completed")
+	_ = store.Update(child3ID, nanostore.UpdateRequest{
+		Dimensions: map[string]string{"status": "completed"},
+	})
 
 	// Nested child
 	grandchildID, _ := store.Add("Grandchild", map[string]interface{}{"parent_uuid": child1ID})
@@ -90,7 +124,22 @@ func TestResolveHierarchicalUUID(t *testing.T) {
 }
 
 func TestResolveInvalidID(t *testing.T) {
-	store, err := nanostore.NewTestStore(":memory:")
+	store, err := nanostore.New(":memory:", nanostore.Config{
+		Dimensions: []nanostore.DimensionConfig{
+			{
+				Name:         "status",
+				Type:         nanostore.Enumerated,
+				Values:       []string{"pending", "completed"},
+				Prefixes:     map[string]string{"completed": "c"},
+				DefaultValue: "pending",
+			},
+			{
+				Name:     "parent",
+				Type:     nanostore.Hierarchical,
+				RefField: "parent_uuid",
+			},
+		},
+	})
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}

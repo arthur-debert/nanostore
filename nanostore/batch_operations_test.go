@@ -9,7 +9,22 @@ import (
 // TestBatchIDResolution demonstrates the behavior when completing multiple items
 // by their user-facing IDs. This test documents issue #16.
 func TestBatchIDResolution(t *testing.T) {
-	store, err := nanostore.New(":memory:", nanostore.DefaultTestConfig())
+	store, err := nanostore.New(":memory:", nanostore.Config{
+		Dimensions: []nanostore.DimensionConfig{
+			{
+				Name:         "status",
+				Type:         nanostore.Enumerated,
+				Values:       []string{"pending", "completed"},
+				Prefixes:     map[string]string{"completed": "c"},
+				DefaultValue: "pending",
+			},
+			{
+				Name:     "parent",
+				Type:     nanostore.Hierarchical,
+				RefField: "parent_uuid",
+			},
+		},
+	})
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
@@ -41,7 +56,9 @@ func TestBatchIDResolution(t *testing.T) {
 			t.Errorf("expected ID 1 to resolve to %s, got %s", uuid1, resolved1)
 		}
 
-		err = nanostore.TestSetStatusUpdate(store, resolved1, "completed")
+		err = store.Update(resolved1, nanostore.UpdateRequest{
+			Dimensions: map[string]string{"status": "completed"},
+		})
 		if err != nil {
 			t.Fatalf("failed to complete first item: %v", err)
 		}
@@ -68,7 +85,22 @@ func TestBatchIDResolution(t *testing.T) {
 
 // TestBatchIDResolutionPattern demonstrates the correct pattern for batch operations
 func TestBatchIDResolutionPattern(t *testing.T) {
-	store, err := nanostore.New(":memory:", nanostore.DefaultTestConfig())
+	store, err := nanostore.New(":memory:", nanostore.Config{
+		Dimensions: []nanostore.DimensionConfig{
+			{
+				Name:         "status",
+				Type:         nanostore.Enumerated,
+				Values:       []string{"pending", "completed"},
+				Prefixes:     map[string]string{"completed": "c"},
+				DefaultValue: "pending",
+			},
+			{
+				Name:     "parent",
+				Type:     nanostore.Hierarchical,
+				RefField: "parent_uuid",
+			},
+		},
+	})
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
@@ -96,7 +128,9 @@ func TestBatchIDResolutionPattern(t *testing.T) {
 
 		// Then perform all operations
 		for i, uuid := range resolvedUUIDs {
-			err := nanostore.TestSetStatusUpdate(store, uuid, "completed")
+			err := store.Update(uuid, nanostore.UpdateRequest{
+				Dimensions: map[string]string{"status": "completed"},
+			})
 			if err != nil {
 				t.Fatalf("failed to complete item %s: %v", targetIDs[i], err)
 			}
@@ -126,7 +160,22 @@ func TestBatchIDResolutionPattern(t *testing.T) {
 
 	t.Run("incorrect batch pattern - resolving IDs one at a time", func(t *testing.T) {
 		// Reset by creating new store
-		store2, _ := nanostore.New(":memory:", nanostore.DefaultTestConfig())
+		store2, _ := nanostore.New(":memory:", nanostore.Config{
+			Dimensions: []nanostore.DimensionConfig{
+				{
+					Name:         "status",
+					Type:         nanostore.Enumerated,
+					Values:       []string{"pending", "completed"},
+					Prefixes:     map[string]string{"completed": "c"},
+					DefaultValue: "pending",
+				},
+				{
+					Name:     "parent",
+					Type:     nanostore.Hierarchical,
+					RefField: "parent_uuid",
+				},
+			},
+		})
 		defer func() { _ = store2.Close() }()
 
 		uuid1, _ := store2.Add("Item 1", nil)
@@ -137,7 +186,9 @@ func TestBatchIDResolutionPattern(t *testing.T) {
 		// User wants to complete 1 and 3, but resolves after each operation
 
 		// First complete ID 1
-		_ = nanostore.TestSetStatusUpdate(store2, uuid1, "completed")
+		_ = store2.Update(uuid1, nanostore.UpdateRequest{
+			Dimensions: map[string]string{"status": "completed"},
+		})
 
 		// Now try to resolve ID 3 - but it's now ID 2!
 		resolved3, err := store2.ResolveUUID("3")
@@ -157,7 +208,22 @@ func TestBatchIDResolutionPattern(t *testing.T) {
 // TestBatchOperationStrategies demonstrates different strategies for handling batch operations
 func TestBatchOperationStrategies(t *testing.T) {
 	t.Run("reverse order strategy", func(t *testing.T) {
-		store, _ := nanostore.New(":memory:", nanostore.DefaultTestConfig())
+		store, _ := nanostore.New(":memory:", nanostore.Config{
+			Dimensions: []nanostore.DimensionConfig{
+				{
+					Name:         "status",
+					Type:         nanostore.Enumerated,
+					Values:       []string{"pending", "completed"},
+					Prefixes:     map[string]string{"completed": "c"},
+					DefaultValue: "pending",
+				},
+				{
+					Name:     "parent",
+					Type:     nanostore.Hierarchical,
+					RefField: "parent_uuid",
+				},
+			},
+		})
 		defer func() { _ = store.Close() }()
 
 		// Create items
@@ -176,7 +242,9 @@ func TestBatchOperationStrategies(t *testing.T) {
 				t.Fatalf("failed to resolve ID %s: %v", id, err)
 			}
 
-			err = nanostore.TestSetStatusUpdate(store, uuid, "completed")
+			err = store.Update(uuid, nanostore.UpdateRequest{
+				Dimensions: map[string]string{"status": "completed"},
+			})
 			if err != nil {
 				t.Fatalf("failed to complete ID %s: %v", id, err)
 			}
@@ -190,7 +258,22 @@ func TestBatchOperationStrategies(t *testing.T) {
 	})
 
 	t.Run("pre-resolution with validation", func(t *testing.T) {
-		store, _ := nanostore.New(":memory:", nanostore.DefaultTestConfig())
+		store, _ := nanostore.New(":memory:", nanostore.Config{
+			Dimensions: []nanostore.DimensionConfig{
+				{
+					Name:         "status",
+					Type:         nanostore.Enumerated,
+					Values:       []string{"pending", "completed"},
+					Prefixes:     map[string]string{"completed": "c"},
+					DefaultValue: "pending",
+				},
+				{
+					Name:     "parent",
+					Type:     nanostore.Hierarchical,
+					RefField: "parent_uuid",
+				},
+			},
+		})
 		defer func() { _ = store.Close() }()
 
 		// Create items
@@ -238,7 +321,9 @@ func TestBatchOperationStrategies(t *testing.T) {
 			// Step 2: Complete all items
 			for _, item := range items {
 				t.Logf("Completing ID %s (UUID: %s, Title: %s)", item.userID, item.uuid, item.title)
-				err := nanostore.TestSetStatusUpdate(store, item.uuid, "completed")
+				err := store.Update(item.uuid, nanostore.UpdateRequest{
+					Dimensions: map[string]string{"status": "completed"},
+				})
 				if err != nil {
 					return err
 				}

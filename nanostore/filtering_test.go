@@ -9,7 +9,22 @@ import (
 func TestFilterByStatus(t *testing.T) {
 	// Filtering by status is now implemented
 
-	store, err := nanostore.NewTestStore(":memory:")
+	store, err := nanostore.New(":memory:", nanostore.Config{
+		Dimensions: []nanostore.DimensionConfig{
+			{
+				Name:         "status",
+				Type:         nanostore.Enumerated,
+				Values:       []string{"pending", "completed"},
+				Prefixes:     map[string]string{"completed": "c"},
+				DefaultValue: "pending",
+			},
+			{
+				Name:     "parent",
+				Type:     nanostore.Hierarchical,
+				RefField: "parent_uuid",
+			},
+		},
+	})
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
@@ -31,7 +46,9 @@ func TestFilterByStatus(t *testing.T) {
 		if err != nil {
 			t.Fatalf("failed to add document: %v", err)
 		}
-		err = nanostore.TestSetStatusUpdate(store, id, "completed")
+		err = store.Update(id, nanostore.UpdateRequest{
+			Dimensions: map[string]string{"status": "completed"},
+		})
 		if err != nil {
 			t.Fatalf("failed to set status: %v", err)
 		}
@@ -51,8 +68,9 @@ func TestFilterByStatus(t *testing.T) {
 	}
 
 	for _, doc := range pendingDocs {
-		if doc.GetStatus() != "pending" {
-			t.Errorf("expected pending status, got %s", doc.GetStatus())
+		status, _ := doc.Dimensions["status"].(string)
+		if status != "pending" {
+			t.Errorf("expected pending status, got %s", status)
 		}
 	}
 
@@ -94,7 +112,22 @@ func TestFilterByStatus(t *testing.T) {
 func TestFilterByParent(t *testing.T) {
 	// Filtering by parent is now implemented
 
-	store, err := nanostore.NewTestStore(":memory:")
+	store, err := nanostore.New(":memory:", nanostore.Config{
+		Dimensions: []nanostore.DimensionConfig{
+			{
+				Name:         "status",
+				Type:         nanostore.Enumerated,
+				Values:       []string{"pending", "completed"},
+				Prefixes:     map[string]string{"completed": "c"},
+				DefaultValue: "pending",
+			},
+			{
+				Name:     "parent",
+				Type:     nanostore.Hierarchical,
+				RefField: "parent_uuid",
+			},
+		},
+	})
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
@@ -191,7 +224,22 @@ func TestFilterByParent(t *testing.T) {
 func TestFilterBySearch(t *testing.T) {
 	// Text search is now implemented
 
-	store, err := nanostore.NewTestStore(":memory:")
+	store, err := nanostore.New(":memory:", nanostore.Config{
+		Dimensions: []nanostore.DimensionConfig{
+			{
+				Name:         "status",
+				Type:         nanostore.Enumerated,
+				Values:       []string{"pending", "completed"},
+				Prefixes:     map[string]string{"completed": "c"},
+				DefaultValue: "pending",
+			},
+			{
+				Name:     "parent",
+				Type:     nanostore.Hierarchical,
+				RefField: "parent_uuid",
+			},
+		},
+	})
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
@@ -275,7 +323,22 @@ func TestFilterBySearch(t *testing.T) {
 func TestCombinedFilters(t *testing.T) {
 	// Combined filtering is now implemented
 
-	store, err := nanostore.NewTestStore(":memory:")
+	store, err := nanostore.New(":memory:", nanostore.Config{
+		Dimensions: []nanostore.DimensionConfig{
+			{
+				Name:         "status",
+				Type:         nanostore.Enumerated,
+				Values:       []string{"pending", "completed"},
+				Prefixes:     map[string]string{"completed": "c"},
+				DefaultValue: "pending",
+			},
+			{
+				Name:     "parent",
+				Type:     nanostore.Hierarchical,
+				RefField: "parent_uuid",
+			},
+		},
+	})
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
@@ -288,11 +351,15 @@ func TestCombinedFilters(t *testing.T) {
 	// Add children with different statuses
 	_, _ = store.Add("Design Phase", map[string]interface{}{"parent_uuid": root1})
 	task2, _ := store.Add("Implementation", map[string]interface{}{"parent_uuid": root1})
-	_ = nanostore.TestSetStatusUpdate(store, task2, "completed")
+	_ = store.Update(task2, nanostore.UpdateRequest{
+		Dimensions: map[string]string{"status": "completed"},
+	})
 
 	task3, _ := store.Add("Testing Phase", map[string]interface{}{"parent_uuid": root2})
 	deployTask, _ := store.Add("Deployment", map[string]interface{}{"parent_uuid": root2})
-	_ = nanostore.TestSetStatusUpdate(store, deployTask, "completed")
+	_ = store.Update(deployTask, nanostore.UpdateRequest{
+		Dimensions: map[string]string{"status": "completed"},
+	})
 
 	// Test: Filter by parent AND status
 	results, err := store.List(nanostore.ListOptions{

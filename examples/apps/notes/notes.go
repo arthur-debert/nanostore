@@ -27,13 +27,25 @@ type Notes struct {
 }
 
 // NotesConfig creates a nanostore configuration for the notes app
-// NotesConfig creates a nanostore configuration for the notes app
 // This shows how nanostore's generic dimension system can be customized
-// for a specific application. We use the same enumerated/hierarchical
-// pattern as todos, but could easily extend with additional dimensions.
+// for a specific application with multiple statuses and hierarchy.
 func NotesConfig() nanostore.Config {
-	// Use todo config which provides status and parent dimensions
-	return nanostore.TodoConfig()
+	return nanostore.Config{
+		Dimensions: []nanostore.DimensionConfig{
+			{
+				Name:         "status",
+				Type:         nanostore.Enumerated,
+				Values:       []string{"pending", "pinned", "completed"},
+				Prefixes:     map[string]string{"pinned": "p", "completed": "c"},
+				DefaultValue: "pending",
+			},
+			{
+				Name:     "parent",
+				Type:     nanostore.Hierarchical,
+				RefField: "parent_uuid",
+			},
+		},
+	}
 }
 
 // New creates a new Notes instance
@@ -202,9 +214,12 @@ func (n *Notes) List(opts ListOptions) ([]*Note, error) {
 			Document: doc,
 			// Infer status from user-facing ID prefix
 			// Nanostore's ID generation includes status prefixes
-			IsPinned:   strings.HasPrefix(doc.UserFacingID, "p"),
-			IsArchived: doc.GetStatus() == "completed",
-			IsDeleted:  false, // deleted notes are removed from store
+			IsPinned: strings.HasPrefix(doc.UserFacingID, "p"),
+			IsArchived: func() bool {
+				status, _ := doc.Dimensions["status"].(string)
+				return status == "completed"
+			}(),
+			IsDeleted: false, // deleted notes are removed from store
 		}
 
 		// Parse tags from body if present

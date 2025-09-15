@@ -8,7 +8,22 @@ import (
 
 func TestDelete(t *testing.T) {
 	t.Run("delete single document without children", func(t *testing.T) {
-		store, err := nanostore.NewTestStore(":memory:")
+		store, err := nanostore.New(":memory:", nanostore.Config{
+			Dimensions: []nanostore.DimensionConfig{
+				{
+					Name:         "status",
+					Type:         nanostore.Enumerated,
+					Values:       []string{"pending", "completed"},
+					Prefixes:     map[string]string{"completed": "c"},
+					DefaultValue: "pending",
+				},
+				{
+					Name:     "parent",
+					Type:     nanostore.Hierarchical,
+					RefField: "parent_uuid",
+				},
+			},
+		})
 		if err != nil {
 			t.Fatalf("failed to create store: %v", err)
 		}
@@ -37,7 +52,22 @@ func TestDelete(t *testing.T) {
 	})
 
 	t.Run("delete non-existent document", func(t *testing.T) {
-		store, err := nanostore.NewTestStore(":memory:")
+		store, err := nanostore.New(":memory:", nanostore.Config{
+			Dimensions: []nanostore.DimensionConfig{
+				{
+					Name:         "status",
+					Type:         nanostore.Enumerated,
+					Values:       []string{"pending", "completed"},
+					Prefixes:     map[string]string{"completed": "c"},
+					DefaultValue: "pending",
+				},
+				{
+					Name:     "parent",
+					Type:     nanostore.Hierarchical,
+					RefField: "parent_uuid",
+				},
+			},
+		})
 		if err != nil {
 			t.Fatalf("failed to create store: %v", err)
 		}
@@ -56,7 +86,22 @@ func TestDelete(t *testing.T) {
 	})
 
 	t.Run("delete document with children (cascade=false)", func(t *testing.T) {
-		store, err := nanostore.NewTestStore(":memory:")
+		store, err := nanostore.New(":memory:", nanostore.Config{
+			Dimensions: []nanostore.DimensionConfig{
+				{
+					Name:         "status",
+					Type:         nanostore.Enumerated,
+					Values:       []string{"pending", "completed"},
+					Prefixes:     map[string]string{"completed": "c"},
+					DefaultValue: "pending",
+				},
+				{
+					Name:     "parent",
+					Type:     nanostore.Hierarchical,
+					RefField: "parent_uuid",
+				},
+			},
+		})
 		if err != nil {
 			t.Fatalf("failed to create store: %v", err)
 		}
@@ -92,7 +137,22 @@ func TestDelete(t *testing.T) {
 	})
 
 	t.Run("delete document with children (cascade=true)", func(t *testing.T) {
-		store, err := nanostore.NewTestStore(":memory:")
+		store, err := nanostore.New(":memory:", nanostore.Config{
+			Dimensions: []nanostore.DimensionConfig{
+				{
+					Name:         "status",
+					Type:         nanostore.Enumerated,
+					Values:       []string{"pending", "completed"},
+					Prefixes:     map[string]string{"completed": "c"},
+					DefaultValue: "pending",
+				},
+				{
+					Name:     "parent",
+					Type:     nanostore.Hierarchical,
+					RefField: "parent_uuid",
+				},
+			},
+		})
 		if err != nil {
 			t.Fatalf("failed to create store: %v", err)
 		}
@@ -141,7 +201,22 @@ func TestDelete(t *testing.T) {
 	})
 
 	t.Run("delete middle node with cascade", func(t *testing.T) {
-		store, err := nanostore.NewTestStore(":memory:")
+		store, err := nanostore.New(":memory:", nanostore.Config{
+			Dimensions: []nanostore.DimensionConfig{
+				{
+					Name:         "status",
+					Type:         nanostore.Enumerated,
+					Values:       []string{"pending", "completed"},
+					Prefixes:     map[string]string{"completed": "c"},
+					DefaultValue: "pending",
+				},
+				{
+					Name:     "parent",
+					Type:     nanostore.Hierarchical,
+					RefField: "parent_uuid",
+				},
+			},
+		})
 		if err != nil {
 			t.Fatalf("failed to create store: %v", err)
 		}
@@ -207,7 +282,22 @@ func TestDelete(t *testing.T) {
 	})
 
 	t.Run("delete leaf node", func(t *testing.T) {
-		store, err := nanostore.NewTestStore(":memory:")
+		store, err := nanostore.New(":memory:", nanostore.Config{
+			Dimensions: []nanostore.DimensionConfig{
+				{
+					Name:         "status",
+					Type:         nanostore.Enumerated,
+					Values:       []string{"pending", "completed"},
+					Prefixes:     map[string]string{"completed": "c"},
+					DefaultValue: "pending",
+				},
+				{
+					Name:     "parent",
+					Type:     nanostore.Hierarchical,
+					RefField: "parent_uuid",
+				},
+			},
+		})
 		if err != nil {
 			t.Fatalf("failed to create store: %v", err)
 		}
@@ -244,7 +334,22 @@ func TestDelete(t *testing.T) {
 	})
 
 	t.Run("delete with mixed statuses", func(t *testing.T) {
-		store, err := nanostore.NewTestStore(":memory:")
+		store, err := nanostore.New(":memory:", nanostore.Config{
+			Dimensions: []nanostore.DimensionConfig{
+				{
+					Name:         "status",
+					Type:         nanostore.Enumerated,
+					Values:       []string{"pending", "completed"},
+					Prefixes:     map[string]string{"completed": "c"},
+					DefaultValue: "pending",
+				},
+				{
+					Name:     "parent",
+					Type:     nanostore.Hierarchical,
+					RefField: "parent_uuid",
+				},
+			},
+		})
 		if err != nil {
 			t.Fatalf("failed to create store: %v", err)
 		}
@@ -267,7 +372,9 @@ func TestDelete(t *testing.T) {
 		}
 
 		// Set one child as completed
-		err = nanostore.TestSetStatusUpdate(store, child2ID, "completed")
+		err = store.Update(child2ID, nanostore.UpdateRequest{
+			Dimensions: map[string]string{"status": "completed"},
+		})
 		if err != nil {
 			t.Fatalf("failed to set status: %v", err)
 		}
@@ -293,7 +400,22 @@ func TestDeleteConcurrent(t *testing.T) {
 	// SQLite has database-level locking, so concurrent deletes from different
 	// connections will result in lock contention. This test verifies that
 	// concurrent deletes from the same connection work correctly.
-	store, err := nanostore.NewTestStore(":memory:")
+	store, err := nanostore.New(":memory:", nanostore.Config{
+		Dimensions: []nanostore.DimensionConfig{
+			{
+				Name:         "status",
+				Type:         nanostore.Enumerated,
+				Values:       []string{"pending", "completed"},
+				Prefixes:     map[string]string{"completed": "c"},
+				DefaultValue: "pending",
+			},
+			{
+				Name:     "parent",
+				Type:     nanostore.Hierarchical,
+				RefField: "parent_uuid",
+			},
+		},
+	})
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
@@ -329,7 +451,22 @@ func TestDeleteConcurrent(t *testing.T) {
 
 func TestDeleteEdgeCases(t *testing.T) {
 	t.Run("delete with SQL injection attempt", func(t *testing.T) {
-		store, err := nanostore.NewTestStore(":memory:")
+		store, err := nanostore.New(":memory:", nanostore.Config{
+			Dimensions: []nanostore.DimensionConfig{
+				{
+					Name:         "status",
+					Type:         nanostore.Enumerated,
+					Values:       []string{"pending", "completed"},
+					Prefixes:     map[string]string{"completed": "c"},
+					DefaultValue: "pending",
+				},
+				{
+					Name:     "parent",
+					Type:     nanostore.Hierarchical,
+					RefField: "parent_uuid",
+				},
+			},
+		})
 		if err != nil {
 			t.Fatalf("failed to create store: %v", err)
 		}
@@ -343,7 +480,22 @@ func TestDeleteEdgeCases(t *testing.T) {
 	})
 
 	t.Run("delete empty string ID", func(t *testing.T) {
-		store, err := nanostore.NewTestStore(":memory:")
+		store, err := nanostore.New(":memory:", nanostore.Config{
+			Dimensions: []nanostore.DimensionConfig{
+				{
+					Name:         "status",
+					Type:         nanostore.Enumerated,
+					Values:       []string{"pending", "completed"},
+					Prefixes:     map[string]string{"completed": "c"},
+					DefaultValue: "pending",
+				},
+				{
+					Name:     "parent",
+					Type:     nanostore.Hierarchical,
+					RefField: "parent_uuid",
+				},
+			},
+		})
 		if err != nil {
 			t.Fatalf("failed to create store: %v", err)
 		}
@@ -356,7 +508,22 @@ func TestDeleteEdgeCases(t *testing.T) {
 	})
 
 	t.Run("delete very deep hierarchy", func(t *testing.T) {
-		store, err := nanostore.NewTestStore(":memory:")
+		store, err := nanostore.New(":memory:", nanostore.Config{
+			Dimensions: []nanostore.DimensionConfig{
+				{
+					Name:         "status",
+					Type:         nanostore.Enumerated,
+					Values:       []string{"pending", "completed"},
+					Prefixes:     map[string]string{"completed": "c"},
+					DefaultValue: "pending",
+				},
+				{
+					Name:     "parent",
+					Type:     nanostore.Hierarchical,
+					RefField: "parent_uuid",
+				},
+			},
+		})
 		if err != nil {
 			t.Fatalf("failed to create store: %v", err)
 		}
@@ -391,7 +558,8 @@ func TestDeleteEdgeCases(t *testing.T) {
 			// Get parent of current
 			docs, _ := store.List(nanostore.ListOptions{})
 			for _, doc := range docs {
-				if doc.GetParentUUID() == nil {
+				parentUUID, hasParent := doc.Dimensions["parent_uuid"].(string)
+				if !hasParent || parentUUID == "" {
 					rootID = doc.UUID
 					break
 				}

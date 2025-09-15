@@ -8,7 +8,22 @@ import (
 )
 
 func TestDeepNesting(t *testing.T) {
-	store, err := nanostore.NewTestStore(":memory:")
+	store, err := nanostore.New(":memory:", nanostore.Config{
+		Dimensions: []nanostore.DimensionConfig{
+			{
+				Name:         "status",
+				Type:         nanostore.Enumerated,
+				Values:       []string{"pending", "completed"},
+				Prefixes:     map[string]string{"completed": "c"},
+				DefaultValue: "pending",
+			},
+			{
+				Name:     "parent",
+				Type:     nanostore.Hierarchical,
+				RefField: "parent_uuid",
+			},
+		},
+	})
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
@@ -66,7 +81,22 @@ func TestDeepNesting(t *testing.T) {
 }
 
 func TestMixedStatusHierarchy(t *testing.T) {
-	store, err := nanostore.NewTestStore(":memory:")
+	store, err := nanostore.New(":memory:", nanostore.Config{
+		Dimensions: []nanostore.DimensionConfig{
+			{
+				Name:         "status",
+				Type:         nanostore.Enumerated,
+				Values:       []string{"pending", "completed"},
+				Prefixes:     map[string]string{"completed": "c"},
+				DefaultValue: "pending",
+			},
+			{
+				Name:     "parent",
+				Type:     nanostore.Hierarchical,
+				RefField: "parent_uuid",
+			},
+		},
+	})
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
@@ -88,15 +118,23 @@ func TestMixedStatusHierarchy(t *testing.T) {
 	child3, _ := store.Add("Child 1.3", map[string]interface{}{"parent_uuid": root1})
 	child4, _ := store.Add("Child 1.4", map[string]interface{}{"parent_uuid": root1})
 
-	_ = nanostore.TestSetStatusUpdate(store, child2, "completed")
-	_ = nanostore.TestSetStatusUpdate(store, child4, "completed")
+	_ = store.Update(child2, nanostore.UpdateRequest{
+		Dimensions: map[string]string{"status": "completed"},
+	})
+	_ = store.Update(child4, nanostore.UpdateRequest{
+		Dimensions: map[string]string{"status": "completed"},
+	})
 
 	root2, _ := store.Add("Root 2", nil)
-	_ = nanostore.TestSetStatusUpdate(store, root2, "completed")
+	_ = store.Update(root2, nanostore.UpdateRequest{
+		Dimensions: map[string]string{"status": "completed"},
+	})
 
 	child5, _ := store.Add("Child c1.1", map[string]interface{}{"parent_uuid": root2})
 	child6, _ := store.Add("Child c1.c1", map[string]interface{}{"parent_uuid": root2})
-	_ = nanostore.TestSetStatusUpdate(store, child6, "completed")
+	_ = store.Update(child6, nanostore.UpdateRequest{
+		Dimensions: map[string]string{"status": "completed"},
+	})
 
 	// Expected IDs
 	expected := map[string]string{
@@ -129,7 +167,22 @@ func TestMixedStatusHierarchy(t *testing.T) {
 }
 
 func TestSiblingNumbering(t *testing.T) {
-	store, err := nanostore.NewTestStore(":memory:")
+	store, err := nanostore.New(":memory:", nanostore.Config{
+		Dimensions: []nanostore.DimensionConfig{
+			{
+				Name:         "status",
+				Type:         nanostore.Enumerated,
+				Values:       []string{"pending", "completed"},
+				Prefixes:     map[string]string{"completed": "c"},
+				DefaultValue: "pending",
+			},
+			{
+				Name:     "parent",
+				Type:     nanostore.Hierarchical,
+				RefField: "parent_uuid",
+			},
+		},
+	})
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
@@ -155,7 +208,9 @@ func TestSiblingNumbering(t *testing.T) {
 		if err != nil {
 			t.Fatalf("failed to add completed child %d: %v", i+1, err)
 		}
-		_ = nanostore.TestSetStatusUpdate(store, id, "completed")
+		_ = store.Update(id, nanostore.UpdateRequest{
+			Dimensions: map[string]string{"status": "completed"},
+		})
 		completedIDs[i] = id
 	}
 
@@ -217,7 +272,22 @@ func TestSiblingNumbering(t *testing.T) {
 }
 
 func TestDeletedParentHandling(t *testing.T) {
-	store, err := nanostore.NewTestStore(":memory:")
+	store, err := nanostore.New(":memory:", nanostore.Config{
+		Dimensions: []nanostore.DimensionConfig{
+			{
+				Name:         "status",
+				Type:         nanostore.Enumerated,
+				Values:       []string{"pending", "completed"},
+				Prefixes:     map[string]string{"completed": "c"},
+				DefaultValue: "pending",
+			},
+			{
+				Name:     "parent",
+				Type:     nanostore.Hierarchical,
+				RefField: "parent_uuid",
+			},
+		},
+	})
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
@@ -279,7 +349,22 @@ func TestDeletedParentHandling(t *testing.T) {
 }
 
 func TestResolveComplexIDs(t *testing.T) {
-	store, err := nanostore.NewTestStore(":memory:")
+	store, err := nanostore.New(":memory:", nanostore.Config{
+		Dimensions: []nanostore.DimensionConfig{
+			{
+				Name:         "status",
+				Type:         nanostore.Enumerated,
+				Values:       []string{"pending", "completed"},
+				Prefixes:     map[string]string{"completed": "c"},
+				DefaultValue: "pending",
+			},
+			{
+				Name:     "parent",
+				Type:     nanostore.Hierarchical,
+				RefField: "parent_uuid",
+			},
+		},
+	})
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
@@ -293,7 +378,9 @@ func TestResolveComplexIDs(t *testing.T) {
 	for i := 0; i < 3; i++ {
 		child, _ := store.Add(fmt.Sprintf("Child %d", i), map[string]interface{}{"parent_uuid": root})
 		if i == 1 {
-			_ = nanostore.TestSetStatusUpdate(store, child, "completed")
+			_ = store.Update(child, nanostore.UpdateRequest{
+				Dimensions: map[string]string{"status": "completed"},
+			})
 			lastParent = child
 		}
 	}
@@ -302,7 +389,9 @@ func TestResolveComplexIDs(t *testing.T) {
 	for i := 0; i < 2; i++ {
 		gc, _ := store.Add(fmt.Sprintf("Grandchild %d", i), map[string]interface{}{"parent_uuid": lastParent})
 		if i == 0 {
-			_ = nanostore.TestSetStatusUpdate(store, gc, "completed")
+			_ = store.Update(gc, nanostore.UpdateRequest{
+				Dimensions: map[string]string{"status": "completed"},
+			})
 		}
 	}
 
