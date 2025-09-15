@@ -174,7 +174,7 @@ func TestIDResolutionNormalization(t *testing.T) {
 		}
 
 		// Create child with high priority
-		childID, err := store.Add("Child Task", map[string]interface{}{"parent_uuid": parentID,
+		childID, err := store.Add("Child Task", map[string]interface{}{"parent_id": parentID,
 			"priority": "high",
 		})
 		if err != nil {

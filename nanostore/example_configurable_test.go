@@ -43,8 +43,8 @@ func ExampleNew() {
 
 	// Add some tasks
 	epic, _ := store.Add("Q1 Product Launch", nil)
-	task1, _ := store.Add("Design mockups", map[string]interface{}{"parent_uuid": epic})
-	task2, _ := store.Add("Implement backend", map[string]interface{}{"parent_uuid": epic})
+	task1, _ := store.Add("Design mockups", map[string]interface{}{"parent_task_id": epic})
+	task2, _ := store.Add("Implement backend", map[string]interface{}{"parent_task_id": epic})
 
 	// Update statuses
 	_ = store.Update(task1, nanostore.UpdateRequest{

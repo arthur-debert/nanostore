@@ -214,20 +214,9 @@ func (s *store) Add(title string, dimensions map[string]interface{}) (string, er
 		}
 	}
 
-	// Handle hierarchical dimension - check if parent_uuid was provided
+	// Handle hierarchical dimension - support smart ID detection for parent references
 	hierDim := s.findHierarchicalDimension()
 	if hierDim != nil {
-		// Check if parent_uuid was provided (common convention)
-		if parentVal, ok := dimensionValues["parent_uuid"]; ok && hierDim.RefField != "parent_uuid" {
-			// Move the value to the actual ref field if different
-			dimensionValues[hierDim.RefField] = parentVal
-			delete(dimensionValues, "parent_uuid")
-		} else if parentVal, ok := dimensionValues[hierDim.Name]; ok && hierDim.Name != hierDim.RefField {
-			// Check by dimension name if different from ref field
-			dimensionValues[hierDim.RefField] = parentVal
-			delete(dimensionValues, hierDim.Name)
-		}
-
 		// Support smart ID detection for parent references
 		if parentID, ok := dimensionValues[hierDim.RefField]; ok && parentID != nil && parentID != "" {
 			parentIDStr := fmt.Sprintf("%v", parentID)
