@@ -227,6 +227,16 @@ func (s *store) Add(title string, dimensions map[string]interface{}) (string, er
 			dimensionValues[hierDim.RefField] = parentVal
 			delete(dimensionValues, hierDim.Name)
 		}
+
+		// Support smart ID detection for parent references
+		if parentID, ok := dimensionValues[hierDim.RefField]; ok && parentID != nil && parentID != "" {
+			parentIDStr := fmt.Sprintf("%v", parentID)
+			resolvedUUID, err := s.resolveIDToUUID(parentIDStr)
+			if err != nil {
+				return "", fmt.Errorf("invalid parent ID '%s': %w", parentIDStr, err)
+			}
+			dimensionValues[hierDim.RefField] = resolvedUUID
+		}
 	}
 
 	return s.addWithDimensions(title, dimensionValues)
@@ -399,7 +409,12 @@ func (s *store) Update(id string, updates UpdateRequest) error {
 }
 
 // ResolveUUID converts a user-facing ID to a UUID
+// Supports smart ID detection - returns UUID unchanged if already a UUID
 func (s *store) ResolveUUID(userFacingID string) (string, error) {
+	// Check if it's already a UUID
+	if isUUIDFormat(userFacingID) {
+		return userFacingID, nil
+	}
 	// Normalize the input ID to handle different prefix orders
 	normalizedID, err := s.normalizeUserFacingID(userFacingID)
 	if err != nil {
