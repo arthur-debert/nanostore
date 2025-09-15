@@ -97,7 +97,7 @@ func TestUpdateWithSmartIDDetection(t *testing.T) {
 	}
 
 	// Set status for parent to get a completed ID
-	err = nanostore.SetStatus(store, parentUUID, "completed")
+	err = nanostore.TestSetStatusUpdate(store, parentUUID, "completed")
 	if err != nil {
 		t.Fatalf("failed to set parent status: %v", err)
 	}
@@ -295,7 +295,7 @@ func TestSetStatusWithSmartIDDetection(t *testing.T) {
 	}
 
 	t.Run("set status with UUID", func(t *testing.T) {
-		err := nanostore.SetStatus(store, docUUID, "completed")
+		err := nanostore.TestSetStatusUpdate(store, docUUID, "completed")
 		if err != nil {
 			t.Errorf("unexpected error: %v", err)
 		}
@@ -310,14 +310,14 @@ func TestSetStatusWithSmartIDDetection(t *testing.T) {
 	completedUserID := docsAfterStatusChange[0].UserFacingID
 
 	t.Run("set status with user-facing ID", func(t *testing.T) {
-		err := nanostore.SetStatus(store, completedUserID, "pending") // Reset to pending
+		err := nanostore.TestSetStatusUpdate(store, completedUserID, "pending") // Reset to pending
 		if err != nil {
 			t.Errorf("unexpected error: %v", err)
 		}
 	})
 
 	t.Run("set status with invalid UUID", func(t *testing.T) {
-		err := nanostore.SetStatus(store, "00000000-0000-0000-0000-000000000001", "completed")
+		err := nanostore.TestSetStatusUpdate(store, "00000000-0000-0000-0000-000000000001", "completed")
 		if err == nil {
 			t.Errorf("expected error but got none")
 		} else if !strings.Contains(err.Error(), "document not found") {
@@ -326,7 +326,7 @@ func TestSetStatusWithSmartIDDetection(t *testing.T) {
 	})
 
 	t.Run("set status with invalid user-facing ID", func(t *testing.T) {
-		err := nanostore.SetStatus(store, "999", "completed")
+		err := nanostore.TestSetStatusUpdate(store, "999", "completed")
 		if err == nil {
 			t.Errorf("expected error but got none")
 		} else if !strings.Contains(err.Error(), "invalid ID") {
@@ -391,7 +391,7 @@ func TestMixedIDOperations(t *testing.T) {
 	})
 
 	t.Run("set status with user-facing ID", func(t *testing.T) {
-		err := nanostore.SetStatus(store, child1UserID, "completed")
+		err := nanostore.TestSetStatusUpdate(store, child1UserID, "completed")
 		if err != nil {
 			t.Errorf("failed to set status with user-facing ID: %v", err)
 		}

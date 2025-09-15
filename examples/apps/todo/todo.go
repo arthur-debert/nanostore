@@ -26,6 +26,14 @@ func New(dbPath string) (*Todo, error) {
 	return &Todo{store: store}, nil
 }
 
+// SetStatus is a todo-specific helper function to set the status dimension of a document
+// This is equivalent to: store.Update(id, UpdateRequest{Dimensions: {"status": status}})
+func SetStatus(store nanostore.Store, id string, status string) error {
+	return store.Update(id, nanostore.UpdateRequest{
+		Dimensions: map[string]string{"status": status},
+	})
+}
+
 // Close releases resources
 func (t *Todo) Close() error {
 	return t.store.Close()
@@ -74,7 +82,7 @@ func (t *Todo) Complete(userFacingID string) error {
 		return fmt.Errorf("failed to resolve ID '%s': %w", userFacingID, err)
 	}
 
-	err = nanostore.SetStatus(t.store, uuid, "completed")
+	err = SetStatus(t.store, uuid, "completed")
 	if err != nil {
 		return fmt.Errorf("failed to complete todo: %w", err)
 	}
@@ -107,7 +115,7 @@ func (t *Todo) CompleteMultiple(userFacingIDs []string) error {
 	// Step 2: Complete all items using their UUIDs
 	var completed []string
 	for _, item := range items {
-		err := nanostore.SetStatus(t.store, item.uuid, "completed")
+		err := SetStatus(t.store, item.uuid, "completed")
 		if err != nil {
 			// If we fail partway through, report what was completed
 			if len(completed) > 0 {
@@ -129,7 +137,7 @@ func (t *Todo) Reopen(userFacingID string) error {
 		return fmt.Errorf("failed to resolve ID '%s': %w", userFacingID, err)
 	}
 
-	err = nanostore.SetStatus(t.store, uuid, "pending")
+	err = SetStatus(t.store, uuid, "pending")
 	if err != nil {
 		return fmt.Errorf("failed to reopen todo: %w", err)
 	}

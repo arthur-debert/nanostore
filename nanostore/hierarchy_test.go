@@ -88,15 +88,15 @@ func TestMixedStatusHierarchy(t *testing.T) {
 	child3, _ := store.Add("Child 1.3", map[string]interface{}{"parent_uuid": root1})
 	child4, _ := store.Add("Child 1.4", map[string]interface{}{"parent_uuid": root1})
 
-	_ = nanostore.SetStatus(store, child2, "completed")
-	_ = nanostore.SetStatus(store, child4, "completed")
+	_ = nanostore.TestSetStatusUpdate(store, child2, "completed")
+	_ = nanostore.TestSetStatusUpdate(store, child4, "completed")
 
 	root2, _ := store.Add("Root 2", nil)
-	_ = nanostore.SetStatus(store, root2, "completed")
+	_ = nanostore.TestSetStatusUpdate(store, root2, "completed")
 
 	child5, _ := store.Add("Child c1.1", map[string]interface{}{"parent_uuid": root2})
 	child6, _ := store.Add("Child c1.c1", map[string]interface{}{"parent_uuid": root2})
-	_ = nanostore.SetStatus(store, child6, "completed")
+	_ = nanostore.TestSetStatusUpdate(store, child6, "completed")
 
 	// Expected IDs
 	expected := map[string]string{
@@ -155,7 +155,7 @@ func TestSiblingNumbering(t *testing.T) {
 		if err != nil {
 			t.Fatalf("failed to add completed child %d: %v", i+1, err)
 		}
-		_ = nanostore.SetStatus(store, id, "completed")
+		_ = nanostore.TestSetStatusUpdate(store, id, "completed")
 		completedIDs[i] = id
 	}
 
@@ -293,7 +293,7 @@ func TestResolveComplexIDs(t *testing.T) {
 	for i := 0; i < 3; i++ {
 		child, _ := store.Add(fmt.Sprintf("Child %d", i), map[string]interface{}{"parent_uuid": root})
 		if i == 1 {
-			_ = nanostore.SetStatus(store, child, "completed")
+			_ = nanostore.TestSetStatusUpdate(store, child, "completed")
 			lastParent = child
 		}
 	}
@@ -302,7 +302,7 @@ func TestResolveComplexIDs(t *testing.T) {
 	for i := 0; i < 2; i++ {
 		gc, _ := store.Add(fmt.Sprintf("Grandchild %d", i), map[string]interface{}{"parent_uuid": lastParent})
 		if i == 0 {
-			_ = nanostore.SetStatus(store, gc, "completed")
+			_ = nanostore.TestSetStatusUpdate(store, gc, "completed")
 		}
 	}
 

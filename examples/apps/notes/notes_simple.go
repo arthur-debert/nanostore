@@ -33,6 +33,14 @@ func (n *SimpleNotes) Close() error {
 	return n.store.Close()
 }
 
+// SetStatus is a notes-specific helper function to set the status dimension of a document
+// This is equivalent to: store.Update(id, UpdateRequest{Dimensions: {"status": status}})
+func SetStatus(store nanostore.Store, id string, status string) error {
+	return store.Update(id, nanostore.UpdateRequest{
+		Dimensions: map[string]string{"status": status},
+	})
+}
+
 // Add creates a new note (pending status)
 func (n *SimpleNotes) Add(title, content string, tags []string) (string, error) {
 	// Store tags in body
@@ -76,7 +84,7 @@ func (n *SimpleNotes) Archive(userFacingID string) error {
 		return fmt.Errorf("failed to resolve ID: %w", err)
 	}
 
-	return nanostore.SetStatus(n.store, uuid, "completed")
+	return SetStatus(n.store, uuid, "completed")
 }
 
 // Unarchive moves a note back to pending status
@@ -86,7 +94,7 @@ func (n *SimpleNotes) Unarchive(userFacingID string) error {
 		return fmt.Errorf("failed to resolve ID: %w", err)
 	}
 
-	return nanostore.SetStatus(n.store, uuid, "pending")
+	return SetStatus(n.store, uuid, "pending")
 }
 
 // Delete removes a note

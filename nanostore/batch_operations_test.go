@@ -41,7 +41,7 @@ func TestBatchIDResolution(t *testing.T) {
 			t.Errorf("expected ID 1 to resolve to %s, got %s", uuid1, resolved1)
 		}
 
-		err = nanostore.SetStatus(store, resolved1, "completed")
+		err = nanostore.TestSetStatusUpdate(store, resolved1, "completed")
 		if err != nil {
 			t.Fatalf("failed to complete first item: %v", err)
 		}
@@ -96,7 +96,7 @@ func TestBatchIDResolutionPattern(t *testing.T) {
 
 		// Then perform all operations
 		for i, uuid := range resolvedUUIDs {
-			err := nanostore.SetStatus(store, uuid, "completed")
+			err := nanostore.TestSetStatusUpdate(store, uuid, "completed")
 			if err != nil {
 				t.Fatalf("failed to complete item %s: %v", targetIDs[i], err)
 			}
@@ -137,7 +137,7 @@ func TestBatchIDResolutionPattern(t *testing.T) {
 		// User wants to complete 1 and 3, but resolves after each operation
 
 		// First complete ID 1
-		_ = nanostore.SetStatus(store2, uuid1, "completed")
+		_ = nanostore.TestSetStatusUpdate(store2, uuid1, "completed")
 
 		// Now try to resolve ID 3 - but it's now ID 2!
 		resolved3, err := store2.ResolveUUID("3")
@@ -176,7 +176,7 @@ func TestBatchOperationStrategies(t *testing.T) {
 				t.Fatalf("failed to resolve ID %s: %v", id, err)
 			}
 
-			err = nanostore.SetStatus(store, uuid, "completed")
+			err = nanostore.TestSetStatusUpdate(store, uuid, "completed")
 			if err != nil {
 				t.Fatalf("failed to complete ID %s: %v", id, err)
 			}
@@ -238,7 +238,7 @@ func TestBatchOperationStrategies(t *testing.T) {
 			// Step 2: Complete all items
 			for _, item := range items {
 				t.Logf("Completing ID %s (UUID: %s, Title: %s)", item.userID, item.uuid, item.title)
-				err := nanostore.SetStatus(store, item.uuid, "completed")
+				err := nanostore.TestSetStatusUpdate(store, item.uuid, "completed")
 				if err != nil {
 					return err
 				}

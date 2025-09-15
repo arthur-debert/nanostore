@@ -132,7 +132,7 @@ func TestBulkStatusChange(t *testing.T) {
 	statusChanges := 0
 	for i, id := range ids {
 		if i%2 == 0 {
-			err := nanostore.SetStatus(store, id, "completed")
+			err := nanostore.TestSetStatusUpdate(store, id, "completed")
 			if err != nil {
 				t.Fatalf("failed to set status for document %d: %v", i, err)
 			}

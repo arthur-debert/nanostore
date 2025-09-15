@@ -50,8 +50,8 @@ func TestSetStatus(t *testing.T) {
 		t.Fatalf("failed to add document: %v", err)
 	}
 
-	// Change its status
-	err = nanostore.SetStatus(store, id, "completed")
+	// Change its status using the generic Update method
+	err = nanostore.TestSetStatusUpdate(store, id, "completed")
 	if err != nil {
 		t.Fatalf("failed to set status: %v", err)
 	}
