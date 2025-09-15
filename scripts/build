@@ -9,18 +9,17 @@ BLUE='\033[0;34m'
 BOLD='\033[1m'
 NC='\033[0m' # No Color
 
-# Build output directory (using bin/ to avoid conflicts with goreleaser's dist/)
+# Build output directory
 BIN_DIR="bin"
 
-echo -e "${BLUE}${BOLD}🔨 Building nanostore...${NC}"
+echo -e "${BLUE}${BOLD}Building nanostore...${NC}"
 echo
 
 # Clean and create build directories
 echo -e "${BLUE}Setting up build directories...${NC}"
-# Only clean the bin directory, preserve other build artifacts
 rm -rf "${BIN_DIR}"
 mkdir -p "${BIN_DIR}"
-echo -e "${GREEN}✅ Build directories ready${NC}"
+echo -e "${GREEN}✓ Build directories ready${NC}"
 echo
 
 # Get version information from git
@@ -35,144 +34,40 @@ echo -e "  Commit:  ${BOLD}$COMMIT${NC}"
 echo -e "  Date:    ${BOLD}$BUILD_DATE${NC}"
 echo
 
-# List all packages to ensure they're recognized
-echo -e "${BLUE}Listing all packages...${NC}"
-if command -v go >/dev/null 2>&1 && [ -f "vendor/modules.txt" ]; then
-    go list -mod=vendor ./...
-else
-    go list ./...
-fi
-
-# Build all packages first
-echo -e "${BLUE}Building all packages...${NC}"
+# Build all Go packages first
+echo -e "${BLUE}Building all Go packages...${NC}"
 if [ -f "vendor/modules.txt" ]; then
     # Use vendor if available
     if go build -mod=vendor -v ./...; then
-        echo -e "${GREEN}✅ All packages built successfully${NC}"
+        echo -e "${GREEN}✓ All packages built successfully${NC}"
     else
-        echo -e "${RED}❌ Package build failed${NC}"
+        echo -e "${RED}∅ Package build failed${NC}"
         exit 1
     fi
 else
     # Fall back to normal build
     if go build -v ./...; then
-        echo -e "${GREEN}✅ All packages built successfully${NC}"
+        echo -e "${GREEN}✓ All packages built successfully${NC}"
     else
-        echo -e "${RED}❌ Package build failed${NC}"
+        echo -e "${RED}∅ Package build failed${NC}"
         exit 1
     fi
 fi
 
-# Set up LDFLAGS for version embedding
-# Using a more flexible approach that works with both main package and internal/version package
-LDFLAGS="-s -w"
-if [ -d "internal/version" ] || [ -d "pkg/version" ]; then
-    # If there's a version package, use it
-    VERSION_PKG=$(find . -name "version.go" -path "*/version/*" | head -1 | sed 's|/version.go||' | sed 's|^\./||')
-    if [ -n "$VERSION_PKG" ]; then
-        LDFLAGS="$LDFLAGS -X github.com/arthur-debert/nanostore/$VERSION_PKG.Version=$VERSION"
-        LDFLAGS="$LDFLAGS -X github.com/arthur-debert/nanostore/$VERSION_PKG.Commit=$COMMIT"
-        LDFLAGS="$LDFLAGS -X github.com/arthur-debert/nanostore/$VERSION_PKG.Date=$BUILD_DATE"
+# Build C bindings
+echo
+echo -e "${BLUE}Building C bindings...${NC}"
+if [ -d "c-bindings" ] && [ -f "c-bindings/build.sh" ]; then
+    # Call the c-bindings build script, passing the output directory
+    if (cd c-bindings && ./build.sh "../${BIN_DIR}"); then
+        echo -e "${GREEN}✓ C bindings built successfully${NC}"
     else
-        # Fall back to main package
-        LDFLAGS="$LDFLAGS -X main.version=$VERSION"
-        LDFLAGS="$LDFLAGS -X main.commit=$COMMIT"
-        LDFLAGS="$LDFLAGS -X main.buildDate=$BUILD_DATE"
+        echo -e "${RED}∅ C bindings build failed${NC}"
+        exit 1
     fi
 else
-    # Use main package
-    LDFLAGS="$LDFLAGS -X main.version=$VERSION"
-    LDFLAGS="$LDFLAGS -X main.commit=$COMMIT"
-    LDFLAGS="$LDFLAGS -X main.buildDate=$BUILD_DATE"
+    echo -e "${YELLOW}[!] No c-bindings directory or build script found, skipping C library build${NC}"
 fi
-
-# Build the main binary
-echo
-echo -e "${BLUE}Building CLI binary...${NC}"
-BUILD_CMD="go build"
-if [ -f "vendor/modules.txt" ]; then
-    BUILD_CMD="$BUILD_CMD -mod=vendor"
-fi
-
-if [ -d "cmd/main" ]; then
-    # Some projects have main package in a subdirectory
-    BUILD_TARGET="./cmd/main"
-elif [ -d "cmd" ]; then
-    BUILD_TARGET="./cmd"
-else
-    echo -e "${RED}❌ Cannot find cmd directory${NC}"
-    exit 1
-fi
-
-# Detect OS and architecture for binary naming
-OS=$(go env GOOS)
-ARCH=$(go env GOARCH)
-BINARY_NAME="nanostore.${OS}-${ARCH}"
-
-if $BUILD_CMD -ldflags "$LDFLAGS" -o "${BIN_DIR}/${BINARY_NAME}" "$BUILD_TARGET"; then
-    echo -e "${GREEN}✅ Binary built successfully: ${BIN_DIR}/${BINARY_NAME}${NC}"
-else
-    echo -e "${RED}❌ Binary build failed${NC}"
-    exit 1
-fi
-
-# Create multi-arch wrapper script
-echo
-echo -e "${BLUE}Creating multi-arch wrapper script...${NC}"
-cat > "${BIN_DIR}/nanostore" << 'EOF'
-#!/usr/bin/env bash
-set -e
-
-# Get the directory where this script is located
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
-# Detect runtime OS and architecture
-OS=$(uname -s | tr '[:upper:]' '[:lower:]')
-ARCH=$(uname -m)
-
-# Map architecture names
-case "$ARCH" in
-    x86_64)
-        ARCH="amd64"
-        ;;
-    aarch64|arm64)
-        ARCH="arm64"
-        ;;
-    i386|i686)
-        ARCH="386"
-        ;;
-    *)
-        echo "Unsupported architecture: $ARCH" >&2
-        exit 1
-        ;;
-esac
-
-# Handle OS naming differences
-case "$OS" in
-    darwin|linux|freebsd|openbsd|netbsd)
-        # These are fine as-is
-        ;;
-    *)
-        echo "Unsupported OS: $OS" >&2
-        exit 1
-        ;;
-esac
-
-# Construct binary name and execute
-BINARY="${SCRIPT_DIR}/nanostore.${OS}-${ARCH}"
-
-if [ ! -f "$BINARY" ]; then
-    echo "Binary not found: $BINARY" >&2
-    echo "Available binaries:" >&2
-    ls -la "${SCRIPT_DIR}"/nanostore.* 2>/dev/null || echo "None found" >&2
-    exit 1
-fi
-
-exec "$BINARY" "$@"
-EOF
-
-chmod +x "${BIN_DIR}/nanostore"
-echo -e "${GREEN}✅ Multi-arch wrapper created${NC}"
 
 # Run tests if not skipped
 if [[ "${SKIP_TESTS:-}" != "true" ]]; then
@@ -183,31 +78,17 @@ if [[ "${SKIP_TESTS:-}" != "true" ]]; then
         TEST_CMD="go test -mod=vendor ./... -short"
     fi
     if $TEST_CMD; then
-        echo -e "${GREEN}✅ All tests passed${NC}"
+        echo -e "${GREEN}✓ All tests passed${NC}"
     else
-        echo -e "${RED}❌ Tests failed${NC}"
+        echo -e "${RED}∅ Tests failed${NC}"
         exit 1
     fi
 else
     echo
-    echo -e "${YELLOW}⚠️  Tests skipped (SKIP_TESTS=true)${NC}"
-fi
-
-# Verify the binary works
-echo
-echo -e "${BLUE}Verifying binary...${NC}"
-if "${BIN_DIR}/nanostore" --version >/dev/null 2>&1; then
-    echo -e "${GREEN}✅ Binary verification passed${NC}"
-    # Show actual version output
-    echo -e "${BLUE}Version output:${NC}"
-    "${BIN_DIR}/nanostore" --version || true
-elif "${BIN_DIR}/nanostore" --help >/dev/null 2>&1; then
-    echo -e "${GREEN}✅ Binary verification passed (via --help)${NC}"
-else
-    echo -e "${RED}❌ Binary verification failed${NC}"
-    exit 1
+    echo -e "${YELLOW}[!] Tests skipped (SKIP_TESTS=true)${NC}"
 fi
 
 echo
-echo -e "${GREEN}${BOLD}🎉 Build completed successfully!${NC}"
-echo -e "${BLUE}Binary location: ${BOLD}${BIN_DIR}/nanostore${NC}"
+echo -e "${GREEN}${BOLD}Build completed successfully!${NC}"
+echo -e "${BLUE}Build artifacts in: ${BOLD}${BIN_DIR}/${NC}"
+ls -la "${BIN_DIR}/"

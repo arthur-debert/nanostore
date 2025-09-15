@@ -4,25 +4,32 @@
 
 set -e
 
-# Run nanostore tests
-go test ./... -json
+# Get script directory
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
 
-# Run todo app tests
-cd examples/apps/todo
-go test ./... -json
+# Run nanostore and internal tests
+go test ./nanostore/... ./internal/... -json
 
-# Run notes app tests
-cd ../notes
-go test ./... -json
+# Run example app tests if they exist
+if [ -d "examples/apps/todo" ]; then
+    cd examples/apps/todo
+    go test ./... -json
+    cd "$SCRIPT_DIR"
+fi
 
-# Run Python binding tests if available
-cd ../../c-bindings/python
-if command -v python3 &> /dev/null; then
+if [ -d "examples/apps/notes" ]; then
+    cd examples/apps/notes
+    go test ./... -json
+    cd "$SCRIPT_DIR"
+fi
+
+# Run C binding tests if test script exists
+if [ -f "c-bindings/python/test.sh" ]; then
     # Run Python tests but suppress output for gotestsum (it expects JSON)
-    python3 tests/test_nanostore.py > /dev/null 2>&1
-    if [ $? -eq 0 ]; then
-        echo '{"Time":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'","Action":"pass","Package":"examples/c-bindings/python","Test":"TestPythonBindings","Elapsed":1}'
+    if ./c-bindings/python/test.sh > /dev/null 2>&1; then
+        echo '{"Time":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'","Action":"pass","Package":"c-bindings/python","Test":"TestPythonBindings","Elapsed":1}'
     else
-        echo '{"Time":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'","Action":"fail","Package":"examples/c-bindings/python","Test":"TestPythonBindings","Elapsed":1}'
+        echo '{"Time":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'","Action":"fail","Package":"c-bindings/python","Test":"TestPythonBindings","Elapsed":1}'
     fi
 fi

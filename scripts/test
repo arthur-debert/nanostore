@@ -13,23 +13,27 @@ if command -v gotestsum &> /dev/null; then
     echo "Using gotestsum to run all tests..."
     gotestsum --raw-command -- ./.gotestsum.sh
 else
-    echo "Running nanostore tests..."
-    go test ./... -v
+    echo "Running Go tests..."
+    go test ./nanostore/... ./internal/... -v
     
     echo -e "\nRunning todo app tests..."
-    cd "$PROJECT_ROOT/examples/apps/todo"
-    go test ./... -v
+    if [ -d "$PROJECT_ROOT/examples/apps/todo" ]; then
+        cd "$PROJECT_ROOT/examples/apps/todo"
+        go test ./... -v
+    fi
     
     echo -e "\nRunning notes app tests..."
-    cd "$PROJECT_ROOT/examples/apps/notes"
-    go test ./... -v
+    if [ -d "$PROJECT_ROOT/examples/apps/notes" ]; then
+        cd "$PROJECT_ROOT/examples/apps/notes"
+        go test ./... -v
+    fi
     
-    # Test Python bindings if Python is available
-    if command -v python3 &> /dev/null; then
-        echo -e "\nRunning Python binding tests..."
-        cd "$PROJECT_ROOT/examples/c-bindings/python"
-        python3 tests/test_nanostore.py
+    # Test C bindings if they exist
+    if [ -f "$PROJECT_ROOT/c-bindings/python/test.sh" ]; then
+        echo -e "\nRunning C binding tests..."
+        cd "$PROJECT_ROOT"
+        ./c-bindings/python/test.sh
     else
-        echo -e "\nSkipping Python binding tests (python3 not found)"
+        echo -e "\nSkipping C binding tests (test script not found)"
     fi
 fi
