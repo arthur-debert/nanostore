@@ -56,7 +56,7 @@ func NewListOptions() ListOptions {
 	}
 }
 
-// WithStatusFilter adds a status filter to ListOptions (helper for migration)
+// WithStatusFilter adds a status filter to ListOptions
 func (opts ListOptions) WithStatusFilter(statuses ...string) ListOptions {
 	if opts.Filters == nil {
 		opts.Filters = make(map[string]interface{})
@@ -69,7 +69,7 @@ func (opts ListOptions) WithStatusFilter(statuses ...string) ListOptions {
 	return opts
 }
 
-// WithParentFilter adds a parent filter to ListOptions (helper for migration)
+// WithParentFilter adds a parent filter to ListOptions
 func (opts ListOptions) WithParentFilter(parentUUID *string) ListOptions {
 	if opts.Filters == nil {
 		opts.Filters = make(map[string]interface{})

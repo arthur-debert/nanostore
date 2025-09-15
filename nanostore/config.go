@@ -27,7 +27,7 @@ func ExampleConfig() Config {
 }
 
 // TodoConfig returns a configuration suitable for todo applications
-// This is provided for backward compatibility and as an example
+// This serves as a practical example of how to configure dimensions
 func TodoConfig() Config {
 	return Config{
 		Dimensions: []DimensionConfig{
