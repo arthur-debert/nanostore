@@ -5,6 +5,8 @@ import (
 	"testing"
 )
 
+// TODO: Remove this test - WithStatusFilter has been removed
+/*
 func TestWithStatusFilter(t *testing.T) {
 	tests := []struct {
 		name         string
@@ -118,6 +120,7 @@ func TestWithStatusFilter(t *testing.T) {
 		})
 	}
 }
+*/
 
 func TestWithParentFilter(t *testing.T) {
 	parentID1 := "parent-uuid-1"
@@ -217,6 +220,8 @@ func TestWithParentFilter(t *testing.T) {
 	}
 }
 
+// TODO: Remove this test - WithStatusFilter has been removed
+/*
 func TestFilterMethodChaining(t *testing.T) {
 	parentID := "test-parent-uuid"
 
@@ -270,3 +275,4 @@ func TestFilterMethodChaining(t *testing.T) {
 		t.Errorf("Complex chaining = %+v, want %+v", opts3, expected3)
 	}
 }
+*/
