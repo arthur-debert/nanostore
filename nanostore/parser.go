@@ -193,7 +193,6 @@ func (p *idParser) fillDefaultValues(level *parsedLevel) {
 	}
 }
 
-
 // normalizePrefixes reorders prefixes alphabetically by dimension name
 // This allows "ph1" and "hp1" to both resolve to the same normalized form
 func (p *idParser) normalizePrefixes(prefixes string) string {
@@ -239,4 +238,3 @@ func (p *idParser) normalizePrefixes(prefixes string) string {
 
 	return normalized.String()
 }
-

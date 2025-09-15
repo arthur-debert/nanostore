@@ -15,7 +15,6 @@ func newSchemaBuilder(config Config) *schemaBuilder {
 	return &schemaBuilder{config: config}
 }
 
-
 // generateDimensionColumns creates ALTER TABLE statements for dimension columns
 func (sb *schemaBuilder) generateDimensionColumns() []string {
 	var statements []string
@@ -96,8 +95,6 @@ func (sb *schemaBuilder) generateIndexes() []string {
 
 	return statements
 }
-
-
 
 // ValidateSchemaCompatibility checks if the current config is compatible with existing schema
 func (sb *schemaBuilder) ValidateSchemaCompatibility(existingColumns map[string]string) error {
