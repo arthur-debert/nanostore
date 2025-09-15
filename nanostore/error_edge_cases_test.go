@@ -98,7 +98,9 @@ func TestSetStatusTransactionFailure(t *testing.T) {
 	_ = store.Close()
 
 	// Try to set status on closed store (should fail)
-	err = nanostore.TestSetStatusUpdate(store, docID, "completed")
+	err = store.Update(docID, nanostore.UpdateRequest{
+		Dimensions: map[string]string{"status": "completed"},
+	})
 	if err == nil {
 		t.Error("expected error when setting status on closed store")
 	}
@@ -129,7 +131,9 @@ func TestListWithComplexFilterCombinations(t *testing.T) {
 	// Create test documents
 	parentID, _ := store.Add("Parent", nil)
 	childID, _ := store.Add("Child with searchable content", map[string]interface{}{"parent_uuid": parentID})
-	_ = nanostore.TestSetStatusUpdate(store, childID, "completed")
+	_ = store.Update(childID, nanostore.UpdateRequest{
+		Dimensions: map[string]string{"status": "completed"},
+	})
 
 	// Test complex filter combinations that might expose edge cases
 	testCases := []struct {

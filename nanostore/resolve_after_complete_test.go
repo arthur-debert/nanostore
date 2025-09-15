@@ -46,7 +46,9 @@ func TestResolveAfterComplete(t *testing.T) {
 	}
 
 	// Complete the first one
-	err = nanostore.TestSetStatusUpdate(store, id1, "completed")
+	err = store.Update(id1, nanostore.UpdateRequest{
+		Dimensions: map[string]string{"status": "completed"},
+	})
 	if err != nil {
 		t.Fatalf("failed to complete first todo: %v", err)
 	}
@@ -120,7 +122,9 @@ func TestCompleteMultiple(t *testing.T) {
 	_, _ = store.Add("Third", nil)  // was id3
 
 	// Complete first one
-	err = nanostore.TestSetStatusUpdate(store, id1, "completed")
+	err = store.Update(id1, nanostore.UpdateRequest{
+		Dimensions: map[string]string{"status": "completed"},
+	})
 	if err != nil {
 		t.Fatalf("failed to complete first todo: %v", err)
 	}
@@ -144,7 +148,9 @@ func TestCompleteMultiple(t *testing.T) {
 
 	// Complete them
 	for _, uuid := range uuids {
-		err = nanostore.TestSetStatusUpdate(store, uuid, "completed")
+		err = store.Update(uuid, nanostore.UpdateRequest{
+			Dimensions: map[string]string{"status": "completed"},
+		})
 		if err != nil {
 			t.Errorf("failed to complete UUID %s: %v", uuid, err)
 		}

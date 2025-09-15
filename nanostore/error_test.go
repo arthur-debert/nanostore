@@ -145,7 +145,9 @@ func TestInvalidInputs(t *testing.T) {
 
 	t.Run("SetStatusNonExistentDocument", func(t *testing.T) {
 		nonExistentUUID := "00000000-0000-0000-0000-000000000001"
-		err := nanostore.TestSetStatusUpdate(store, nonExistentUUID, "completed")
+		err := store.Update(nonExistentUUID, nanostore.UpdateRequest{
+			Dimensions: map[string]string{"status": "completed"},
+		})
 		if err == nil {
 			t.Fatal("expected error setting status on non-existent document")
 		}

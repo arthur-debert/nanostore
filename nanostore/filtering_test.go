@@ -46,7 +46,9 @@ func TestFilterByStatus(t *testing.T) {
 		if err != nil {
 			t.Fatalf("failed to add document: %v", err)
 		}
-		err = nanostore.TestSetStatusUpdate(store, id, "completed")
+		err = store.Update(id, nanostore.UpdateRequest{
+			Dimensions: map[string]string{"status": "completed"},
+		})
 		if err != nil {
 			t.Fatalf("failed to set status: %v", err)
 		}
@@ -349,11 +351,15 @@ func TestCombinedFilters(t *testing.T) {
 	// Add children with different statuses
 	_, _ = store.Add("Design Phase", map[string]interface{}{"parent_uuid": root1})
 	task2, _ := store.Add("Implementation", map[string]interface{}{"parent_uuid": root1})
-	_ = nanostore.TestSetStatusUpdate(store, task2, "completed")
+	_ = store.Update(task2, nanostore.UpdateRequest{
+		Dimensions: map[string]string{"status": "completed"},
+	})
 
 	task3, _ := store.Add("Testing Phase", map[string]interface{}{"parent_uuid": root2})
 	deployTask, _ := store.Add("Deployment", map[string]interface{}{"parent_uuid": root2})
-	_ = nanostore.TestSetStatusUpdate(store, deployTask, "completed")
+	_ = store.Update(deployTask, nanostore.UpdateRequest{
+		Dimensions: map[string]string{"status": "completed"},
+	})
 
 	// Test: Filter by parent AND status
 	results, err := store.List(nanostore.ListOptions{

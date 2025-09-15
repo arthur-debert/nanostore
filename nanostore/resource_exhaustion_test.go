@@ -369,7 +369,9 @@ func TestResourceExhaustionComplexFilters(t *testing.T) {
 
 		// Set half as completed
 		if i%2 == 0 {
-			err = nanostore.TestSetStatusUpdate(store, id, "completed")
+			err = store.Update(id, nanostore.UpdateRequest{
+				Dimensions: map[string]string{"status": "completed"},
+			})
 			if err != nil {
 				t.Fatalf("failed to set status: %v", err)
 			}

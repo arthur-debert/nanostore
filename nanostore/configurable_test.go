@@ -65,7 +65,9 @@ func TestConfigurableStore(t *testing.T) {
 		}
 
 		// Test setting custom status
-		if err := nanostore.TestSetStatusUpdate(store, doc1, "done"); err != nil {
+		if err := store.Update(doc1, nanostore.UpdateRequest{
+			Dimensions: map[string]string{"status": "done"},
+		}); err != nil {
 			t.Fatalf("failed to set status: %v", err)
 		}
 
@@ -219,7 +221,9 @@ func TestConfigurableIDResolution(t *testing.T) {
 	}
 
 	// Set as completed high priority
-	if err := nanostore.TestSetStatusUpdate(store, root1, "completed"); err != nil {
+	if err := store.Update(root1, nanostore.UpdateRequest{
+		Dimensions: map[string]string{"status": "completed"},
+	}); err != nil {
 		t.Fatalf("failed to set status: %v", err)
 	}
 
