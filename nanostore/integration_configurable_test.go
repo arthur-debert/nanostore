@@ -55,12 +55,12 @@ func TestConfigurableIntegration(t *testing.T) {
 	// In a real implementation, we'd have SetDimension(id, dimensionName, value)
 
 	// Add subtasks
-	_, err = store.Add("Buy milk", map[string]interface{}{"parent_uuid": personalTodo})
+	_, err = store.Add("Buy milk", map[string]interface{}{"parent_id": personalTodo})
 	if err != nil {
 		t.Fatalf("failed to add subtask: %v", err)
 	}
 
-	_, err = store.Add("Buy bread", map[string]interface{}{"parent_uuid": personalTodo})
+	_, err = store.Add("Buy bread", map[string]interface{}{"parent_id": personalTodo})
 	if err != nil {
 		t.Fatalf("failed to add subtask: %v", err)
 	}
@@ -90,7 +90,7 @@ func TestConfigurableIntegration(t *testing.T) {
 
 	// Test filtering by parent
 	subtasks, err := store.List(nanostore.ListOptions{
-		Filters: map[string]interface{}{"parent_uuid": personalTodo},
+		Filters: map[string]interface{}{"parent_id": personalTodo},
 	})
 	if err != nil {
 		t.Fatalf("failed to filter by parent: %v", err)

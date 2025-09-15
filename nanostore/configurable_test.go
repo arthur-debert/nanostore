@@ -66,7 +66,7 @@ func TestConfigurableStore(t *testing.T) {
 
 		// Test setting custom status
 		if err := store.Update(doc1, nanostore.UpdateRequest{
-			Dimensions: map[string]string{"status": "done"},
+			Dimensions: map[string]interface{}{"status": "done"},
 		}); err != nil {
 			t.Fatalf("failed to set status: %v", err)
 		}
@@ -96,7 +96,7 @@ func TestConfigurableStore(t *testing.T) {
 		}
 
 		// Test hierarchical IDs
-		child1, err := store.Add("Subtask", map[string]interface{}{"parent_uuid": doc2})
+		child1, err := store.Add("Subtask", map[string]interface{}{"parent_id": doc2})
 		if err != nil {
 			t.Fatalf("failed to add child: %v", err)
 		}
@@ -112,7 +112,7 @@ func TestConfigurableStore(t *testing.T) {
 		// First, let's see what all the IDs are
 		t.Logf("Document IDs after adding child:")
 		for _, doc := range docs {
-			parentUUID, _ := doc.Dimensions["parent_uuid"].(string)
+			parentUUID, _ := doc.Dimensions["parent_id"].(string)
 			t.Logf("  %s: %s (parent: %v)", doc.UserFacingID, doc.Title, parentUUID)
 		}
 
@@ -223,7 +223,7 @@ func TestConfigurableIDResolution(t *testing.T) {
 
 	// Set as completed high priority
 	if err := store.Update(root1, nanostore.UpdateRequest{
-		Dimensions: map[string]string{"status": "completed"},
+		Dimensions: map[string]interface{}{"status": "completed"},
 	}); err != nil {
 		t.Fatalf("failed to set status: %v", err)
 	}

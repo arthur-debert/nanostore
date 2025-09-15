@@ -115,7 +115,7 @@ func (n *Notes) Archive(userFacingID string) error {
 
 	// Map archived to completed with 'a' prefix
 	updates := nanostore.UpdateRequest{
-		Dimensions: map[string]string{
+		Dimensions: map[string]interface{}{
 			"status": "completed",
 		},
 	}
@@ -137,7 +137,7 @@ func (n *Notes) Unarchive(userFacingID string) error {
 
 	// Map back to pending
 	updates := nanostore.UpdateRequest{
-		Dimensions: map[string]string{
+		Dimensions: map[string]interface{}{
 			"status": "pending",
 		},
 	}

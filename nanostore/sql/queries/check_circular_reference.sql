@@ -1,15 +1,17 @@
 -- Detects circular parent-child references using recursive CTE
 -- Prevents cycles like: A -> B -> C -> A which would break hierarchical ID resolution
 --
--- Algorithm:
--- 1. Start with proposed parent document
--- 2. Recursively follow parent_uuid links upward to root
--- 3. Check if the document we're trying to update appears anywhere in that chain
--- 4. Return count > 0 if circular reference would be created
---
--- Parameters: 
+-- This is a template that requires column name substitution
+-- Parameters:
 --   $1 - UUID of the proposed parent
 --   $2 - UUID of the document being updated
+--   Column name must be substituted via fmt.Sprintf for the hierarchical field
+--
+-- Algorithm:
+-- 1. Start with proposed parent document
+-- 2. Recursively follow parent links upward to root
+-- 3. Check if the document we're trying to update appears anywhere in that chain
+-- 4. Return count > 0 if circular reference would be created
 --
 -- Example scenario that would be detected:
 -- - Document A has parent B
@@ -21,12 +23,12 @@
 
 WITH RECURSIVE parent_chain AS (
     -- Start with the proposed parent
-    SELECT uuid, parent_uuid FROM documents WHERE uuid = $1
+    SELECT uuid, %s FROM documents WHERE uuid = $1
     UNION ALL
     -- Recursively follow parent links upward
-    SELECT d.uuid, d.parent_uuid 
+    SELECT d.uuid, d.%s 
     FROM documents d
-    JOIN parent_chain pc ON d.uuid = pc.parent_uuid
+    JOIN parent_chain pc ON d.uuid = pc.%s
 )
 -- Check if the document we're updating appears in the parent chain
 -- If count > 0, this would create a circular reference

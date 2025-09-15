@@ -78,7 +78,7 @@ func TestListWithIDs(t *testing.T) {
 	}
 
 	err = store.Update(id3, nanostore.UpdateRequest{
-		Dimensions: map[string]string{"status": "completed"},
+		Dimensions: map[string]interface{}{"status": "completed"},
 	})
 	if err != nil {
 		t.Fatalf("failed to set status: %v", err)
@@ -159,7 +159,7 @@ func TestListHierarchical(t *testing.T) {
 		t.Fatalf("failed to add child 3: %v", err)
 	}
 	err = store.Update(child3ID, nanostore.UpdateRequest{
-		Dimensions: map[string]string{"status": "completed"},
+		Dimensions: map[string]interface{}{"status": "completed"},
 	})
 	if err != nil {
 		t.Fatalf("failed to set status: %v", err)
@@ -225,12 +225,12 @@ func TestListFilteredIDs(t *testing.T) {
 
 	completed1, _ := store.Add("Completed 1", nil)
 	_ = store.Update(completed1, nanostore.UpdateRequest{
-		Dimensions: map[string]string{"status": "completed"},
+		Dimensions: map[string]interface{}{"status": "completed"},
 	})
 
 	completed2, _ := store.Add("Completed 2", nil)
 	_ = store.Update(completed2, nanostore.UpdateRequest{
-		Dimensions: map[string]string{"status": "completed"},
+		Dimensions: map[string]interface{}{"status": "completed"},
 	})
 
 	// Add more pending after completed
@@ -330,18 +330,18 @@ func TestListFilteredHierarchicalIDs(t *testing.T) {
 	child1_1, _ := store.Add("Child 1.1", map[string]interface{}{"parent_uuid": root1})
 	child1_2, _ := store.Add("Child 1.2", map[string]interface{}{"parent_uuid": root1})
 	_ = store.Update(child1_2, nanostore.UpdateRequest{
-		Dimensions: map[string]string{"status": "completed"},
+		Dimensions: map[string]interface{}{"status": "completed"},
 	})
 	child1_3, _ := store.Add("Child 1.3", map[string]interface{}{"parent_uuid": root1})
 
 	// Children of root2 (all completed)
 	child2_1, _ := store.Add("Child 2.1", map[string]interface{}{"parent_uuid": root2})
 	_ = store.Update(child2_1, nanostore.UpdateRequest{
-		Dimensions: map[string]string{"status": "completed"},
+		Dimensions: map[string]interface{}{"status": "completed"},
 	})
 	child2_2, _ := store.Add("Child 2.2", map[string]interface{}{"parent_uuid": root2})
 	_ = store.Update(child2_2, nanostore.UpdateRequest{
-		Dimensions: map[string]string{"status": "completed"},
+		Dimensions: map[string]interface{}{"status": "completed"},
 	})
 
 	// Grandchildren
@@ -408,14 +408,14 @@ func TestListFilterByParentIDs(t *testing.T) {
 	root1, _ := store.Add("Root 1", nil)
 	root2, _ := store.Add("Root 2", nil)
 	_ = store.Update(root2, nanostore.UpdateRequest{
-		Dimensions: map[string]string{"status": "completed"},
+		Dimensions: map[string]interface{}{"status": "completed"},
 	})
 	root3, _ := store.Add("Root 3", nil)
 
 	child1, _ := store.Add("Child 1", map[string]interface{}{"parent_uuid": root1})
 	child2, _ := store.Add("Child 2", map[string]interface{}{"parent_uuid": root1})
 	_ = store.Update(child2, nanostore.UpdateRequest{
-		Dimensions: map[string]string{"status": "completed"},
+		Dimensions: map[string]interface{}{"status": "completed"},
 	})
 
 	// Test: Get only root documents
@@ -504,13 +504,13 @@ func TestListCombinedFilters(t *testing.T) {
 	root1, _ := store.Add("Project Alpha", nil)
 	root2, _ := store.Add("Project Beta", nil)
 	_ = store.Update(root2, nanostore.UpdateRequest{
-		Dimensions: map[string]string{"status": "completed"},
+		Dimensions: map[string]interface{}{"status": "completed"},
 	})
 
 	task1, _ := store.Add("Design mockups", map[string]interface{}{"parent_uuid": root1})
 	task2, _ := store.Add("Write tests", map[string]interface{}{"parent_uuid": root1})
 	_ = store.Update(task2, nanostore.UpdateRequest{
-		Dimensions: map[string]string{"status": "completed"},
+		Dimensions: map[string]interface{}{"status": "completed"},
 	})
 	task3, _ := store.Add("Deploy to production", map[string]interface{}{"parent_uuid": root1})
 

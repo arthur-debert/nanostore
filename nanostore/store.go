@@ -214,18 +214,17 @@ func (s *store) Add(title string, dimensions map[string]interface{}) (string, er
 		}
 	}
 
-	// Handle hierarchical dimension - check if parent_uuid was provided
+	// Handle hierarchical dimension - support smart ID detection for parent references
 	hierDim := s.findHierarchicalDimension()
 	if hierDim != nil {
-		// Check if parent_uuid was provided (common convention)
-		if parentVal, ok := dimensionValues["parent_uuid"]; ok && hierDim.RefField != "parent_uuid" {
-			// Move the value to the actual ref field if different
-			dimensionValues[hierDim.RefField] = parentVal
-			delete(dimensionValues, "parent_uuid")
-		} else if parentVal, ok := dimensionValues[hierDim.Name]; ok && hierDim.Name != hierDim.RefField {
-			// Check by dimension name if different from ref field
-			dimensionValues[hierDim.RefField] = parentVal
-			delete(dimensionValues, hierDim.Name)
+		// Support smart ID detection for parent references
+		if parentID, ok := dimensionValues[hierDim.RefField]; ok && parentID != nil && parentID != "" {
+			parentIDStr := fmt.Sprintf("%v", parentID)
+			resolvedUUID, err := s.resolveIDToUUID(parentIDStr)
+			if err != nil {
+				return "", fmt.Errorf("invalid parent ID '%s': %w", parentIDStr, err)
+			}
+			dimensionValues[hierDim.RefField] = resolvedUUID
 		}
 	}
 
@@ -287,6 +286,22 @@ func (s *store) Update(id string, updates UpdateRequest) error {
 		return err
 	}
 
+	// Pre-resolve parent IDs before starting transaction
+	hierDim := s.findHierarchicalDimension()
+	if hierDim != nil && updates.Dimensions != nil {
+		if parentValue, hasParent := updates.Dimensions[hierDim.RefField]; hasParent && parentValue != nil && parentValue != "" {
+			parentStr := fmt.Sprintf("%v", parentValue)
+			if !isUUIDFormat(parentStr) {
+				// Resolve user-facing ID to UUID before transaction
+				resolvedUUID, err := s.resolveIDToUUID(parentStr)
+				if err != nil {
+					return fmt.Errorf("invalid parent ID '%s': %w", parentStr, err)
+				}
+				updates.Dimensions[hierDim.RefField] = resolvedUUID
+			}
+		}
+	}
+
 	tx, err := s.db.Begin()
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
@@ -294,17 +309,18 @@ func (s *store) Update(id string, updates UpdateRequest) error {
 	defer func() { _ = tx.Rollback() }()
 
 	// Check for circular references if updating parent through hierarchical dimension
-	hierDim := s.findHierarchicalDimension()
 	if hierDim != nil && updates.Dimensions != nil {
 		if parentValue, hasParent := updates.Dimensions[hierDim.RefField]; hasParent {
-			if parentValue != "" {
-				if parentValue == actualUUID {
+			parentStr := fmt.Sprintf("%v", parentValue)
+			if parentStr != "" {
+				if parentStr == actualUUID {
 					return fmt.Errorf("cannot set document as its own parent")
 				}
 
 				// Check for circular references using embedded SQL
+				query := fmt.Sprintf(checkCircularReferenceSQL, hierDim.RefField, hierDim.RefField, hierDim.RefField)
 				var cycle int
-				err = tx.QueryRow(checkCircularReferenceSQL, parentValue, actualUUID).Scan(&cycle)
+				err = tx.QueryRow(query, parentStr, actualUUID).Scan(&cycle)
 				if err != nil {
 					return fmt.Errorf("failed to check for circular reference: %w", err)
 				}
@@ -333,13 +349,17 @@ func (s *store) Update(id string, updates UpdateRequest) error {
 	// Handle dimension updates
 	if updates.Dimensions != nil {
 		for dimName, dimValue := range updates.Dimensions {
+			// Convert to string
+			dimValueStr := fmt.Sprintf("%v", dimValue)
+
 			// Handle hierarchical dimensions (parent updates)
 			if hierDim != nil && dimName == hierDim.RefField {
 				columns = append(columns, dimName)
-				if dimValue == "" {
+				if dimValueStr == "" {
 					values = append(values, nil)
 				} else {
-					values = append(values, dimValue)
+					// Parent ID was already resolved before transaction started
+					values = append(values, dimValueStr)
 				}
 				continue
 			}
@@ -352,16 +372,16 @@ func (s *store) Update(id string, updates UpdateRequest) error {
 					// Validate the value
 					validValue := false
 					for _, allowedVal := range dim.Values {
-						if dimValue == allowedVal {
+						if dimValueStr == allowedVal {
 							validValue = true
 							break
 						}
 					}
 					if !validValue {
-						return fmt.Errorf("invalid value '%s' for dimension '%s'", dimValue, dimName)
+						return fmt.Errorf("invalid value '%s' for dimension '%s'", dimValueStr, dimName)
 					}
 					columns = append(columns, dimName)
-					values = append(values, dimValue)
+					values = append(values, dimValueStr)
 					break
 				}
 			}
@@ -399,7 +419,12 @@ func (s *store) Update(id string, updates UpdateRequest) error {
 }
 
 // ResolveUUID converts a user-facing ID to a UUID
+// Supports smart ID detection - returns UUID unchanged if already a UUID
 func (s *store) ResolveUUID(userFacingID string) (string, error) {
+	// Check if it's already a UUID
+	if isUUIDFormat(userFacingID) {
+		return userFacingID, nil
+	}
 	// Normalize the input ID to handle different prefix orders
 	normalizedID, err := s.normalizeUserFacingID(userFacingID)
 	if err != nil {
@@ -513,32 +538,43 @@ func (s *store) Delete(id string, cascade bool) error {
 	return nil
 }
 
-// DeleteByDimension removes all documents matching a specific dimension value
-func (s *store) DeleteByDimension(dimension string, value string) (int, error) {
-	// Validate that the dimension exists in the configuration
-	dimensionExists := false
-	for _, dim := range s.config.Dimensions {
-		if dim.Name == dimension {
-			dimensionExists = true
-			// For enumerated dimensions, validate the value
-			if dim.Type == Enumerated {
-				valueValid := false
-				for _, v := range dim.Values {
-					if v == value {
-						valueValid = true
-						break
-					}
-				}
-				if !valueValid {
-					return 0, fmt.Errorf("invalid value '%s' for dimension '%s'", value, dimension)
-				}
-			}
-			break
-		}
+// DeleteByDimension removes all documents matching dimension filters
+func (s *store) DeleteByDimension(filters map[string]interface{}) (int, error) {
+	if len(filters) == 0 {
+		return 0, fmt.Errorf("no filters provided")
 	}
 
-	if !dimensionExists {
-		return 0, fmt.Errorf("dimension '%s' not found in configuration", dimension)
+	// Validate dimensions and values
+	conditions := squirrel.Eq{}
+	for dimension, value := range filters {
+		// Validate that the dimension exists in the configuration
+		dimensionExists := false
+		for _, dim := range s.config.Dimensions {
+			if dim.Name == dimension {
+				dimensionExists = true
+				// For enumerated dimensions, validate the value
+				if dim.Type == Enumerated {
+					strValue := fmt.Sprintf("%v", value)
+					valueValid := false
+					for _, v := range dim.Values {
+						if v == strValue {
+							valueValid = true
+							break
+						}
+					}
+					if !valueValid {
+						return 0, fmt.Errorf("invalid value '%s' for dimension '%s'", strValue, dimension)
+					}
+				}
+				break
+			}
+		}
+
+		if !dimensionExists {
+			return 0, fmt.Errorf("dimension '%s' not found in configuration", dimension)
+		}
+
+		conditions[dimension] = value
 	}
 
 	tx, err := s.db.Begin()
@@ -548,14 +584,14 @@ func (s *store) DeleteByDimension(dimension string, value string) (int, error) {
 	defer func() { _ = tx.Rollback() }()
 
 	// Build query using SQL builder
-	query, args, err := s.sqlBuilder.buildDelete("documents", squirrel.Eq{dimension: value})
+	query, args, err := s.sqlBuilder.buildDelete("documents", conditions)
 	if err != nil {
 		return 0, fmt.Errorf("failed to build delete query: %w", err)
 	}
 
 	result, err := tx.Exec(query, args...)
 	if err != nil {
-		return 0, fmt.Errorf("failed to delete documents where %s='%s': %w", dimension, value, err)
+		return 0, fmt.Errorf("failed to delete documents: %w", err)
 	}
 
 	rowsAffected, err := result.RowsAffected()
@@ -605,7 +641,214 @@ func (s *store) DeleteWhere(whereClause string, args ...interface{}) (int, error
 	return int(rowsAffected), nil
 }
 
+// UpdateByDimension updates all documents matching dimension filters
+func (s *store) UpdateByDimension(filters map[string]interface{}, updates UpdateRequest) (int, error) {
+	if len(filters) == 0 {
+		return 0, fmt.Errorf("no filters provided")
+	}
+
+	// Validate dimensions and values
+	conditions := squirrel.Eq{}
+	for dimension, value := range filters {
+		// Validate that the dimension exists in the configuration
+		dimensionExists := false
+		for _, dim := range s.config.Dimensions {
+			if dim.Name == dimension {
+				dimensionExists = true
+				// For enumerated dimensions, validate the value
+				if dim.Type == Enumerated {
+					strValue := fmt.Sprintf("%v", value)
+					valueValid := false
+					for _, v := range dim.Values {
+						if v == strValue {
+							valueValid = true
+							break
+						}
+					}
+					if !valueValid {
+						return 0, fmt.Errorf("invalid value '%s' for dimension '%s'", strValue, dimension)
+					}
+				}
+				break
+			}
+		}
+
+		if !dimensionExists {
+			return 0, fmt.Errorf("dimension '%s' not found in configuration", dimension)
+		}
+
+		conditions[dimension] = value
+	}
+
+	tx, err := s.db.Begin()
+	if err != nil {
+		return 0, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	// Build the columns and values for the update
+	columns, values, err := s.buildUpdateColumnsAndValues(updates)
+	if err != nil {
+		return 0, err
+	}
+
+	// Always add updated_at
+	columns = append(columns, "updated_at")
+	values = append(values, time.Now().Unix())
+
+	// Build query using SQL builder
+	query, args, err := s.sqlBuilder.buildUpdateByCondition("documents", columns, values, conditions)
+	if err != nil {
+		return 0, fmt.Errorf("failed to build update query: %w", err)
+	}
+
+	result, err := tx.Exec(query, args...)
+	if err != nil {
+		return 0, fmt.Errorf("failed to update documents: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("failed to get rows affected: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	return int(rowsAffected), nil
+}
+
+// UpdateWhere updates all documents matching a custom WHERE clause
+func (s *store) UpdateWhere(whereClause string, updates UpdateRequest, args ...interface{}) (int, error) {
+	if whereClause == "" {
+		return 0, fmt.Errorf("where clause cannot be empty")
+	}
+
+	tx, err := s.db.Begin()
+	if err != nil {
+		return 0, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	// Build the columns and values for the update
+	columns, values, err := s.buildUpdateColumnsAndValues(updates)
+	if err != nil {
+		return 0, err
+	}
+
+	// Always add updated_at
+	columns = append(columns, "updated_at")
+	values = append(values, time.Now().Unix())
+
+	// Build the UPDATE query using SQL builder
+	query, sqlArgs, err := s.sqlBuilder.buildUpdateWhere("documents", columns, values, whereClause, args...)
+	if err != nil {
+		return 0, fmt.Errorf("failed to build update query: %w", err)
+	}
+
+	result, err := tx.Exec(query, sqlArgs...)
+	if err != nil {
+		return 0, fmt.Errorf("failed to update documents with where clause '%s': %w", whereClause, err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("failed to get rows affected: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	return int(rowsAffected), nil
+}
+
 // Helper methods
+
+// buildUpdateColumnsAndValues prepares columns and values for bulk update operations
+func (s *store) buildUpdateColumnsAndValues(updates UpdateRequest) ([]string, []interface{}, error) {
+	var columns []string
+	var values []interface{}
+
+	if updates.Title != nil {
+		columns = append(columns, "title")
+		values = append(values, *updates.Title)
+	}
+
+	if updates.Body != nil {
+		columns = append(columns, "body")
+		values = append(values, *updates.Body)
+	}
+
+	// Pre-resolve parent IDs if needed
+	hierDim := s.findHierarchicalDimension()
+	if hierDim != nil && updates.Dimensions != nil {
+		if parentValue, hasParent := updates.Dimensions[hierDim.RefField]; hasParent && parentValue != nil && parentValue != "" {
+			parentStr := fmt.Sprintf("%v", parentValue)
+			if !isUUIDFormat(parentStr) {
+				// Resolve user-facing ID to UUID
+				resolvedUUID, err := s.resolveIDToUUID(parentStr)
+				if err != nil {
+					return nil, nil, fmt.Errorf("invalid parent ID '%s': %w", parentStr, err)
+				}
+				updates.Dimensions[hierDim.RefField] = resolvedUUID
+			}
+		}
+	}
+
+	// Handle dimension updates
+	if updates.Dimensions != nil {
+		for dimName, dimValue := range updates.Dimensions {
+			// Convert to string
+			dimValueStr := fmt.Sprintf("%v", dimValue)
+
+			// Handle hierarchical dimensions (parent updates)
+			if hierDim != nil && dimName == hierDim.RefField {
+				columns = append(columns, dimName)
+				if dimValueStr == "" {
+					values = append(values, nil)
+				} else {
+					// Parent ID was already resolved above
+					values = append(values, dimValueStr)
+				}
+				continue
+			}
+
+			// Handle enumerated dimensions
+			dimFound := false
+			for _, dim := range s.config.Dimensions {
+				if dim.Name == dimName && dim.Type == Enumerated {
+					dimFound = true
+					// Validate the value
+					validValue := false
+					for _, v := range dim.Values {
+						if v == dimValueStr {
+							validValue = true
+							break
+						}
+					}
+					if !validValue {
+						return nil, nil, fmt.Errorf("invalid value '%s' for dimension '%s'", dimValueStr, dimName)
+					}
+					columns = append(columns, dimName)
+					values = append(values, dimValueStr)
+					break
+				}
+			}
+
+			if !dimFound {
+				return nil, nil, fmt.Errorf("dimension '%s' not found in configuration", dimName)
+			}
+		}
+	}
+
+	if len(columns) == 0 {
+		return nil, nil, fmt.Errorf("no fields to update")
+	}
+
+	return columns, values, nil
+}
 
 func (s *store) findHierarchicalDimension() *DimensionConfig {
 	for _, dim := range s.config.Dimensions {

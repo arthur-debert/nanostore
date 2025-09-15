@@ -36,7 +36,7 @@ func TestResolveUUID(t *testing.T) {
 
 	// Mark one as completed
 	_ = store.Update(id3, nanostore.UpdateRequest{
-		Dimensions: map[string]string{"status": "completed"},
+		Dimensions: map[string]interface{}{"status": "completed"},
 	})
 
 	// Test cases
@@ -92,7 +92,7 @@ func TestResolveHierarchicalUUID(t *testing.T) {
 
 	// Mark one child as completed
 	_ = store.Update(child3ID, nanostore.UpdateRequest{
-		Dimensions: map[string]string{"status": "completed"},
+		Dimensions: map[string]interface{}{"status": "completed"},
 	})
 
 	// Nested child

@@ -79,3 +79,45 @@ func (b *sqlBuilder) buildDeleteWhere(table string, whereClause interface{}, arg
 	deleteQuery := b.sq.Delete(table).Where(whereClause, args...)
 	return deleteQuery.ToSql()
 }
+
+// buildUpdateByCondition builds a safe UPDATE query with a condition
+func (b *sqlBuilder) buildUpdateByCondition(table string, setColumns []string, setValues []interface{}, condition squirrel.Eq) (string, []interface{}, error) {
+	if len(setColumns) == 0 {
+		return "", nil, fmt.Errorf("no columns specified for update")
+	}
+	if len(setColumns) != len(setValues) {
+		return "", nil, fmt.Errorf("column count (%d) does not match value count (%d)", len(setColumns), len(setValues))
+	}
+	if len(condition) == 0 {
+		return "", nil, fmt.Errorf("no condition specified for update")
+	}
+
+	update := b.sq.Update(table)
+	for i, col := range setColumns {
+		update = update.Set(col, setValues[i])
+	}
+	update = update.Where(condition)
+
+	return update.ToSql()
+}
+
+// buildUpdateWhere builds a safe UPDATE query with a custom where clause
+func (b *sqlBuilder) buildUpdateWhere(table string, setColumns []string, setValues []interface{}, whereClause interface{}, args ...interface{}) (string, []interface{}, error) {
+	if len(setColumns) == 0 {
+		return "", nil, fmt.Errorf("no columns specified for update")
+	}
+	if len(setColumns) != len(setValues) {
+		return "", nil, fmt.Errorf("column count (%d) does not match value count (%d)", len(setColumns), len(setValues))
+	}
+	if whereClause == nil {
+		return "", nil, fmt.Errorf("no where clause specified for update")
+	}
+
+	update := b.sq.Update(table)
+	for i, col := range setColumns {
+		update = update.Set(col, setValues[i])
+	}
+	update = update.Where(whereClause, args...)
+
+	return update.ToSql()
+}

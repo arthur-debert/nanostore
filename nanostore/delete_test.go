@@ -373,7 +373,7 @@ func TestDelete(t *testing.T) {
 
 		// Set one child as completed
 		err = store.Update(child2ID, nanostore.UpdateRequest{
-			Dimensions: map[string]string{"status": "completed"},
+			Dimensions: map[string]interface{}{"status": "completed"},
 		})
 		if err != nil {
 			t.Fatalf("failed to set status: %v", err)

@@ -119,21 +119,21 @@ func TestMixedStatusHierarchy(t *testing.T) {
 	child4, _ := store.Add("Child 1.4", map[string]interface{}{"parent_uuid": root1})
 
 	_ = store.Update(child2, nanostore.UpdateRequest{
-		Dimensions: map[string]string{"status": "completed"},
+		Dimensions: map[string]interface{}{"status": "completed"},
 	})
 	_ = store.Update(child4, nanostore.UpdateRequest{
-		Dimensions: map[string]string{"status": "completed"},
+		Dimensions: map[string]interface{}{"status": "completed"},
 	})
 
 	root2, _ := store.Add("Root 2", nil)
 	_ = store.Update(root2, nanostore.UpdateRequest{
-		Dimensions: map[string]string{"status": "completed"},
+		Dimensions: map[string]interface{}{"status": "completed"},
 	})
 
 	child5, _ := store.Add("Child c1.1", map[string]interface{}{"parent_uuid": root2})
 	child6, _ := store.Add("Child c1.c1", map[string]interface{}{"parent_uuid": root2})
 	_ = store.Update(child6, nanostore.UpdateRequest{
-		Dimensions: map[string]string{"status": "completed"},
+		Dimensions: map[string]interface{}{"status": "completed"},
 	})
 
 	// Expected IDs
@@ -209,7 +209,7 @@ func TestSiblingNumbering(t *testing.T) {
 			t.Fatalf("failed to add completed child %d: %v", i+1, err)
 		}
 		_ = store.Update(id, nanostore.UpdateRequest{
-			Dimensions: map[string]string{"status": "completed"},
+			Dimensions: map[string]interface{}{"status": "completed"},
 		})
 		completedIDs[i] = id
 	}
@@ -379,7 +379,7 @@ func TestResolveComplexIDs(t *testing.T) {
 		child, _ := store.Add(fmt.Sprintf("Child %d", i), map[string]interface{}{"parent_uuid": root})
 		if i == 1 {
 			_ = store.Update(child, nanostore.UpdateRequest{
-				Dimensions: map[string]string{"status": "completed"},
+				Dimensions: map[string]interface{}{"status": "completed"},
 			})
 			lastParent = child
 		}
@@ -390,7 +390,7 @@ func TestResolveComplexIDs(t *testing.T) {
 		gc, _ := store.Add(fmt.Sprintf("Grandchild %d", i), map[string]interface{}{"parent_uuid": lastParent})
 		if i == 0 {
 			_ = store.Update(gc, nanostore.UpdateRequest{
-				Dimensions: map[string]string{"status": "completed"},
+				Dimensions: map[string]interface{}{"status": "completed"},
 			})
 		}
 	}

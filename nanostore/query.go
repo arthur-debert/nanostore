@@ -39,10 +39,8 @@ func (qb *queryBuilder) GenerateListQuery(filters map[string]interface{}) (strin
 	hierDim := qb.findHierarchicalDimension()
 
 	// Check if we should use flat listing (when filters are present)
-	_, hasStatusFilter := filters["status"]
-	_, hasParentFilter := filters["parent_uuid"]
-	_, hasSearchFilter := filters["search"]
-	hasFilters := hasStatusFilter || hasParentFilter || hasSearchFilter
+	// Any filters present means we should use flat listing instead of hierarchical
+	hasFilters := len(filters) > 0
 
 	// When we have filters, use a simpler query without hierarchy
 	if hasFilters {
@@ -439,27 +437,6 @@ func (qb *queryBuilder) buildWhereClausesAndArgs(filters map[string]interface{},
 				searchPattern := "%" + searchTerm + "%"
 				args = append(args, searchPattern, searchPattern)
 			}
-		case "parent_uuid":
-			if hierDim != nil {
-				// Handle both string and *string values
-				if parentID, ok := value.(string); ok {
-					if parentID == "" {
-						// Empty string means root documents (NULL parent)
-						whereClauses = append(whereClauses, hierDim.RefField+" IS NULL")
-					} else {
-						whereClauses = append(whereClauses, hierDim.RefField+" = ?")
-						args = append(args, parentID)
-					}
-				} else if parentID, ok := value.(*string); ok {
-					if parentID == nil || *parentID == "" {
-						// Empty string or nil means root documents (NULL parent)
-						whereClauses = append(whereClauses, hierDim.RefField+" IS NULL")
-					} else {
-						whereClauses = append(whereClauses, hierDim.RefField+" = ?")
-						args = append(args, *parentID)
-					}
-				}
-			}
 		default:
 			// Check if it's a dimension filter
 			if dim, found := qb.config.GetDimension(key); found {
@@ -478,6 +455,26 @@ func (qb *queryBuilder) buildWhereClausesAndArgs(filters map[string]interface{},
 							}
 							whereClauses = append(whereClauses, fmt.Sprintf("%s IN (%s)", key, strings.Join(placeholders, ",")))
 						}
+					}
+				}
+			} else if hierDim != nil && key == hierDim.RefField {
+				// Handle filtering by custom hierarchical dimension RefField (e.g., parent_id)
+				// Handle both string and *string values
+				if parentID, ok := value.(string); ok {
+					if parentID == "" {
+						// Empty string means root documents (NULL parent)
+						whereClauses = append(whereClauses, hierDim.RefField+" IS NULL")
+					} else {
+						whereClauses = append(whereClauses, hierDim.RefField+" = ?")
+						args = append(args, parentID)
+					}
+				} else if parentID, ok := value.(*string); ok {
+					if parentID == nil || *parentID == "" {
+						// Empty string or nil means root documents (NULL parent)
+						whereClauses = append(whereClauses, hierDim.RefField+" IS NULL")
+					} else {
+						whereClauses = append(whereClauses, hierDim.RefField+" = ?")
+						args = append(args, *parentID)
 					}
 				}
 			}

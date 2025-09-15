@@ -40,7 +40,7 @@ func NewListOptions() ListOptions {
 type UpdateRequest struct {
 	Title      *string
 	Body       *string
-	Dimensions map[string]string // Optional: dimension values to update (e.g., "status": "completed", "parent_uuid": "some-uuid")
+	Dimensions map[string]interface{} // Optional: dimension values to update (e.g., "status": "completed", "parent_uuid": "some-uuid")
 }
 
 // DimensionType defines the type of dimension for ID partitioning
@@ -143,10 +143,11 @@ type Store interface {
 	// If cascade is false and the document has children, an error is returned
 	Delete(id string, cascade bool) error
 
-	// DeleteByDimension removes all documents matching a specific dimension value
-	// For example: DeleteByDimension("status", "archived") or DeleteByDimension("priority", "low")
+	// DeleteByDimension removes all documents matching dimension filters
+	// For example: DeleteByDimension(map[string]interface{}{"status": "archived"})
+	// Multiple filters are combined with AND
 	// Returns the number of documents deleted
-	DeleteByDimension(dimension string, value string) (int, error)
+	DeleteByDimension(filters map[string]interface{}) (int, error)
 
 	// DeleteWhere removes all documents matching a custom WHERE clause
 	// The where clause should not include the "WHERE" keyword itself
@@ -154,6 +155,19 @@ type Store interface {
 	// Use with caution as it allows arbitrary SQL conditions
 	// Returns the number of documents deleted
 	DeleteWhere(whereClause string, args ...interface{}) (int, error)
+
+	// UpdateByDimension updates all documents matching dimension filters
+	// For example: UpdateByDimension(map[string]interface{}{"status": "pending"}, UpdateRequest{Title: &newTitle})
+	// Multiple filters are combined with AND
+	// Returns the number of documents updated
+	UpdateByDimension(filters map[string]interface{}, updates UpdateRequest) (int, error)
+
+	// UpdateWhere updates all documents matching a custom WHERE clause
+	// The where clause should not include the "WHERE" keyword itself
+	// For example: UpdateWhere("created_at < ?", UpdateRequest{...}, time.Now().AddDate(0, -1, 0))
+	// Use with caution as it allows arbitrary SQL conditions
+	// Returns the number of documents updated
+	UpdateWhere(whereClause string, updates UpdateRequest, args ...interface{}) (int, error)
 
 	// Close releases any resources held by the store
 	Close() error
