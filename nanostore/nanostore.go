@@ -18,18 +18,6 @@ type Document struct {
 	UpdatedAt    time.Time              // Last update timestamp
 }
 
-// GetParentUUID returns the parent UUID from hierarchical dimension, if it exists
-func (d *Document) GetParentUUID() *string {
-	// Check common parent field names
-	parentFields := []string{"parent_uuid", "parent"}
-	for _, field := range parentFields {
-		if parent, ok := d.Dimensions[field].(string); ok && parent != "" {
-			return &parent
-		}
-	}
-	return nil
-}
-
 // ListOptions configures how documents are listed
 type ListOptions struct {
 	// Filters allows filtering by any configured dimension

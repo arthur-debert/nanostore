@@ -279,7 +279,8 @@ func TestBulkHierarchicalCreation(t *testing.T) {
 	roots := 0
 	children := 0
 	for _, doc := range docs {
-		if doc.GetParentUUID() == nil {
+		parentUUID, hasParent := doc.Dimensions["parent_uuid"].(string)
+		if !hasParent || parentUUID == "" {
 			roots++
 		} else {
 			children++

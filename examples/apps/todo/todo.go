@@ -266,11 +266,11 @@ func (t *Todo) List(opts ListOptions) ([]*TodoItem, error) {
 	// Build hierarchy
 	var roots []*TodoItem
 	for _, item := range items {
-		parentUUID := item.Document.GetParentUUID()
-		if parentUUID == nil {
+		parentUUID, hasParent := item.Document.Dimensions["parent_uuid"].(string)
+		if !hasParent || parentUUID == "" {
 			roots = append(roots, item)
 		} else {
-			if parent, ok := itemMap[*parentUUID]; ok {
+			if parent, ok := itemMap[parentUUID]; ok {
 				parent.Children = append(parent.Children, item)
 			}
 		}

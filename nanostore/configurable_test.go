@@ -112,7 +112,8 @@ func TestConfigurableStore(t *testing.T) {
 		// First, let's see what all the IDs are
 		t.Logf("Document IDs after adding child:")
 		for _, doc := range docs {
-			t.Logf("  %s: %s (parent: %v)", doc.UserFacingID, doc.Title, doc.GetParentUUID())
+			parentUUID, _ := doc.Dimensions["parent_uuid"].(string)
+			t.Logf("  %s: %s (parent: %v)", doc.UserFacingID, doc.Title, parentUUID)
 		}
 
 		// Find parent's ID first

@@ -49,8 +49,8 @@ func TestSimpleHierarchy(t *testing.T) {
 	t.Logf("\nDocuments from nanostore:")
 	for _, doc := range docs {
 		parentInfo := "nil"
-		if parentUUID := doc.GetParentUUID(); parentUUID != nil {
-			parentInfo = *parentUUID
+		if parentUUID, hasParent := doc.Dimensions["parent_uuid"].(string); hasParent && parentUUID != "" {
+			parentInfo = parentUUID
 		}
 		t.Logf("  ID: %-5s Title: %-15s Parent: %s", doc.UserFacingID, doc.Title, parentInfo)
 	}

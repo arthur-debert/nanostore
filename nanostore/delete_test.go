@@ -558,7 +558,8 @@ func TestDeleteEdgeCases(t *testing.T) {
 			// Get parent of current
 			docs, _ := store.List(nanostore.ListOptions{})
 			for _, doc := range docs {
-				if doc.GetParentUUID() == nil {
+				parentUUID, hasParent := doc.Dimensions["parent_uuid"].(string)
+				if !hasParent || parentUUID == "" {
 					rootID = doc.UUID
 					break
 				}

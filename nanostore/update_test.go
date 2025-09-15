@@ -168,7 +168,8 @@ func TestUpdateWithoutParentField(t *testing.T) {
 			if doc.Title != newTitle {
 				t.Errorf("title not updated")
 			}
-			if doc.GetParentUUID() == nil || *doc.GetParentUUID() != parentID {
+			parentUUID, hasParent := doc.Dimensions["parent_uuid"].(string)
+			if !hasParent || parentUUID != parentID {
 				t.Error("parent relationship changed when it shouldn't have")
 			}
 		}
