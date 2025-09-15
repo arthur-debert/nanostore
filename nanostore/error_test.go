@@ -19,7 +19,6 @@ func TestDatabaseErrors(t *testing.T) {
 	})
 
 	t.Run("ReadOnlyDatabase", func(t *testing.T) {
-		t.Skip("Skipping read-only test - permission handling varies by OS")
 		// Create temporary database
 		tmpDir, err := os.MkdirTemp("", "nanostore-test-*")
 		if err != nil {
@@ -42,11 +41,23 @@ func TestDatabaseErrors(t *testing.T) {
 			t.Fatalf("failed to make database read-only: %v", err)
 		}
 
-		// Try to open read-only database
+		// Opening read-only database should succeed for reads
 		store2, err := nanostore.NewTestStore(dbPath)
+		if err != nil {
+			t.Fatalf("failed to open read-only database: %v", err)
+		}
+		defer func() { _ = store2.Close() }()
+
+		// But writing should fail
+		_, err = store2.Add("New Document", nil)
 		if err == nil {
-			_ = store2.Close()
-			t.Fatal("expected error opening read-only database")
+			t.Fatal("expected error writing to read-only database")
+		}
+
+		// Reading should still work
+		_, err = store2.List(nanostore.ListOptions{})
+		if err != nil {
+			t.Errorf("reading from read-only database should work: %v", err)
 		}
 	})
 }
