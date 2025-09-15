@@ -155,6 +155,18 @@ type Store interface {
 	// Returns the number of documents deleted
 	DeleteWhere(whereClause string, args ...interface{}) (int, error)
 
+	// UpdateByDimension updates all documents matching a specific dimension value
+	// For example: UpdateByDimension("status", "pending", UpdateRequest{Title: &newTitle})
+	// Returns the number of documents updated
+	UpdateByDimension(dimension string, value string, updates UpdateRequest) (int, error)
+
+	// UpdateWhere updates all documents matching a custom WHERE clause
+	// The where clause should not include the "WHERE" keyword itself
+	// For example: UpdateWhere("created_at < ?", UpdateRequest{...}, time.Now().AddDate(0, -1, 0))
+	// Use with caution as it allows arbitrary SQL conditions
+	// Returns the number of documents updated
+	UpdateWhere(whereClause string, updates UpdateRequest, args ...interface{}) (int, error)
+
 	// Close releases any resources held by the store
 	Close() error
 }

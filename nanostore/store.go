@@ -605,7 +605,185 @@ func (s *store) DeleteWhere(whereClause string, args ...interface{}) (int, error
 	return int(rowsAffected), nil
 }
 
+// UpdateByDimension updates all documents matching a specific dimension value
+func (s *store) UpdateByDimension(dimension string, value string, updates UpdateRequest) (int, error) {
+	// Validate that the dimension exists in the configuration
+	dimensionExists := false
+	for _, dim := range s.config.Dimensions {
+		if dim.Name == dimension {
+			dimensionExists = true
+			// For enumerated dimensions, validate the value
+			if dim.Type == Enumerated {
+				valueValid := false
+				for _, v := range dim.Values {
+					if v == value {
+						valueValid = true
+						break
+					}
+				}
+				if !valueValid {
+					return 0, fmt.Errorf("invalid value '%s' for dimension '%s'", value, dimension)
+				}
+			}
+			break
+		}
+	}
+
+	if !dimensionExists {
+		return 0, fmt.Errorf("dimension '%s' not found in configuration", dimension)
+	}
+
+	tx, err := s.db.Begin()
+	if err != nil {
+		return 0, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	// Build the columns and values for the update
+	columns, values, err := s.buildUpdateColumnsAndValues(updates)
+	if err != nil {
+		return 0, err
+	}
+
+	// Always add updated_at
+	columns = append(columns, "updated_at")
+	values = append(values, time.Now().Unix())
+
+	// Build query using SQL builder
+	query, args, err := s.sqlBuilder.buildUpdateByCondition("documents", columns, values, squirrel.Eq{dimension: value})
+	if err != nil {
+		return 0, fmt.Errorf("failed to build update query: %w", err)
+	}
+
+	result, err := tx.Exec(query, args...)
+	if err != nil {
+		return 0, fmt.Errorf("failed to update documents where %s='%s': %w", dimension, value, err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("failed to get rows affected: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	return int(rowsAffected), nil
+}
+
+// UpdateWhere updates all documents matching a custom WHERE clause
+func (s *store) UpdateWhere(whereClause string, updates UpdateRequest, args ...interface{}) (int, error) {
+	if whereClause == "" {
+		return 0, fmt.Errorf("where clause cannot be empty")
+	}
+
+	tx, err := s.db.Begin()
+	if err != nil {
+		return 0, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	// Build the columns and values for the update
+	columns, values, err := s.buildUpdateColumnsAndValues(updates)
+	if err != nil {
+		return 0, err
+	}
+
+	// Always add updated_at
+	columns = append(columns, "updated_at")
+	values = append(values, time.Now().Unix())
+
+	// Build the UPDATE query using SQL builder
+	query, sqlArgs, err := s.sqlBuilder.buildUpdateWhere("documents", columns, values, whereClause, args...)
+	if err != nil {
+		return 0, fmt.Errorf("failed to build update query: %w", err)
+	}
+
+	result, err := tx.Exec(query, sqlArgs...)
+	if err != nil {
+		return 0, fmt.Errorf("failed to update documents with where clause '%s': %w", whereClause, err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("failed to get rows affected: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	return int(rowsAffected), nil
+}
+
 // Helper methods
+
+// buildUpdateColumnsAndValues prepares columns and values for bulk update operations
+func (s *store) buildUpdateColumnsAndValues(updates UpdateRequest) ([]string, []interface{}, error) {
+	var columns []string
+	var values []interface{}
+
+	if updates.Title != nil {
+		columns = append(columns, "title")
+		values = append(values, *updates.Title)
+	}
+
+	if updates.Body != nil {
+		columns = append(columns, "body")
+		values = append(values, *updates.Body)
+	}
+
+	// Handle dimension updates
+	if updates.Dimensions != nil {
+		hierDim := s.findHierarchicalDimension()
+
+		for dimName, dimValue := range updates.Dimensions {
+			// Handle hierarchical dimensions (parent updates)
+			if hierDim != nil && dimName == hierDim.RefField {
+				columns = append(columns, dimName)
+				if dimValue == "" {
+					values = append(values, nil)
+				} else {
+					values = append(values, dimValue)
+				}
+				continue
+			}
+
+			// Handle enumerated dimensions
+			dimFound := false
+			for _, dim := range s.config.Dimensions {
+				if dim.Name == dimName && dim.Type == Enumerated {
+					dimFound = true
+					// Validate the value
+					validValue := false
+					for _, v := range dim.Values {
+						if v == dimValue {
+							validValue = true
+							break
+						}
+					}
+					if !validValue {
+						return nil, nil, fmt.Errorf("invalid value '%s' for dimension '%s'", dimValue, dimName)
+					}
+					columns = append(columns, dimName)
+					values = append(values, dimValue)
+					break
+				}
+			}
+
+			if !dimFound {
+				return nil, nil, fmt.Errorf("dimension '%s' not found in configuration", dimName)
+			}
+		}
+	}
+
+	if len(columns) == 0 {
+		return nil, nil, fmt.Errorf("no fields to update")
+	}
+
+	return columns, values, nil
+}
 
 func (s *store) findHierarchicalDimension() *DimensionConfig {
 	for _, dim := range s.config.Dimensions {
