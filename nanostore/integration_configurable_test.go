@@ -1,6 +1,7 @@
 package nanostore_test
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/arthur-debert/nanostore/nanostore"
@@ -88,35 +89,30 @@ func TestConfigurableIntegration(t *testing.T) {
 	}
 
 	// Test filtering by parent
-	// Note: This test is currently commented out because filtering by custom RefField
-	// names (like "parent_id") may not be fully implemented yet.
-	// TODO: Enable this test once filtering by custom hierarchical dimensions is supported
-	/*
-		subtasks, err := store.List(nanostore.ListOptions{
-			Filters: map[string]interface{}{"parent_id": personalTodo},
-		})
-		if err != nil {
-			t.Fatalf("failed to filter by parent: %v", err)
-		}
+	subtasks, err := store.List(nanostore.ListOptions{
+		Filters: map[string]interface{}{"parent_id": personalTodo},
+	})
+	if err != nil {
+		t.Fatalf("failed to filter by parent: %v", err)
+	}
 
-		if len(subtasks) != 2 {
-			t.Errorf("expected 2 subtasks, got %d", len(subtasks))
-		}
+	if len(subtasks) != 2 {
+		t.Errorf("expected 2 subtasks, got %d", len(subtasks))
+	}
 
-		// When filtering by parent, IDs are renumbered starting from 1
-		// They should have IDs like "m1", "m2" (with medium priority prefix)
-		for i, subtask := range subtasks {
-			// Both subtasks have medium priority by default, so should have 'm' prefix
-			expectedID := fmt.Sprintf("m%d", i+1)
-			if subtask.UserFacingID != expectedID {
-				// Also check without prefix in case they don't have the same priority
-				alternativeID := fmt.Sprintf("%d", i+1)
-				if subtask.UserFacingID != alternativeID {
-					t.Errorf("subtask should have ID '%s' or '%s', got %s", expectedID, alternativeID, subtask.UserFacingID)
-				}
+	// When filtering by parent, IDs are renumbered starting from 1
+	// They should have IDs like "m1", "m2" (with medium priority prefix)
+	for i, subtask := range subtasks {
+		// Both subtasks have medium priority by default, so should have 'm' prefix
+		expectedID := fmt.Sprintf("m%d", i+1)
+		if subtask.UserFacingID != expectedID {
+			// Also check without prefix in case they don't have the same priority
+			alternativeID := fmt.Sprintf("%d", i+1)
+			if subtask.UserFacingID != alternativeID {
+				t.Errorf("subtask should have ID '%s' or '%s', got %s", expectedID, alternativeID, subtask.UserFacingID)
 			}
 		}
-	*/
+	}
 }
 
 func TestMultiplePrefixCombinations(t *testing.T) {

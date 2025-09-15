@@ -44,6 +44,12 @@ func (qb *queryBuilder) GenerateListQuery(filters map[string]interface{}) (strin
 	_, hasSearchFilter := filters["search"]
 	hasFilters := hasStatusFilter || hasParentFilter || hasSearchFilter
 
+	// Also check for custom hierarchical dimension RefField
+	if hierDim != nil && !hasFilters {
+		_, hasCustomParentFilter := filters[hierDim.RefField]
+		hasFilters = hasFilters || hasCustomParentFilter
+	}
+
 	// When we have filters, use a simpler query without hierarchy
 	if hasFilters {
 		return qb.generateFlatListQuery(enumDims, hierDim, filters)
@@ -478,6 +484,26 @@ func (qb *queryBuilder) buildWhereClausesAndArgs(filters map[string]interface{},
 							}
 							whereClauses = append(whereClauses, fmt.Sprintf("%s IN (%s)", key, strings.Join(placeholders, ",")))
 						}
+					}
+				}
+			} else if hierDim != nil && key == hierDim.RefField {
+				// Handle filtering by custom hierarchical dimension RefField (e.g., parent_id)
+				// Handle both string and *string values
+				if parentID, ok := value.(string); ok {
+					if parentID == "" {
+						// Empty string means root documents (NULL parent)
+						whereClauses = append(whereClauses, hierDim.RefField+" IS NULL")
+					} else {
+						whereClauses = append(whereClauses, hierDim.RefField+" = ?")
+						args = append(args, parentID)
+					}
+				} else if parentID, ok := value.(*string); ok {
+					if parentID == nil || *parentID == "" {
+						// Empty string or nil means root documents (NULL parent)
+						whereClauses = append(whereClauses, hierDim.RefField+" IS NULL")
+					} else {
+						whereClauses = append(whereClauses, hierDim.RefField+" = ?")
+						args = append(args, *parentID)
 					}
 				}
 			}
