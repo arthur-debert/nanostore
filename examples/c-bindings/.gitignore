@@ -1,0 +1,11 @@
+# Compiled libraries
+*.so
+*.dylib
+*.dll
+*.h
+
+# Build artifacts
+build/
+
+# Test databases
+*.db

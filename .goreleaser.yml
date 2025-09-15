@@ -17,6 +17,25 @@ builds:
     ignore:
       - goos: windows
         goarch: arm64
+  
+  # Shared library for FFI bindings
+  - id: nanostore-lib
+    main: ./examples/c-bindings
+    binary: libnanostore
+    buildmode: c-shared
+    ldflags:
+      - -s -w
+    env:
+      - CGO_ENABLED=1
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+    ignore:
+      - goos: windows
+        goarch: arm64
+    hooks:
+      post:
+        # Rename Windows DLL
+        - cmd: sh -c 'if [ "{{ .Os }}" = "windows" ]; then mv {{ .Path }} {{ dir .Path }}/nanostore.dll; fi'
 
 before:
   hooks:
@@ -45,6 +64,20 @@ archives:
           mode: 0644
       - src: "man/man1/*"
         dst: "man/man1"
+        info:
+          mode: 0644
+  
+  # Archive for shared libraries
+  - id: nanostore-lib-archive
+    ids: [nanostore-lib]
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    name_template: "nanostore-lib_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - src: "examples/c-bindings/libnanostore.h"
+        dst: "include/nanostore.h"
         info:
           mode: 0644
 

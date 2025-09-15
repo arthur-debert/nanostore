@@ -1,14 +1,20 @@
 """
-Python wrapper for nanostore using ctypes/FFI
+Python wrapper for nanostore using ctypes/FFI with caller-managed memory
 """
 import json
 import ctypes
-from ctypes import POINTER, c_char_p, c_int
+from ctypes import POINTER, c_char_p, c_int, c_char, create_string_buffer
 from typing import Dict, List, Optional, Union, Any
 from dataclasses import dataclass
 from datetime import datetime
 from enum import IntEnum
 import os
+
+
+# Default buffer size for most operations
+DEFAULT_BUFFER_SIZE = 4096
+# Larger buffer for list operations which might return many documents
+LIST_BUFFER_SIZE = 65536
 
 
 class DimensionType(IntEnum):
@@ -111,14 +117,46 @@ class NanoStoreError(Exception):
 
 
 class Store:
-    """Python wrapper for nanostore C library"""
+    """Python wrapper for nanostore C library with caller-managed memory"""
     
     def __init__(self, db_path: str, config: Config, library_path: str = None):
         # Load the C library
         if library_path is None:
             # Try to find library in same directory as this module
             current_dir = os.path.dirname(__file__)
-            library_path = os.path.join(current_dir, "libnanostore.so")
+            
+            # Try different library names based on platform
+            import platform
+            system = platform.system()
+            
+            if system == "Darwin":
+                lib_names = ["libnanostore.dylib", "libnanostore.so"]
+            elif system == "Windows":
+                lib_names = ["nanostore.dll", "libnanostore.dll"]
+            else:  # Linux and others
+                lib_names = ["libnanostore.so"]
+            
+            # First try in the package directory
+            for lib_name in lib_names:
+                lib_path = os.path.join(current_dir, lib_name)
+                if os.path.exists(lib_path):
+                    library_path = lib_path
+                    break
+            
+            # If not found, try parent directory (for development)
+            if library_path is None:
+                parent_dir = os.path.join(current_dir, "..", "..")
+                for lib_name in lib_names:
+                    lib_path = os.path.join(parent_dir, lib_name)
+                    if os.path.exists(lib_path):
+                        library_path = lib_path
+                        break
+            
+            if library_path is None:
+                raise RuntimeError(
+                    "Could not find nanostore library. "
+                    "Please ensure it's installed or provide explicit path."
+                )
         
         self._lib = ctypes.CDLL(library_path)
         
@@ -129,11 +167,17 @@ class Store:
         config_json = config.to_json().encode('utf-8')
         db_path_bytes = db_path.encode('utf-8')
         
-        result_ptr = self._lib.nanostore_new(db_path_bytes, config_json)
-        result_str = ctypes.c_char_p(result_ptr).value.decode('utf-8')
-        self._lib.nanostore_free_string(result_ptr)
+        buffer = create_string_buffer(DEFAULT_BUFFER_SIZE)
+        result_len = self._lib.nanostore_new(
+            db_path_bytes, config_json, buffer, DEFAULT_BUFFER_SIZE
+        )
         
+        if result_len < 0:
+            raise NanoStoreError("Response buffer too small")
+        
+        result_str = buffer.value[:result_len].decode('utf-8')
         result = json.loads(result_str)
+        
         if "error" in result:
             raise NanoStoreError(result["error"])
         
@@ -141,46 +185,58 @@ class Store:
 
     def _setup_function_signatures(self):
         """Setup ctypes function signatures for type safety"""
+        # All functions return int (bytes written) and take output buffer
+        
         # nanostore_new
-        self._lib.nanostore_new.argtypes = [c_char_p, c_char_p]
-        self._lib.nanostore_new.restype = c_char_p
+        self._lib.nanostore_new.argtypes = [c_char_p, c_char_p, POINTER(c_char), c_int]
+        self._lib.nanostore_new.restype = c_int
         
         # nanostore_add
-        self._lib.nanostore_add.argtypes = [c_char_p, c_char_p, c_char_p]
-        self._lib.nanostore_add.restype = c_char_p
+        self._lib.nanostore_add.argtypes = [c_char_p, c_char_p, c_char_p, POINTER(c_char), c_int]
+        self._lib.nanostore_add.restype = c_int
         
         # nanostore_list
-        self._lib.nanostore_list.argtypes = [c_char_p, c_char_p]
-        self._lib.nanostore_list.restype = c_char_p
+        self._lib.nanostore_list.argtypes = [c_char_p, c_char_p, POINTER(c_char), c_int]
+        self._lib.nanostore_list.restype = c_int
         
         # nanostore_update
-        self._lib.nanostore_update.argtypes = [c_char_p, c_char_p, c_char_p]
-        self._lib.nanostore_update.restype = c_char_p
+        self._lib.nanostore_update.argtypes = [c_char_p, c_char_p, c_char_p, POINTER(c_char), c_int]
+        self._lib.nanostore_update.restype = c_int
         
         # nanostore_delete
-        self._lib.nanostore_delete.argtypes = [c_char_p, c_char_p, c_int]
-        self._lib.nanostore_delete.restype = c_char_p
+        self._lib.nanostore_delete.argtypes = [c_char_p, c_char_p, c_int, POINTER(c_char), c_int]
+        self._lib.nanostore_delete.restype = c_int
         
         # nanostore_resolve_uuid
-        self._lib.nanostore_resolve_uuid.argtypes = [c_char_p, c_char_p]
-        self._lib.nanostore_resolve_uuid.restype = c_char_p
+        self._lib.nanostore_resolve_uuid.argtypes = [c_char_p, c_char_p, POINTER(c_char), c_int]
+        self._lib.nanostore_resolve_uuid.restype = c_int
         
         # nanostore_close
-        self._lib.nanostore_close.argtypes = [c_char_p]
-        self._lib.nanostore_close.restype = c_char_p
-        
-        # nanostore_free_string
-        self._lib.nanostore_free_string.argtypes = [c_char_p]
-        self._lib.nanostore_free_string.restype = None
+        self._lib.nanostore_close.argtypes = [c_char_p, POINTER(c_char), c_int]
+        self._lib.nanostore_close.restype = c_int
 
-    def _call_and_parse(self, func, *args) -> Dict:
-        """Helper to call C function and parse JSON result"""
-        result_ptr = func(*args)
-        result_str = ctypes.c_char_p(result_ptr).value.decode('utf-8')
-        self._lib.nanostore_free_string(result_ptr)
+    def _call_and_parse(self, func, *args, buffer_size=DEFAULT_BUFFER_SIZE) -> Union[Dict, List]:
+        """Helper to call C function with pre-allocated buffer and parse JSON result"""
+        buffer = create_string_buffer(buffer_size)
         
+        # Add buffer and buffer size to arguments
+        args_with_buffer = args + (buffer, buffer_size)
+        result_len = func(*args_with_buffer)
+        
+        if result_len < 0:
+            # Buffer too small, try with larger buffer
+            larger_size = buffer_size * 4
+            buffer = create_string_buffer(larger_size)
+            args_with_buffer = args + (buffer, larger_size)
+            result_len = func(*args_with_buffer)
+            
+            if result_len < 0:
+                raise NanoStoreError("Response too large for buffer")
+        
+        result_str = buffer.value[:result_len].decode('utf-8')
         result = json.loads(result_str)
-        if "error" in result:
+        
+        if isinstance(result, dict) and "error" in result:
             raise NanoStoreError(result["error"])
         
         return result
@@ -201,13 +257,11 @@ class Store:
         options = options or ListOptions()
         filters_json = options.to_json().encode('utf-8')
         
-        result_ptr = self._lib.nanostore_list(self._handle, filters_json)
-        result_str = ctypes.c_char_p(result_ptr).value.decode('utf-8')
-        self._lib.nanostore_free_string(result_ptr)
-        
-        result = json.loads(result_str)
-        if isinstance(result, dict) and "error" in result:
-            raise NanoStoreError(result["error"])
+        result = self._call_and_parse(
+            self._lib.nanostore_list,
+            self._handle, filters_json,
+            buffer_size=LIST_BUFFER_SIZE
+        )
         
         return [Document.from_dict(doc_data) for doc_data in result]
 

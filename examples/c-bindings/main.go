@@ -2,6 +2,7 @@ package main
 
 /*
 #include <stdlib.h>
+#include <string.h>
 */
 import "C"
 import (
@@ -22,21 +23,38 @@ func nextStoreHandle() string {
 	return fmt.Sprintf("store_%d", storeCounter)
 }
 
+// Helper function to copy string to C buffer
+func copyToBuffer(data string, buffer *C.char, bufferSize C.int) C.int {
+	dataBytes := []byte(data)
+	if len(dataBytes) >= int(bufferSize) {
+		return -1 // Buffer too small
+	}
+
+	// Copy data to buffer
+	bufferSlice := (*[1 << 30]byte)(unsafe.Pointer(buffer))[:bufferSize:bufferSize]
+	copy(bufferSlice, dataBytes)
+	bufferSlice[len(dataBytes)] = 0 // Null terminate
+
+	return C.int(len(dataBytes))
+}
+
 //export nanostore_new
-func nanostore_new(dbPath *C.char, configJSON *C.char) *C.char {
+func nanostore_new(dbPath *C.char, configJSON *C.char, outBuffer *C.char, bufferSize C.int) C.int {
 	goDbPath := C.GoString(dbPath)
 	goConfigJSON := C.GoString(configJSON)
 
 	// Parse JSON config
 	var config nanostore.Config
 	if err := json.Unmarshal([]byte(goConfigJSON), &config); err != nil {
-		return C.CString(fmt.Sprintf(`{"error": "invalid config: %s"}`, err.Error()))
+		errMsg := fmt.Sprintf(`{"error": "invalid config: %s"}`, err.Error())
+		return copyToBuffer(errMsg, outBuffer, bufferSize)
 	}
 
 	// Create store
 	store, err := nanostore.New(goDbPath, config)
 	if err != nil {
-		return C.CString(fmt.Sprintf(`{"error": "failed to create store: %s"}`, err.Error()))
+		errMsg := fmt.Sprintf(`{"error": "failed to create store: %s"}`, err.Error())
+		return copyToBuffer(errMsg, outBuffer, bufferSize)
 	}
 
 	// Register store and return handle
@@ -45,54 +63,57 @@ func nanostore_new(dbPath *C.char, configJSON *C.char) *C.char {
 
 	result := map[string]string{"handle": handle}
 	resultJSON, _ := json.Marshal(result)
-	return C.CString(string(resultJSON))
+	return copyToBuffer(string(resultJSON), outBuffer, bufferSize)
 }
 
 //export nanostore_add
-func nanostore_add(handle *C.char, title *C.char, dimensionsJSON *C.char) *C.char {
+func nanostore_add(handle *C.char, title *C.char, dimensionsJSON *C.char, outBuffer *C.char, bufferSize C.int) C.int {
 	goHandle := C.GoString(handle)
 	goTitle := C.GoString(title)
 	goDimensionsJSON := C.GoString(dimensionsJSON)
 
 	store, exists := stores[goHandle]
 	if !exists {
-		return C.CString(`{"error": "invalid store handle"}`)
+		return copyToBuffer(`{"error": "invalid store handle"}`, outBuffer, bufferSize)
 	}
 
 	// Parse dimensions
 	var dimensions map[string]interface{}
 	if goDimensionsJSON != "" {
 		if err := json.Unmarshal([]byte(goDimensionsJSON), &dimensions); err != nil {
-			return C.CString(fmt.Sprintf(`{"error": "invalid dimensions: %s"}`, err.Error()))
+			errMsg := fmt.Sprintf(`{"error": "invalid dimensions: %s"}`, err.Error())
+			return copyToBuffer(errMsg, outBuffer, bufferSize)
 		}
 	}
 
 	// Add document
 	uuid, err := store.Add(goTitle, dimensions)
 	if err != nil {
-		return C.CString(fmt.Sprintf(`{"error": "failed to add: %s"}`, err.Error()))
+		errMsg := fmt.Sprintf(`{"error": "failed to add: %s"}`, err.Error())
+		return copyToBuffer(errMsg, outBuffer, bufferSize)
 	}
 
 	result := map[string]string{"uuid": uuid}
 	resultJSON, _ := json.Marshal(result)
-	return C.CString(string(resultJSON))
+	return copyToBuffer(string(resultJSON), outBuffer, bufferSize)
 }
 
 //export nanostore_list
-func nanostore_list(handle *C.char, filtersJSON *C.char) *C.char {
+func nanostore_list(handle *C.char, filtersJSON *C.char, outBuffer *C.char, bufferSize C.int) C.int {
 	goHandle := C.GoString(handle)
 	goFiltersJSON := C.GoString(filtersJSON)
 
 	store, exists := stores[goHandle]
 	if !exists {
-		return C.CString(`{"error": "invalid store handle"}`)
+		return copyToBuffer(`{"error": "invalid store handle"}`, outBuffer, bufferSize)
 	}
 
 	// Parse filters
 	var filters map[string]interface{}
 	if goFiltersJSON != "" {
 		if err := json.Unmarshal([]byte(goFiltersJSON), &filters); err != nil {
-			return C.CString(fmt.Sprintf(`{"error": "invalid filters: %s"}`, err.Error()))
+			errMsg := fmt.Sprintf(`{"error": "invalid filters: %s"}`, err.Error())
+			return copyToBuffer(errMsg, outBuffer, bufferSize)
 		}
 	}
 
@@ -102,7 +123,8 @@ func nanostore_list(handle *C.char, filtersJSON *C.char) *C.char {
 	// List documents
 	docs, err := store.List(opts)
 	if err != nil {
-		return C.CString(fmt.Sprintf(`{"error": "failed to list: %s"}`, err.Error()))
+		errMsg := fmt.Sprintf(`{"error": "failed to list: %s"}`, err.Error())
+		return copyToBuffer(errMsg, outBuffer, bufferSize)
 	}
 
 	// Convert to JSON-serializable format
@@ -120,24 +142,25 @@ func nanostore_list(handle *C.char, filtersJSON *C.char) *C.char {
 	}
 
 	resultJSON, _ := json.Marshal(result)
-	return C.CString(string(resultJSON))
+	return copyToBuffer(string(resultJSON), outBuffer, bufferSize)
 }
 
 //export nanostore_update
-func nanostore_update(handle *C.char, id *C.char, updatesJSON *C.char) *C.char {
+func nanostore_update(handle *C.char, id *C.char, updatesJSON *C.char, outBuffer *C.char, bufferSize C.int) C.int {
 	goHandle := C.GoString(handle)
 	goID := C.GoString(id)
 	goUpdatesJSON := C.GoString(updatesJSON)
 
 	store, exists := stores[goHandle]
 	if !exists {
-		return C.CString(`{"error": "invalid store handle"}`)
+		return copyToBuffer(`{"error": "invalid store handle"}`, outBuffer, bufferSize)
 	}
 
 	// Parse updates
 	var updateData map[string]interface{}
 	if err := json.Unmarshal([]byte(goUpdatesJSON), &updateData); err != nil {
-		return C.CString(fmt.Sprintf(`{"error": "invalid updates: %s"}`, err.Error()))
+		errMsg := fmt.Sprintf(`{"error": "invalid updates: %s"}`, err.Error())
+		return copyToBuffer(errMsg, outBuffer, bufferSize)
 	}
 
 	// Build UpdateRequest
@@ -159,75 +182,74 @@ func nanostore_update(handle *C.char, id *C.char, updatesJSON *C.char) *C.char {
 
 	// Update document
 	if err := store.Update(goID, updates); err != nil {
-		return C.CString(fmt.Sprintf(`{"error": "failed to update: %s"}`, err.Error()))
+		errMsg := fmt.Sprintf(`{"error": "failed to update: %s"}`, err.Error())
+		return copyToBuffer(errMsg, outBuffer, bufferSize)
 	}
 
-	return C.CString(`{"success": true}`)
+	return copyToBuffer(`{"success": true}`, outBuffer, bufferSize)
 }
 
 //export nanostore_delete
-func nanostore_delete(handle *C.char, id *C.char, cascade C.int) *C.char {
+func nanostore_delete(handle *C.char, id *C.char, cascade C.int, outBuffer *C.char, bufferSize C.int) C.int {
 	goHandle := C.GoString(handle)
 	goID := C.GoString(id)
 	goCascade := cascade != 0
 
 	store, exists := stores[goHandle]
 	if !exists {
-		return C.CString(`{"error": "invalid store handle"}`)
+		return copyToBuffer(`{"error": "invalid store handle"}`, outBuffer, bufferSize)
 	}
 
 	// Delete document
 	if err := store.Delete(goID, goCascade); err != nil {
-		return C.CString(fmt.Sprintf(`{"error": "failed to delete: %s"}`, err.Error()))
+		errMsg := fmt.Sprintf(`{"error": "failed to delete: %s"}`, err.Error())
+		return copyToBuffer(errMsg, outBuffer, bufferSize)
 	}
 
-	return C.CString(`{"success": true}`)
+	return copyToBuffer(`{"success": true}`, outBuffer, bufferSize)
 }
 
 //export nanostore_resolve_uuid
-func nanostore_resolve_uuid(handle *C.char, userFacingID *C.char) *C.char {
+func nanostore_resolve_uuid(handle *C.char, userFacingID *C.char, outBuffer *C.char, bufferSize C.int) C.int {
 	goHandle := C.GoString(handle)
 	goUserFacingID := C.GoString(userFacingID)
 
 	store, exists := stores[goHandle]
 	if !exists {
-		return C.CString(`{"error": "invalid store handle"}`)
+		return copyToBuffer(`{"error": "invalid store handle"}`, outBuffer, bufferSize)
 	}
 
 	// Resolve UUID
 	uuid, err := store.ResolveUUID(goUserFacingID)
 	if err != nil {
-		return C.CString(fmt.Sprintf(`{"error": "failed to resolve: %s"}`, err.Error()))
+		errMsg := fmt.Sprintf(`{"error": "failed to resolve: %s"}`, err.Error())
+		return copyToBuffer(errMsg, outBuffer, bufferSize)
 	}
 
 	result := map[string]string{"uuid": uuid}
 	resultJSON, _ := json.Marshal(result)
-	return C.CString(string(resultJSON))
+	return copyToBuffer(string(resultJSON), outBuffer, bufferSize)
 }
 
 //export nanostore_close
-func nanostore_close(handle *C.char) *C.char {
+func nanostore_close(handle *C.char, outBuffer *C.char, bufferSize C.int) C.int {
 	goHandle := C.GoString(handle)
 
 	store, exists := stores[goHandle]
 	if !exists {
-		return C.CString(`{"error": "invalid store handle"}`)
+		return copyToBuffer(`{"error": "invalid store handle"}`, outBuffer, bufferSize)
 	}
 
 	// Close store
 	if err := store.Close(); err != nil {
-		return C.CString(fmt.Sprintf(`{"error": "failed to close: %s"}`, err.Error()))
+		errMsg := fmt.Sprintf(`{"error": "failed to close: %s"}`, err.Error())
+		return copyToBuffer(errMsg, outBuffer, bufferSize)
 	}
 
 	// Remove from registry
 	delete(stores, goHandle)
 
-	return C.CString(`{"success": true}`)
-}
-
-//export nanostore_free_string
-func nanostore_free_string(str *C.char) {
-	C.free(unsafe.Pointer(str))
+	return copyToBuffer(`{"success": true}`, outBuffer, bufferSize)
 }
 
 func main() {

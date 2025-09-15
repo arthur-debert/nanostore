@@ -23,4 +23,13 @@ else
     echo -e "\nRunning notes app tests..."
     cd "$PROJECT_ROOT/examples/apps/notes"
     go test ./... -v
+    
+    # Test Python bindings if Python is available
+    if command -v python3 &> /dev/null; then
+        echo -e "\nRunning Python binding tests..."
+        cd "$PROJECT_ROOT/examples/c-bindings/python"
+        python3 tests/test_nanostore.py
+    else
+        echo -e "\nSkipping Python binding tests (python3 not found)"
+    fi
 fi
