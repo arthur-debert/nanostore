@@ -380,4 +380,41 @@ func TestBuildConfigFromMeta(t *testing.T) {
 			}
 		}
 	})
+
+	t.Run("no dimensions", func(t *testing.T) {
+		metas := []fieldMeta{}
+
+		_, err := buildConfigFromMeta(metas)
+		if err == nil {
+			t.Fatal("expected error for no dimensions")
+		}
+		if !strings.Contains(err.Error(), "at least one dimension must be defined") {
+			t.Errorf("expected error about dimension requirement, got: %v", err)
+		}
+	})
+
+	t.Run("all dimensions skipped", func(t *testing.T) {
+		metas := []fieldMeta{
+			{
+				fieldName:     "Internal1",
+				dimensionName: "internal1",
+				skipDimension: true,
+				prefixes:      map[string]string{},
+			},
+			{
+				fieldName:     "Internal2",
+				dimensionName: "internal2",
+				skipDimension: true,
+				prefixes:      map[string]string{},
+			},
+		}
+
+		_, err := buildConfigFromMeta(metas)
+		if err == nil {
+			t.Fatal("expected error when all dimensions are skipped")
+		}
+		if !strings.Contains(err.Error(), "at least one dimension must be defined") {
+			t.Errorf("expected error about dimension requirement, got: %v", err)
+		}
+	})
 }

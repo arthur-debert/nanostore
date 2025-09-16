@@ -147,7 +147,7 @@ func toSnakeCase(s string) string {
 	return result.String()
 }
 
-// Helper functions for case conversion
+// helper functions for case conversion
 func isUpper(r rune) bool {
 	return r >= 'A' && r <= 'Z'
 }
@@ -171,6 +171,7 @@ func buildConfigFromMeta(metas []fieldMeta) (*Config, error) {
 
 	// Check for duplicate dimension names
 	seen := make(map[string]bool)
+	hasDimensions := false
 
 	for _, meta := range metas {
 		if meta.skipDimension {
@@ -201,6 +202,12 @@ func buildConfigFromMeta(metas []fieldMeta) (*Config, error) {
 		}
 
 		config.Dimensions = append(config.Dimensions, dimConfig)
+		hasDimensions = true
+	}
+
+	// Validate that at least one dimension is defined
+	if !hasDimensions {
+		return nil, fmt.Errorf("at least one dimension must be defined")
 	}
 
 	return config, nil
