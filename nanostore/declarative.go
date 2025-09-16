@@ -369,25 +369,21 @@ func (ts *TypedStore[T]) Get(id string) (*T, error) {
 		uuid = id
 	}
 
-	// Get all documents and filter by UUID
-	// Since there's no direct Get method or UUID filter, we need to list all and filter
-	docs, err := ts.store.List(ListOptions{})
+	// Use filtered List to get only the document with matching UUID
+	docs, err := ts.store.List(ListOptions{
+		Filters: map[string]interface{}{
+			"uuid": uuid,
+		},
+	})
 	if err != nil {
 		return nil, err
 	}
 
-	// Find the document with matching UUID
-	var doc *Document
-	for i := range docs {
-		if docs[i].UUID == uuid {
-			doc = &docs[i]
-			break
-		}
-	}
-
-	if doc == nil {
+	if len(docs) == 0 {
 		return nil, fmt.Errorf("document not found")
 	}
+
+	doc := &docs[0]
 
 	// Create new instance of T
 	item := new(T)
