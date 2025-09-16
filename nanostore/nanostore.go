@@ -27,6 +27,24 @@ type ListOptions struct {
 
 	// FilterBySearch performs a text search on title and body
 	FilterBySearch string
+
+	// OrderBy specifies the order of results
+	// Each OrderClause contains a field name and direction
+	OrderBy []OrderClause
+
+	// Limit specifies the maximum number of results to return
+	// nil means no limit
+	Limit *int
+
+	// Offset specifies the number of results to skip
+	// nil means no offset
+	Offset *int
+}
+
+// OrderClause represents a single ORDER BY clause
+type OrderClause struct {
+	Column     string
+	Descending bool
 }
 
 // NewListOptions creates a new ListOptions with empty filters
