@@ -172,6 +172,7 @@ func buildConfigFromMeta(metas []fieldMeta) (*Config, error) {
 	// Check for duplicate dimension names
 	seen := make(map[string]bool)
 	hasDimensions := false
+	hierarchicalCount := 0
 
 	for _, meta := range metas {
 		if meta.skipDimension {
@@ -192,10 +193,42 @@ func buildConfigFromMeta(metas []fieldMeta) (*Config, error) {
 		if meta.isRef {
 			dimConfig.Type = Hierarchical
 			dimConfig.RefField = meta.dimensionName // Use dimension name as ref field
+			hierarchicalCount++
+
+			// Validate hierarchical dimension
+			if meta.defaultValue != "" {
+				return nil, fmt.Errorf("hierarchical dimension %s cannot have a default value", meta.fieldName)
+			}
+			if len(meta.values) > 0 {
+				return nil, fmt.Errorf("hierarchical dimension %s cannot have enumerated values", meta.fieldName)
+			}
+			if len(meta.prefixes) > 0 {
+				return nil, fmt.Errorf("hierarchical dimension %s cannot have prefixes", meta.fieldName)
+			}
 		} else if len(meta.values) > 0 {
 			dimConfig.Type = Enumerated
 			dimConfig.Values = meta.values
 			dimConfig.Prefixes = meta.prefixes
+
+			// Validate enumerated dimension
+			if meta.defaultValue != "" && !sliceContains(meta.values, meta.defaultValue) {
+				return nil, fmt.Errorf("field %s: default value %q is not in the list of valid values", meta.fieldName, meta.defaultValue)
+			}
+
+			// Validate prefixes
+			seenPrefixes := make(map[string]string) // prefix -> value that uses it
+			for value, prefix := range meta.prefixes {
+				if !sliceContains(meta.values, value) {
+					return nil, fmt.Errorf("field %s: prefix defined for invalid value %q", meta.fieldName, value)
+				}
+				if prefix == "" {
+					return nil, fmt.Errorf("field %s: empty prefix for value %q", meta.fieldName, value)
+				}
+				if existingValue, exists := seenPrefixes[prefix]; exists {
+					return nil, fmt.Errorf("field %s: duplicate prefix %q used by both %q and %q", meta.fieldName, prefix, existingValue, value)
+				}
+				seenPrefixes[prefix] = value
+			}
 		} else {
 			// String dimension (for future filtering support)
 			dimConfig.Type = Enumerated // For now, treat as enumerated without values
@@ -210,7 +243,22 @@ func buildConfigFromMeta(metas []fieldMeta) (*Config, error) {
 		return nil, fmt.Errorf("at least one dimension must be defined")
 	}
 
+	// Validate maximum one hierarchical dimension
+	if hierarchicalCount > 1 {
+		return nil, fmt.Errorf("only one hierarchical dimension is supported, found %d", hierarchicalCount)
+	}
+
 	return config, nil
+}
+
+// sliceContains checks if a slice contains a string
+func sliceContains(slice []string, str string) bool {
+	for _, s := range slice {
+		if s == str {
+			return true
+		}
+	}
+	return false
 }
 
 // TypedStore provides type-safe operations for a specific struct type
