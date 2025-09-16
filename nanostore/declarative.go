@@ -464,3 +464,339 @@ func (ts *TypedStore[T]) populateDocument(item *T, uuid string) error {
 
 	return fmt.Errorf("Document field not found or not settable")
 }
+
+// Query returns a new TypedQuery for building queries
+func (ts *TypedStore[T]) Query() *TypedQuery[T] {
+	return &TypedQuery[T]{
+		store:     ts,
+		filters:   make(map[string]interface{}),
+		orderBy:   []string{},
+		limit:     0,
+		offset:    0,
+		methodMap: ts.generateQueryMethods(),
+	}
+}
+
+// generateQueryMethods creates dimension-specific query methods
+func (ts *TypedStore[T]) generateQueryMethods() map[string]func(*TypedQuery[T], ...interface{}) *TypedQuery[T] {
+	methods := make(map[string]func(*TypedQuery[T], ...interface{}) *TypedQuery[T])
+
+	// Generate methods for each dimension
+	for _, dim := range ts.config.Dimensions {
+		// Capture dimension name in closure
+		dimName := dim.Name
+		dimType := dim.Type
+
+		// Basic filter method (e.g., Status(value))
+		func(name string) {
+			methods[name] = func(q *TypedQuery[T], args ...interface{}) *TypedQuery[T] {
+				if len(args) > 0 {
+					q.filters[name] = args[0]
+				}
+				return q
+			}
+		}(dimName)
+
+		// Not filter method (e.g., StatusNot(value))
+		func(name string) {
+			methods[name+"Not"] = func(q *TypedQuery[T], args ...interface{}) *TypedQuery[T] {
+				if len(args) > 0 {
+					// Store as a special filter that the query builder can recognize
+					q.filters[name+"__not"] = args[0]
+				}
+				return q
+			}
+		}(dimName)
+
+		// In filter method (e.g., StatusIn(values...))
+		func(name string) {
+			methods[name+"In"] = func(q *TypedQuery[T], args ...interface{}) *TypedQuery[T] {
+				if len(args) > 0 {
+					// Convert to string slice for the store
+					values := make([]string, len(args))
+					for i, arg := range args {
+						values[i] = fmt.Sprintf("%v", arg)
+					}
+					q.filters[name] = values
+				}
+				return q
+			}
+		}(dimName)
+
+		// For hierarchical dimensions, add exists/not exists methods
+		if dimType == Hierarchical {
+			func(name string) {
+				methods[name+"Exists"] = func(q *TypedQuery[T], args ...interface{}) *TypedQuery[T] {
+					q.filters[name+"__exists"] = true
+					return q
+				}
+			}(dimName)
+
+			func(name string) {
+				methods[name+"NotExists"] = func(q *TypedQuery[T], args ...interface{}) *TypedQuery[T] {
+					q.filters[name+"__not_exists"] = true
+					return q
+				}
+			}(dimName)
+		}
+	}
+
+	return methods
+}
+
+// TypedQuery provides a fluent interface for querying documents
+type TypedQuery[T any] struct {
+	store     *TypedStore[T]
+	filters   map[string]interface{}
+	orderBy   []string
+	limit     int
+	offset    int
+	methodMap map[string]func(*TypedQuery[T], ...interface{}) *TypedQuery[T]
+}
+
+// Call invokes a dynamic query method by name
+func (q *TypedQuery[T]) Call(method string, args ...interface{}) *TypedQuery[T] {
+	if fn, exists := q.methodMap[method]; exists {
+		return fn(q, args...)
+	}
+	// If method doesn't exist, return q unchanged (could also panic or return error)
+	return q
+}
+
+// Status filters by status dimension (convenience method)
+func (q *TypedQuery[T]) Status(value string) *TypedQuery[T] {
+	return q.Call("status", value)
+}
+
+// StatusNot filters by status not equal to value
+func (q *TypedQuery[T]) StatusNot(value string) *TypedQuery[T] {
+	return q.Call("statusNot", value)
+}
+
+// StatusIn filters by status in list of values
+func (q *TypedQuery[T]) StatusIn(values ...string) *TypedQuery[T] {
+	args := make([]interface{}, len(values))
+	for i, v := range values {
+		args[i] = v
+	}
+	return q.Call("statusIn", args...)
+}
+
+// Priority filters by priority dimension (convenience method)
+func (q *TypedQuery[T]) Priority(value string) *TypedQuery[T] {
+	return q.Call("priority", value)
+}
+
+// PriorityIn filters by priority in list of values
+func (q *TypedQuery[T]) PriorityIn(values ...string) *TypedQuery[T] {
+	args := make([]interface{}, len(values))
+	for i, v := range values {
+		args[i] = v
+	}
+	return q.Call("priorityIn", args...)
+}
+
+// ParentID filters by parent_id dimension
+func (q *TypedQuery[T]) ParentID(value string) *TypedQuery[T] {
+	return q.Call("parent_id", value)
+}
+
+// ParentIDExists filters for documents with a parent
+func (q *TypedQuery[T]) ParentIDExists() *TypedQuery[T] {
+	return q.Call("parent_idExists")
+}
+
+// ParentIDNotExists filters for documents without a parent
+func (q *TypedQuery[T]) ParentIDNotExists() *TypedQuery[T] {
+	return q.Call("parent_idNotExists")
+}
+
+// WithFilter adds a dimension filter to the query
+func (q *TypedQuery[T]) WithFilter(dimension string, value interface{}) *TypedQuery[T] {
+	q.filters[dimension] = value
+	return q
+}
+
+// OrderBy sets the order for results
+func (q *TypedQuery[T]) OrderBy(fields ...string) *TypedQuery[T] {
+	q.orderBy = fields
+	return q
+}
+
+// Limit sets the maximum number of results
+func (q *TypedQuery[T]) Limit(n int) *TypedQuery[T] {
+	q.limit = n
+	return q
+}
+
+// Offset sets the number of results to skip
+func (q *TypedQuery[T]) Offset(n int) *TypedQuery[T] {
+	q.offset = n
+	return q
+}
+
+// Find executes the query and returns all matching documents
+func (q *TypedQuery[T]) Find() ([]T, error) {
+	// Process filters to handle special cases
+	processedFilters := make(map[string]interface{})
+
+	for key, value := range q.filters {
+		if strings.HasSuffix(key, "__not") {
+			// Handle NOT filters - for now, we'll do client-side filtering
+			continue
+		} else if strings.HasSuffix(key, "__exists") {
+			// Handle EXISTS filters - for now, we'll do client-side filtering
+			continue
+		} else if strings.HasSuffix(key, "__not_exists") {
+			// Handle NOT EXISTS filters - for now, we'll do client-side filtering
+			continue
+		} else {
+			processedFilters[key] = value
+		}
+	}
+
+	// Execute the query with processed filters
+	docs, err := q.store.store.List(ListOptions{
+		Filters: processedFilters,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	// Apply client-side filtering for special cases
+	filteredDocs := []Document{}
+	for _, doc := range docs {
+		include := true
+
+		// Check NOT filters
+		for key, value := range q.filters {
+			if strings.HasSuffix(key, "__not") {
+				dimName := strings.TrimSuffix(key, "__not")
+				if docValue, exists := doc.Dimensions[dimName]; exists && docValue == value {
+					include = false
+					break
+				}
+			}
+		}
+
+		// Check EXISTS filters
+		for key := range q.filters {
+			if strings.HasSuffix(key, "__exists") {
+				dimName := strings.TrimSuffix(key, "__exists")
+				if _, exists := doc.Dimensions[dimName]; !exists {
+					include = false
+					break
+				}
+				// Also check for empty string
+				if docValue, exists := doc.Dimensions[dimName]; exists && docValue == "" {
+					include = false
+					break
+				}
+			} else if strings.HasSuffix(key, "__not_exists") {
+				dimName := strings.TrimSuffix(key, "__not_exists")
+				if docValue, exists := doc.Dimensions[dimName]; exists && docValue != "" {
+					include = false
+					break
+				}
+			}
+		}
+
+		if include {
+			filteredDocs = append(filteredDocs, doc)
+		}
+	}
+
+	// Convert documents to typed results
+	results := make([]T, 0, len(filteredDocs))
+	for _, doc := range filteredDocs {
+		item := new(T)
+
+		// Set Document embedded field
+		itemValue := reflect.ValueOf(item).Elem()
+		for i := 0; i < itemValue.NumField(); i++ {
+			field := itemValue.Field(i)
+			if field.Type() == reflect.TypeOf(Document{}) {
+				field.Set(reflect.ValueOf(doc))
+				break
+			}
+		}
+
+		// Populate dimension fields
+		if err := q.store.populateDimensions(item, doc.Dimensions); err != nil {
+			return nil, fmt.Errorf("failed to populate dimensions: %w", err)
+		}
+
+		results = append(results, *item)
+	}
+
+	// Apply client-side ordering, limit, and offset
+	// Note: In a real implementation, these would be pushed to the database
+	// TODO: Implement ordering when q.orderBy is specified
+
+	// Apply offset
+	if q.offset > 0 && q.offset < len(results) {
+		results = results[q.offset:]
+	} else if q.offset >= len(results) {
+		results = []T{}
+	}
+
+	// Apply limit
+	if q.limit > 0 && q.limit < len(results) {
+		results = results[:q.limit]
+	}
+
+	return results, nil
+}
+
+// First returns the first matching document or an error if none found
+func (q *TypedQuery[T]) First() (*T, error) {
+	results, err := q.Limit(1).Find()
+	if err != nil {
+		return nil, err
+	}
+
+	if len(results) == 0 {
+		return nil, fmt.Errorf("no documents found")
+	}
+
+	return &results[0], nil
+}
+
+// Get returns exactly one document or an error
+func (q *TypedQuery[T]) Get() (*T, error) {
+	results, err := q.Find()
+	if err != nil {
+		return nil, err
+	}
+
+	if len(results) == 0 {
+		return nil, fmt.Errorf("no documents found")
+	}
+
+	if len(results) > 1 {
+		return nil, fmt.Errorf("expected exactly one document, found %d", len(results))
+	}
+
+	return &results[0], nil
+}
+
+// Count returns the number of matching documents
+func (q *TypedQuery[T]) Count() (int, error) {
+	// Use Find to get filtered results
+	results, err := q.Find()
+	if err != nil {
+		return 0, err
+	}
+
+	return len(results), nil
+}
+
+// Exists returns true if at least one matching document exists
+func (q *TypedQuery[T]) Exists() (bool, error) {
+	count, err := q.Count()
+	if err != nil {
+		return false, err
+	}
+
+	return count > 0, nil
+}
