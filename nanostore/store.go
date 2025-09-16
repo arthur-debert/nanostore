@@ -27,9 +27,9 @@ var deleteCascadeSQL string
 type store struct {
 	db           *sql.DB
 	config       Config
-	idParser     *idParser
 	queryBuilder *queryBuilder
 	sqlBuilder   *sqlBuilder
+	idEngine     *IDEngine
 	// Query planning components
 	queryAnalyzer  *QueryAnalyzer
 	queryOptimizer *QueryOptimizer
@@ -79,14 +79,16 @@ func newConfigurableStore(dbPath string, config Config) (Store, error) {
 	s := &store{
 		db:           db,
 		config:       config,
-		idParser:     newIDParser(config),
 		queryBuilder: newQueryBuilder(config),
 		sqlBuilder:   newSQLBuilder(),
+		idEngine:     NewIDEngine(config, db),
 		// Initialize query planning components
 		queryAnalyzer:  NewQueryAnalyzer(config),
 		queryOptimizer: NewQueryOptimizer(config),
-		sqlGenerator:   NewQuerySQLGenerator(config),
 	}
+
+	// Initialize sqlGenerator with idEngine
+	s.sqlGenerator = NewQuerySQLGenerator(config, s.idEngine)
 
 	// Run base migrations
 	if err := s.migrateBase(); err != nil {
@@ -316,7 +318,7 @@ func (s *store) Update(id string, updates UpdateRequest) error {
 	if hierDim != nil && updates.Dimensions != nil {
 		if parentValue, hasParent := updates.Dimensions[hierDim.RefField]; hasParent && parentValue != nil && parentValue != "" {
 			parentStr := fmt.Sprintf("%v", parentValue)
-			if !isUUIDFormat(parentStr) {
+			if !s.idEngine.IsUUIDFormat(parentStr) {
 				// Resolve user-facing ID to UUID before transaction
 				resolvedUUID, err := s.resolveIDToUUID(parentStr)
 				if err != nil {
@@ -446,29 +448,7 @@ func (s *store) Update(id string, updates UpdateRequest) error {
 // ResolveUUID converts a user-facing ID to a UUID
 // Supports smart ID detection - returns UUID unchanged if already a UUID
 func (s *store) ResolveUUID(userFacingID string) (string, error) {
-	// Check if it's already a UUID
-	if isUUIDFormat(userFacingID) {
-		return userFacingID, nil
-	}
-	// Normalize the input ID to handle different prefix orders
-	normalizedID, err := s.normalizeUserFacingID(userFacingID)
-	if err != nil {
-		return "", fmt.Errorf("failed to normalize ID: %w", err)
-	}
-
-	// Parse the normalized ID to extract hierarchy and filters
-	parsedID, err := s.idParser.parseID(normalizedID)
-	if err != nil {
-		return "", fmt.Errorf("failed to parse ID: %w", err)
-	}
-
-	// Use optimized SQL-based resolution for single level IDs
-	if len(parsedID.Levels) == 1 {
-		return s.resolveUUIDFlat(parsedID.Levels[0])
-	}
-
-	// For multi-level hierarchical IDs, resolve level by level
-	return s.resolveUUIDHierarchical(parsedID)
+	return s.idEngine.ResolveID(userFacingID)
 }
 
 // Delete removes a document and optionally its children
@@ -811,7 +791,7 @@ func (s *store) buildUpdateColumnsAndValues(updates UpdateRequest) ([]string, []
 	if hierDim != nil && updates.Dimensions != nil {
 		if parentValue, hasParent := updates.Dimensions[hierDim.RefField]; hasParent && parentValue != nil && parentValue != "" {
 			parentStr := fmt.Sprintf("%v", parentValue)
-			if !isUUIDFormat(parentStr) {
+			if !s.idEngine.IsUUIDFormat(parentStr) {
 				// Resolve user-facing ID to UUID
 				resolvedUUID, err := s.resolveIDToUUID(parentStr)
 				if err != nil {
@@ -977,228 +957,21 @@ func isColumnExistsError(err error) bool {
 	return err != nil && strings.Contains(err.Error(), "duplicate column name")
 }
 
-// normalizeUserFacingID normalizes prefix ordering in a user-facing ID
-func (s *store) normalizeUserFacingID(userFacingID string) (string, error) {
-	// Split by dots for hierarchical levels
-	levels := strings.Split(userFacingID, ".")
-	normalizedLevels := make([]string, len(levels))
+// Note: normalizeUserFacingID has been moved to IDEngine
 
-	for i, level := range levels {
-		normalizedLevel, err := s.normalizeLevelID(level)
-		if err != nil {
-			return "", fmt.Errorf("failed to normalize level %d: %w", i+1, err)
-		}
-		normalizedLevels[i] = normalizedLevel
-	}
+// Note: normalizeLevelID has been moved to IDEngine
 
-	return strings.Join(normalizedLevels, "."), nil
-}
+// Note: resolveUUIDFlat has been moved to IDEngine
 
-// normalizeLevelID normalizes a single level of an ID (e.g., "ph1" -> "hp1")
-func (s *store) normalizeLevelID(levelID string) (string, error) {
-	if levelID == "" {
-		return "", fmt.Errorf("empty level ID")
-	}
+// Note: resolveUUIDHierarchical has been moved to IDEngine
 
-	// Extract prefixes (consecutive lowercase letters at the start)
-	prefixEnd := 0
-	for i, r := range levelID {
-		if r >= 'a' && r <= 'z' {
-			prefixEnd = i + 1
-		} else {
-			break
-		}
-	}
+// Note: resolveChildUUID has been moved to IDEngine
 
-	// If no prefixes, return as-is
-	if prefixEnd == 0 {
-		return levelID, nil
-	}
-
-	prefixes := levelID[:prefixEnd]
-	numberPart := levelID[prefixEnd:]
-
-	// Validate all prefixes are known before normalizing
-	seenDimensions := make(map[string]bool)
-	for _, r := range prefixes {
-		prefix := string(r)
-		mapping, found := s.idParser.prefixMap[prefix]
-		if !found {
-			return "", fmt.Errorf("unknown prefix: %s", prefix)
-		}
-		// Check for duplicate dimension
-		if seenDimensions[mapping.dimension] {
-			return "", fmt.Errorf("duplicate dimension prefix for %s", mapping.dimension)
-		}
-		seenDimensions[mapping.dimension] = true
-	}
-
-	// Normalize the prefixes using the ID parser
-	normalizedPrefixes := s.idParser.normalizePrefixes(prefixes)
-
-	return normalizedPrefixes + numberPart, nil
-}
-
-// resolveUUIDFlat efficiently resolves a single-level ID using direct SQL queries
-func (s *store) resolveUUIDFlat(level parsedLevel) (string, error) {
-	// Build SQL query with ROW_NUMBER() partitioning
-	var whereClauses []string
-	var args []interface{}
-
-	// Add dimension filters
-	enumDims := s.config.GetEnumeratedDimensions()
-	var partitionCols []string
-
-	for _, dim := range enumDims {
-		if filterValue, hasFilter := level.DimensionFilters[dim.Name]; hasFilter {
-			whereClauses = append(whereClauses, fmt.Sprintf("%s = ?", dim.Name))
-			args = append(args, filterValue)
-			partitionCols = append(partitionCols, dim.Name)
-		} else {
-			// Use default value if no specific filter
-			whereClauses = append(whereClauses, fmt.Sprintf("%s = ?", dim.Name))
-			args = append(args, dim.DefaultValue)
-			partitionCols = append(partitionCols, dim.Name)
-		}
-	}
-
-	// Handle hierarchical dimension (should be NULL for root level)
-	hierDims := s.config.GetHierarchicalDimensions()
-	for _, dim := range hierDims {
-		whereClauses = append(whereClauses, fmt.Sprintf("%s IS NULL", dim.RefField))
-		partitionCols = append(partitionCols, dim.RefField)
-	}
-
-	// Build the query
-	partitionBy := strings.Join(partitionCols, ", ")
-	whereClause := strings.Join(whereClauses, " AND ")
-
-	query := fmt.Sprintf(`
-		WITH numbered_docs AS (
-			SELECT uuid, ROW_NUMBER() OVER (PARTITION BY %s ORDER BY created_at) as row_num
-			FROM documents 
-			WHERE %s
-		)
-		SELECT uuid FROM numbered_docs WHERE row_num = ?`,
-		partitionBy, whereClause)
-
-	args = append(args, level.Offset+1) // Convert 0-based to 1-based
-
-	var uuid string
-	err := s.db.QueryRow(query, args...).Scan(&uuid)
-	if err != nil {
-		return "", fmt.Errorf("document not found")
-	}
-
-	return uuid, nil
-}
-
-// resolveUUIDHierarchical resolves multi-level hierarchical IDs by walking the tree level by level
-func (s *store) resolveUUIDHierarchical(parsedID *parsedID) (string, error) {
-	// Start with the root level
-	currentUUID, err := s.resolveUUIDFlat(parsedID.Levels[0])
-	if err != nil {
-		return "", fmt.Errorf("failed to resolve root level: %w", err)
-	}
-
-	// Resolve each subsequent level
-	for i := 1; i < len(parsedID.Levels); i++ {
-		currentUUID, err = s.resolveChildUUID(currentUUID, parsedID.Levels[i])
-		if err != nil {
-			return "", fmt.Errorf("failed to resolve level %d: %w", i+1, err)
-		}
-	}
-
-	return currentUUID, nil
-}
-
-// resolveChildUUID finds a child document given parent UUID and level constraints
-func (s *store) resolveChildUUID(parentUUID string, level parsedLevel) (string, error) {
-	// Get hierarchical dimension
-	hierDims := s.config.GetHierarchicalDimensions()
-	if len(hierDims) == 0 {
-		return "", fmt.Errorf("no hierarchical dimension configured")
-	}
-	hierDim := hierDims[0] // Use first hierarchical dimension
-
-	// Build WHERE clauses for this level
-	var whereClauses []string
-	var args []interface{}
-
-	// Must be child of parent
-	whereClauses = append(whereClauses, fmt.Sprintf("%s = ?", hierDim.RefField))
-	args = append(args, parentUUID)
-
-	// Add dimension filters
-	enumDims := s.config.GetEnumeratedDimensions()
-	var partitionCols []string
-
-	partitionCols = append(partitionCols, hierDim.RefField) // Partition by parent
-
-	for _, dim := range enumDims {
-		if filterValue, hasFilter := level.DimensionFilters[dim.Name]; hasFilter {
-			whereClauses = append(whereClauses, fmt.Sprintf("%s = ?", dim.Name))
-			args = append(args, filterValue)
-		} else {
-			// Use default value if no specific filter
-			whereClauses = append(whereClauses, fmt.Sprintf("%s = ?", dim.Name))
-			args = append(args, dim.DefaultValue)
-		}
-		partitionCols = append(partitionCols, dim.Name)
-	}
-
-	// Build the query
-	partitionBy := strings.Join(partitionCols, ", ")
-	whereClause := strings.Join(whereClauses, " AND ")
-
-	query := fmt.Sprintf(`
-		WITH numbered_docs AS (
-			SELECT uuid, ROW_NUMBER() OVER (PARTITION BY %s ORDER BY created_at) as row_num
-			FROM documents 
-			WHERE %s
-		)
-		SELECT uuid FROM numbered_docs WHERE row_num = ?`,
-		partitionBy, whereClause)
-
-	args = append(args, level.Offset+1) // Convert 0-based to 1-based
-
-	var uuid string
-	err := s.db.QueryRow(query, args...).Scan(&uuid)
-	if err != nil {
-		return "", fmt.Errorf("child document not found")
-	}
-
-	return uuid, nil
-}
-
-// isUUIDFormat checks if a string matches UUID format (8-4-4-4-12 hex digits with dashes)
-func isUUIDFormat(id string) bool {
-	// UUID format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx (36 characters)
-	if len(id) != 36 {
-		return false
-	}
-
-	// Check dash positions
-	if id[8] != '-' || id[13] != '-' || id[18] != '-' || id[23] != '-' {
-		return false
-	}
-
-	// Check that non-dash characters are hex digits
-	for i, r := range id {
-		if i == 8 || i == 13 || i == 18 || i == 23 {
-			continue // Skip dashes
-		}
-		if (r < '0' || r > '9') && (r < 'a' || r > 'f') && (r < 'A' || r > 'F') {
-			return false
-		}
-	}
-
-	return true
-}
+// Note: isUUIDFormat has been moved to IDEngine
 
 // resolveIDToUUID resolves either a UUID or user-facing ID to a UUID
 func (s *store) resolveIDToUUID(id string) (string, error) {
-	if isUUIDFormat(id) {
+	if s.idEngine.IsUUIDFormat(id) {
 		return id, nil
 	}
 

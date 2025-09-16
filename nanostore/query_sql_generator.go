@@ -7,15 +7,17 @@ import (
 
 // QuerySQLGenerator converts QueryPlan to SQL
 type QuerySQLGenerator struct {
-	config Config
-	qb     *queryBuilder // Reuse existing ID generation logic
+	config   Config
+	qb       *queryBuilder // Reuse existing ID generation logic
+	idEngine *IDEngine     // For ID generation
 }
 
 // NewQuerySQLGenerator creates a new SQL generator
-func NewQuerySQLGenerator(config Config) *QuerySQLGenerator {
+func NewQuerySQLGenerator(config Config, idEngine *IDEngine) *QuerySQLGenerator {
 	return &QuerySQLGenerator{
-		config: config,
-		qb:     newQueryBuilder(config),
+		config:   config,
+		qb:       newQueryBuilder(config),
+		idEngine: idEngine,
 	}
 }
 
@@ -81,8 +83,7 @@ func (qsg *QuerySQLGenerator) buildFilteredQuery(plan *QueryPlan, whereClause st
 	}
 
 	// Build query that filters first, then generates IDs on filtered results
-	enumDims := qsg.config.GetEnumeratedDimensions()
-	idExpression := qsg.qb.generateIDExpression(enumDims, true)
+	idExpression := qsg.idEngine.GenerateIDSelectClause(true)
 
 	query := fmt.Sprintf(`SELECT 
 		%s AS user_facing_id,
