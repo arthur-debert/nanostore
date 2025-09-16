@@ -219,7 +219,7 @@ func TestParseStructTags(t *testing.T) {
 		if err == nil {
 			t.Fatal("expected error for non-string field")
 		}
-		if !strings.Contains(err.Error(), "only string dimensions") {
+		if !strings.Contains(err.Error(), "dimensions must be string types") {
 			t.Errorf("expected error about string dimensions, got: %v", err)
 		}
 	})

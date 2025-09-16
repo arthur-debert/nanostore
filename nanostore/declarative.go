@@ -103,9 +103,13 @@ func parseStructTags(t reflect.Type) ([]fieldMeta, error) {
 		}
 
 		// Validate field type
+		// Note: Only string types are supported because:
+		// 1. Dimension values are used in ID generation (e.g., status="done" -> "d1", "d2")
+		// 2. Prefixes only make sense for string values
+		// 3. The underlying SQL schema uses TEXT columns for dimensions
+		// 4. Smart ID resolution expects string-based hierarchies
 		if field.Type.Kind() != reflect.String {
-			// For now, only string dimensions are supported
-			return nil, fmt.Errorf("field %s: only string dimensions are currently supported, got %s", field.Name, field.Type.Kind())
+			return nil, fmt.Errorf("field %s: dimensions must be string types (found %s). This is required for ID generation and prefixing", field.Name, field.Type.Kind())
 		}
 
 		// Validate custom string types
