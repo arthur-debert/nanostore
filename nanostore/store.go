@@ -30,6 +30,10 @@ type store struct {
 	idParser     *idParser
 	queryBuilder *queryBuilder
 	sqlBuilder   *sqlBuilder
+	// Query planning components
+	queryAnalyzer  *QueryAnalyzer
+	queryOptimizer *QueryOptimizer
+	sqlGenerator   *QuerySQLGenerator
 }
 
 // newConfigurableStore creates a new store instance with custom dimension configuration
@@ -78,6 +82,10 @@ func newConfigurableStore(dbPath string, config Config) (Store, error) {
 		idParser:     newIDParser(config),
 		queryBuilder: newQueryBuilder(config),
 		sqlBuilder:   newSQLBuilder(),
+		// Initialize query planning components
+		queryAnalyzer:  NewQueryAnalyzer(config),
+		queryOptimizer: NewQueryOptimizer(config),
+		sqlGenerator:   NewQuerySQLGenerator(config),
 	}
 
 	// Run base migrations
@@ -136,21 +144,38 @@ func (s *store) applyDimensionSchema() error {
 
 // List returns documents with dynamically generated IDs
 func (s *store) List(opts ListOptions) ([]Document, error) {
-	// Convert ListOptions to generic filters map
-	filters := s.convertListOptionsToFilters(opts)
-
-	// Generate dynamic query
-	query, args, err := s.queryBuilder.GenerateListQuery(filters)
+	// Phase 1: Analyze - Convert ListOptions to QueryPlan
+	plan, err := s.queryAnalyzer.Analyze(opts)
 	if err != nil {
-		return nil, fmt.Errorf("failed to generate query: %w", err)
+		return nil, fmt.Errorf("failed to analyze query: %w", err)
 	}
 
+	// Phase 2: Optimize - Apply optimizations to the plan
+	plan = s.queryOptimizer.Optimize(plan)
+
+	// Phase 3: Generate SQL from the plan
+	query, args, err := s.sqlGenerator.GenerateSQL(plan)
+	if err != nil {
+		// Fall back to legacy query generation for unsupported features
+		if plan.Type == HierarchicalQuery {
+			filters := s.convertListOptionsToFilters(opts)
+			query, args, err = s.queryBuilder.GenerateListQuery(filters)
+			if err != nil {
+				return nil, fmt.Errorf("failed to generate query: %w", err)
+			}
+		} else {
+			return nil, fmt.Errorf("failed to generate SQL: %w", err)
+		}
+	}
+
+	// Phase 4: Execute the query
 	rows, err := s.db.Query(query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute query: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
 
+	// Phase 5: Scan results
 	var results []Document
 	for rows.Next() {
 		doc, err := s.scanDocument(rows)
