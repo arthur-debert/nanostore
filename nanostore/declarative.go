@@ -205,3 +205,90 @@ func buildConfigFromMeta(metas []fieldMeta) (*Config, error) {
 
 	return config, nil
 }
+
+// TypedStore provides type-safe operations for a specific struct type
+type TypedStore[T any] struct {
+	store        Store
+	config       *Config
+	structType   reflect.Type
+	fieldIndices map[string]int // maps dimension name to struct field index
+}
+
+// NewFromType creates a new TypedStore from a struct type definition
+// The struct's tags define the store configuration
+func NewFromType[T any](dbPath string) (*TypedStore[T], error) {
+	var zero T
+	structType := reflect.TypeOf(zero)
+
+	// Validate that T embeds Document
+	if !hasEmbeddedDocument(structType) {
+		return nil, fmt.Errorf("type %s must embed nanostore.Document", structType.Name())
+	}
+
+	// Parse struct tags to get field metadata
+	metas, err := parseStructTags(structType)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse struct tags: %w", err)
+	}
+
+	// Build config from metadata
+	config, err := buildConfigFromMeta(metas)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build config: %w", err)
+	}
+
+	// Create the underlying store
+	store, err := New(dbPath, *config)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create store: %w", err)
+	}
+
+	// Build field index map for efficient access
+	fieldIndices := make(map[string]int)
+	if structType.Kind() == reflect.Ptr {
+		structType = structType.Elem()
+	}
+	for i := 0; i < structType.NumField(); i++ {
+		field := structType.Field(i)
+		if field.IsExported() && !field.Anonymous {
+			// Find corresponding meta
+			for _, meta := range metas {
+				if meta.fieldName == field.Name && !meta.skipDimension {
+					fieldIndices[meta.dimensionName] = i
+					break
+				}
+			}
+		}
+	}
+
+	return &TypedStore[T]{
+		store:        store,
+		config:       config,
+		structType:   structType,
+		fieldIndices: fieldIndices,
+	}, nil
+}
+
+// hasEmbeddedDocument checks if a type embeds Document
+func hasEmbeddedDocument(t reflect.Type) bool {
+	if t.Kind() == reflect.Ptr {
+		t = t.Elem()
+	}
+	if t.Kind() != reflect.Struct {
+		return false
+	}
+
+	docType := reflect.TypeOf(Document{})
+	for i := 0; i < t.NumField(); i++ {
+		field := t.Field(i)
+		if field.Anonymous && field.Type == docType {
+			return true
+		}
+	}
+	return false
+}
+
+// Close closes the underlying store
+func (ts *TypedStore[T]) Close() error {
+	return ts.store.Close()
+}
