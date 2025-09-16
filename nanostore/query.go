@@ -332,20 +332,20 @@ func (qb *queryBuilder) generateSimpleRowNumber(isRoot bool) string {
 	return fmt.Sprintf("CAST(ROW_NUMBER() OVER (%sORDER BY created_at) AS TEXT)", partition)
 }
 
-// dimensionCombination represents a combination of dimension values and resulting prefix
-type dimensionCombination struct {
+// legacyDimensionCombination represents a combination of dimension values and resulting prefix (legacy)
+type legacyDimensionCombination struct {
 	values map[string]string // dimension name -> value
 	prefix string            // resulting prefix (alphabetically ordered)
 }
 
 // generateDimensionCombinations creates all possible combinations of dimension values
-func (qb *queryBuilder) generateDimensionCombinations(enumDims []DimensionConfig) []dimensionCombination {
+func (qb *queryBuilder) generateDimensionCombinations(enumDims []DimensionConfig) []legacyDimensionCombination {
 	if len(enumDims) == 0 {
 		return nil
 	}
 
 	// Generate all possible combinations of dimension values
-	var combinations []dimensionCombination
+	var combinations []legacyDimensionCombination
 
 	// Helper to recursively generate combinations
 	var generate func(dimIndex int, current map[string]string)
@@ -385,7 +385,7 @@ func (qb *queryBuilder) generateDimensionCombinations(enumDims []DimensionConfig
 			}
 
 			// Create combination
-			combo := dimensionCombination{
+			combo := legacyDimensionCombination{
 				values: make(map[string]string),
 				prefix: prefix.String(),
 			}
