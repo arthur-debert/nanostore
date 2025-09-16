@@ -437,6 +437,11 @@ func (qb *queryBuilder) buildWhereClausesAndArgs(filters map[string]interface{},
 				searchPattern := "%" + searchTerm + "%"
 				args = append(args, searchPattern, searchPattern)
 			}
+		case "uuid":
+			if uuidValue, ok := value.(string); ok && uuidValue != "" {
+				whereClauses = append(whereClauses, "uuid = ?")
+				args = append(args, uuidValue)
+			}
 		default:
 			// Check if it's a dimension filter
 			if dim, found := qb.config.GetDimension(key); found {
