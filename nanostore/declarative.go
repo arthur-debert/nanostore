@@ -692,78 +692,47 @@ func (q *TypedQuery[T]) Offset(n int) *TypedQuery[T] {
 
 // Find executes the query and returns all matching documents
 func (q *TypedQuery[T]) Find() ([]T, error) {
-	// Process filters to handle special cases
+	// Pass all filters to the database - no more client-side filtering needed
 	processedFilters := make(map[string]interface{})
-
 	for key, value := range q.filters {
-		if strings.HasSuffix(key, "__not") {
-			// Handle NOT filters - for now, we'll do client-side filtering
-			continue
-		} else if strings.HasSuffix(key, "__exists") {
-			// Handle EXISTS filters - for now, we'll do client-side filtering
-			continue
-		} else if strings.HasSuffix(key, "__not_exists") {
-			// Handle NOT EXISTS filters - for now, we'll do client-side filtering
-			continue
-		} else {
-			processedFilters[key] = value
+		processedFilters[key] = value
+	}
+
+	// Build OrderBy clauses
+	orderClauses := make([]OrderClause, len(q.orderBy))
+	for i, field := range q.orderBy {
+		descending := false
+		if strings.HasPrefix(field, "-") {
+			descending = true
+			field = field[1:]
+		}
+		orderClauses[i] = OrderClause{
+			Column:     field,
+			Descending: descending,
 		}
 	}
 
-	// Execute the query with processed filters
-	docs, err := q.store.store.List(ListOptions{
+	// Build ListOptions
+	opts := ListOptions{
 		Filters: processedFilters,
-	})
+		OrderBy: orderClauses,
+	}
+	if q.limit > 0 {
+		opts.Limit = &q.limit
+	}
+	if q.offset > 0 {
+		opts.Offset = &q.offset
+	}
+
+	// Execute the query
+	docs, err := q.store.store.List(opts)
 	if err != nil {
 		return nil, err
 	}
 
-	// Apply client-side filtering for special cases
-	filteredDocs := []Document{}
+	// Convert documents to typed results (no client-side filtering needed)
+	results := make([]T, 0, len(docs))
 	for _, doc := range docs {
-		include := true
-
-		// Check NOT filters
-		for key, value := range q.filters {
-			if strings.HasSuffix(key, "__not") {
-				dimName := strings.TrimSuffix(key, "__not")
-				if docValue, exists := doc.Dimensions[dimName]; exists && docValue == value {
-					include = false
-					break
-				}
-			}
-		}
-
-		// Check EXISTS filters
-		for key := range q.filters {
-			if strings.HasSuffix(key, "__exists") {
-				dimName := strings.TrimSuffix(key, "__exists")
-				if _, exists := doc.Dimensions[dimName]; !exists {
-					include = false
-					break
-				}
-				// Also check for empty string
-				if docValue, exists := doc.Dimensions[dimName]; exists && docValue == "" {
-					include = false
-					break
-				}
-			} else if strings.HasSuffix(key, "__not_exists") {
-				dimName := strings.TrimSuffix(key, "__not_exists")
-				if docValue, exists := doc.Dimensions[dimName]; exists && docValue != "" {
-					include = false
-					break
-				}
-			}
-		}
-
-		if include {
-			filteredDocs = append(filteredDocs, doc)
-		}
-	}
-
-	// Convert documents to typed results
-	results := make([]T, 0, len(filteredDocs))
-	for _, doc := range filteredDocs {
 		item := new(T)
 
 		// Set Document embedded field
@@ -782,22 +751,6 @@ func (q *TypedQuery[T]) Find() ([]T, error) {
 		}
 
 		results = append(results, *item)
-	}
-
-	// Apply client-side ordering, limit, and offset
-	// Note: In a real implementation, these would be pushed to the database
-	// TODO: Implement ordering when q.orderBy is specified
-
-	// Apply offset
-	if q.offset > 0 && q.offset < len(results) {
-		results = results[q.offset:]
-	} else if q.offset >= len(results) {
-		results = []T{}
-	}
-
-	// Apply limit
-	if q.limit > 0 && q.limit < len(results) {
-		results = results[:q.limit]
 	}
 
 	return results, nil

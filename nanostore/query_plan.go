@@ -141,12 +141,12 @@ func (qa *QueryAnalyzer) analyzeFilters(filters map[string]interface{}) []Filter
 		switch filterType {
 		case FilterExists:
 			result = append(result, Filter{
-				Type:   FilterIsNotNull,
+				Type:   FilterExists,
 				Column: column,
 			})
 		case FilterNotExists:
 			result = append(result, Filter{
-				Type:   FilterIsNull,
+				Type:   FilterNotExists,
 				Column: column,
 			})
 		case FilterNotEquals:

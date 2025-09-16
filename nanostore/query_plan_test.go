@@ -244,7 +244,7 @@ func TestAnalyzeFiltersWithSuffixes(t *testing.T) {
 				"assignee__exists": true,
 			},
 			expected: []Filter{
-				{Type: FilterIsNotNull, Column: "assignee"},
+				{Type: FilterExists, Column: "assignee"},
 			},
 		},
 		{
@@ -253,7 +253,7 @@ func TestAnalyzeFiltersWithSuffixes(t *testing.T) {
 				"assignee__not_exists": true,
 			},
 			expected: []Filter{
-				{Type: FilterIsNull, Column: "assignee"},
+				{Type: FilterNotExists, Column: "assignee"},
 			},
 		},
 		{
@@ -264,7 +264,7 @@ func TestAnalyzeFiltersWithSuffixes(t *testing.T) {
 			},
 			expected: []Filter{
 				{Type: FilterEquals, Column: "status", Value: "done"},
-				{Type: FilterIsNull, Column: "assignee"},
+				{Type: FilterNotExists, Column: "assignee"},
 			},
 		},
 	}
