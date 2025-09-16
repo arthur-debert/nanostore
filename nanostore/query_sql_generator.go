@@ -182,6 +182,12 @@ func (qsg *QuerySQLGenerator) buildFilterCondition(filter Filter, argNum int) (s
 		return fmt.Sprintf("%s IS NULL", dbColumn), nil
 	case FilterIsNotNull:
 		return fmt.Sprintf("%s IS NOT NULL", dbColumn), nil
+	case FilterExists:
+		// EXISTS means: IS NOT NULL AND != ''
+		return fmt.Sprintf("(%s IS NOT NULL AND %s != '')", dbColumn, dbColumn), nil
+	case FilterNotExists:
+		// NOT EXISTS means: IS NULL OR = ''
+		return fmt.Sprintf("(%s IS NULL OR %s = '')", dbColumn, dbColumn), nil
 	case FilterLike:
 		return fmt.Sprintf("%s LIKE $%d", dbColumn, argNum), []interface{}{filter.Value}
 	default:
