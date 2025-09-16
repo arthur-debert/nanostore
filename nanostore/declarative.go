@@ -299,3 +299,169 @@ func hasEmbeddedDocument(t reflect.Type) bool {
 func (ts *TypedStore[T]) Close() error {
 	return ts.store.Close()
 }
+
+// Create adds a new document to the store
+func (ts *TypedStore[T]) Create(title string, item *T) (string, error) {
+	// Extract dimensions from the struct
+	dimensions, err := ts.extractDimensions(item)
+	if err != nil {
+		return "", fmt.Errorf("failed to extract dimensions: %w", err)
+	}
+
+	// Create the document
+	uuid, err := ts.store.Add(title, dimensions)
+	if err != nil {
+		return "", err
+	}
+
+	// Update the item with the created document info
+	if err := ts.populateDocument(item, uuid); err != nil {
+		return "", fmt.Errorf("failed to populate document: %w", err)
+	}
+
+	return uuid, nil
+}
+
+// Update modifies an existing document
+func (ts *TypedStore[T]) Update(id string, item *T) error {
+	// Extract dimensions from the struct
+	dimensions, err := ts.extractDimensions(item)
+	if err != nil {
+		return fmt.Errorf("failed to extract dimensions: %w", err)
+	}
+
+	// Get the document value for title and body
+	docValue := reflect.ValueOf(item).Elem()
+	var title, body *string
+
+	// Find Document embedded field
+	for i := 0; i < docValue.NumField(); i++ {
+		field := docValue.Field(i)
+		if field.Type() == reflect.TypeOf(Document{}) {
+			doc := field.Interface().(Document)
+			title = &doc.Title
+			body = &doc.Body
+			break
+		}
+	}
+
+	// Create update request
+	req := UpdateRequest{
+		Title:      title,
+		Body:       body,
+		Dimensions: dimensions,
+	}
+
+	return ts.store.Update(id, req)
+}
+
+// Delete removes a document from the store
+func (ts *TypedStore[T]) Delete(id string, cascade bool) error {
+	return ts.store.Delete(id, cascade)
+}
+
+// Get retrieves a document by ID
+func (ts *TypedStore[T]) Get(id string) (*T, error) {
+	// First resolve the ID to UUID if necessary
+	uuid, err := ts.store.ResolveUUID(id)
+	if err != nil {
+		// If resolution fails, assume it's already a UUID
+		uuid = id
+	}
+
+	// Get all documents and filter by UUID
+	// Since there's no direct Get method or UUID filter, we need to list all and filter
+	docs, err := ts.store.List(ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+
+	// Find the document with matching UUID
+	var doc *Document
+	for i := range docs {
+		if docs[i].UUID == uuid {
+			doc = &docs[i]
+			break
+		}
+	}
+
+	if doc == nil {
+		return nil, fmt.Errorf("document not found")
+	}
+
+	// Create new instance of T
+	item := new(T)
+
+	// Set Document embedded field
+	itemValue := reflect.ValueOf(item).Elem()
+	for i := 0; i < itemValue.NumField(); i++ {
+		field := itemValue.Field(i)
+		if field.Type() == reflect.TypeOf(Document{}) {
+			field.Set(reflect.ValueOf(*doc))
+			break
+		}
+	}
+
+	// Populate dimension fields
+	if err := ts.populateDimensions(item, doc.Dimensions); err != nil {
+		return nil, fmt.Errorf("failed to populate dimensions: %w", err)
+	}
+
+	return item, nil
+}
+
+// extractDimensions extracts dimension values from struct fields
+func (ts *TypedStore[T]) extractDimensions(item *T) (map[string]interface{}, error) {
+	dimensions := make(map[string]interface{})
+	itemValue := reflect.ValueOf(item).Elem()
+
+	if ts.structType.Kind() == reflect.Ptr {
+		ts.structType = ts.structType.Elem()
+	}
+
+	for dimName, fieldIdx := range ts.fieldIndices {
+		field := itemValue.Field(fieldIdx)
+		value := field.String()
+		if value != "" {
+			dimensions[dimName] = value
+		}
+	}
+
+	return dimensions, nil
+}
+
+// populateDimensions sets struct fields from dimension values
+func (ts *TypedStore[T]) populateDimensions(item *T, dimensions map[string]interface{}) error {
+	itemValue := reflect.ValueOf(item).Elem()
+
+	for dimName, fieldIdx := range ts.fieldIndices {
+		if value, exists := dimensions[dimName]; exists {
+			field := itemValue.Field(fieldIdx)
+			if strValue, ok := value.(string); ok {
+				field.SetString(strValue)
+			}
+		}
+	}
+
+	return nil
+}
+
+// populateDocument updates the document UUID in the struct
+func (ts *TypedStore[T]) populateDocument(item *T, uuid string) error {
+	itemValue := reflect.ValueOf(item).Elem()
+
+	// Find and update Document embedded field
+	for i := 0; i < itemValue.NumField(); i++ {
+		field := itemValue.Field(i)
+		if field.Type() == reflect.TypeOf(Document{}) {
+			if field.CanSet() {
+				doc := field.Interface().(Document)
+				doc.UUID = uuid
+				field.Set(reflect.ValueOf(doc))
+				return nil
+			}
+		}
+	}
+
+	return fmt.Errorf("Document field not found or not settable")
+}
