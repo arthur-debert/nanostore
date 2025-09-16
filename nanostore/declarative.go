@@ -416,6 +416,8 @@ func (ts *TypedStore[T]) Delete(id string, cascade bool) error {
 }
 
 // Get retrieves a document by ID
+// Supports both UUIDs and user-facing IDs (e.g., "1", "p3", "1.2.h4")
+// This method is optimized: UUID filters generate simple WHERE clauses
 func (ts *TypedStore[T]) Get(id string) (*T, error) {
 	// First resolve the ID to UUID if necessary
 	uuid, err := ts.store.ResolveUUID(id)
@@ -425,6 +427,7 @@ func (ts *TypedStore[T]) Get(id string) (*T, error) {
 	}
 
 	// Use filtered List to get only the document with matching UUID
+	// Note: This is efficient - the query builder generates a simple WHERE uuid = ? clause
 	docs, err := ts.store.List(ListOptions{
 		Filters: map[string]interface{}{
 			"uuid": uuid,
