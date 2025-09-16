@@ -1,0 +1,792 @@
+Nanostore Declarative API Guide
+
+A complete guide to building a hierarchical Todo management application using nanostore's Declarative API.
+
+Table of Contents
+
+1. Introduction
+2. Setting Up the Todo Model
+3. Creating Your First Todos
+4. Understanding Hierarchical IDs
+5. Building Complex Todo Structures
+6. Querying and Filtering
+7. Search Functionality
+8. Status Management and Soft Delete
+9. Advanced Operations
+10. Best Practices
+11. Complete Working Example
+
+1. Introduction
+
+    Nanostore's Declarative API lets you define your data model using Go struct tags, automatically generating a type-safe interface for managing hierarchical documents. The core value proposition is automatic ID ordering - nanostore generates human-readable, stable IDs that preserve hierarchical relationships and ordering.
+
+    Throughout this guide, we show both shell commands (from a hypothetical 'too' todo manager CLI) and the corresponding nanostore API calls that power them. This demonstrates how nanostore's automatic ID generation makes building user-friendly interfaces intuitive.
+
+    In this guide, we'll build a complete Todo management application that supports:
+
+    - Nested todos (subtasks with unlimited depth)
+    - Status management (pending, active, done)
+    - Priority levels (low, medium, high)
+    - Activity states (active, archived, deleted for soft-delete)
+    - Smart ID generation (e.g., 1, 1.1, 1.2, 2, h1 for high-priority items)
+
+    The beauty of nanostore is that when you run:
+
+        $ too add --to 1 "Buy milk"
+
+    Behind the scenes, nanostore automatically:
+    - Generates the next sequential ID (1.4 if 1.1, 1.2, 1.3 exist)
+    - Maintains proper hierarchical ordering
+    - Handles ID prefixes based on status/priority
+    - Provides type-safe, compile-time checked operations
+
+    Let's see this power in action.
+
+2. Setting Up the Todo Model
+
+    First, we define our TodoItem struct using nanostore's declarative tags:
+
+        package main
+
+        import (
+            "github.com/arthur-debert/nanostore/nanostore"
+        )
+
+        type TodoItem struct {
+            nanostore.Document
+            
+            // Status with enumerated values and prefix for completed items
+            Status string `values:"pending,active,done" prefix:"done=d" default:"pending"`
+            
+            // Priority with prefix for high-priority items  
+            Priority string `values:"low,medium,high" prefix:"high=h" default:"medium"`
+            
+            // Activity for soft-delete functionality
+            Activity string `values:"active,archived,deleted" default:"active"`
+            
+            // Parent reference for hierarchical structure
+            ParentID string `dimension:"parent_id,ref"`
+        }
+
+    Now let's create our store and start building todos:
+
+        // Initialize the store from our type definition
+        store, err := nanostore.NewFromType[TodoItem](":memory:")
+        if err != nil {
+            log.Fatal(err)
+        }
+        defer store.Close()
+
+    The declarative API automatically generates the configuration from struct tags:
+    - Status becomes an enumerated dimension with values ["pending", "active", "done"]
+    - Completed todos get the prefix 'd' (so d1, d2, etc.)
+    - Priority gets prefix 'h' for high-priority items
+    - ParentID creates hierarchical relationships
+
+3. Creating Your First Todos
+
+Let's start by creating some basic todos and observe how nanostore automatically assigns IDs:
+
+Creating the First Todo
+
+    $ too add "Groceries"
+
+    // Behind the scenes: nanostore.Create()
+    id, err := store.Create("Groceries", &TodoItem{})
+    // id = "1", gets default status="pending", priority="medium", activity="active"
+
+Output:
+
+    ○ 1. Groceries
+
+Adding a Subtask
+
+    $ too add --to 1 "Milk"
+
+    // Behind the scenes: hierarchical creation
+    id, err := store.Create("Milk", &TodoItem{
+        ParentID: "1", // References parent todo
+    })
+    // id = "1.1" - automatically inherits parent's ID space
+
+Output:
+
+    ○ 1. Groceries
+      ○ 1.1. Milk
+
+Adding More Subtasks
+
+    $ too add --to 1 "Bread"
+
+    // Behind the scenes
+    id, err := store.Create("Bread", &TodoItem{
+        ParentID: "1",
+    })
+    // id = "1.2" - next sequential ID under parent "1"
+
+Output:
+
+    ○ 1. Groceries
+      ○ 1.2. Bread
+      ○ 1.1. Milk
+
+Adding Even More Subtasks
+
+    $ too add --to 1 "Eggs"
+
+    id, err := store.Create("Eggs", &TodoItem{
+        ParentID: "1",
+    })
+    // id = "1.3"
+
+Output:
+
+    ○ 1. Groceries
+      ○ 1.3. Eggs
+      ○ 1.2. Bread  
+      ○ 1.1. Milk
+
+4. Understanding Hierarchical IDs
+
+    Notice how nanostore automatically:
+
+    1. Generates sequential IDs: 1, 1.1, 1.2, 1.3
+    2. Preserves hierarchy: All subtasks start with parent ID 1.
+    3. Orders newest first: 1.3 appears before 1.2 and 1.1
+    4. Maintains stability: IDs never change once assigned
+
+    This ID system makes it easy to reference todos in commands and provides intuitive ordering.
+
+5. Building Complex Todo Structures
+
+    Let's create a second top-level todo with its own subtasks:
+
+    Creating Another Root Todo
+
+        $ too add "Pack for Trip"
+
+        id, err := store.Create("Pack for Trip", &TodoItem{})
+        // id = "2" - next sequential root-level ID
+
+Output:
+
+    ○ 1. Groceries
+      ○ 1.3. Eggs
+      ○ 1.2. Bread
+      ○ 1.1. Milk
+    ○ 2. Pack for Trip
+
+Adding Subtasks to the New Todo
+
+    $ too add --to 2 "Clothes"
+
+    id, err := store.Create("Clothes", &TodoItem{
+        ParentID: "2",
+    })
+    // id = "2.1"
+
+Output:
+
+    ○ 1. Groceries
+      ○ 1.3. Eggs
+      ○ 1.2. Bread
+      ○ 1.1. Milk
+    ○ 2. Pack for Trip
+      ○ 2.1. Clothes
+
+Adding Multiple Subtasks
+
+    $ too add --to 2 "Camera Gear"
+
+    id, err := store.Create("Camera Gear", &TodoItem{
+        ParentID: "2",
+    })
+    // id = "2.2"
+
+    $ too add --to 2 "Passport"  
+
+    id, err := store.Create("Passport", &TodoItem{
+        ParentID: "2",
+    })
+    // id = "2.3"
+
+Output:
+
+    ○ 1. Groceries
+      ○ 1.3. Eggs
+      ○ 1.2. Bread
+      ○ 1.1. Milk
+    ○ 2. Pack for Trip
+      ○ 2.3. Passport
+      ○ 2.2. Camera Gear
+      ○ 2.1. Clothes
+
+Listing All Todos
+
+    $ too list
+
+    // Behind the scenes: querying active todos
+    todos, err := store.Query().
+        Activity("active").           // Only active todos
+        StatusIn("pending", "active"). // Exclude completed
+        Find()
+
+Output:
+
+    ○ 1. Groceries
+      ○ 1.3. Eggs
+      ○ 1.2. Bread
+      ○ 1.1. Milk
+    ○ 2. Pack for Trip
+      ○ 2.3. Passport
+      ○ 2.2. Camera Gear
+      ○ 2.1. Clothes
+
+6. Querying and Filtering
+
+    The declarative API generates type-safe query methods based on your struct tags:
+
+    Finding High-Priority Todos
+
+    $ too list --priority high
+
+    // Behind the scenes: priority filtering
+    todos, err := store.Query().
+        Priority("high").
+        Activity("active").
+        StatusIn("pending", "active").
+        Find()
+
+    Finding Root Todos Only
+
+    $ too list --roots-only
+
+    // Behind the scenes: parent filtering
+    todos, err := store.Query().
+        ParentIDNotExists(). // No parent = root level
+        Activity("active").
+        Find()
+
+    Finding Subtasks of Specific Todo
+
+    $ too list --under 1
+
+    // Behind the scenes: hierarchical filtering
+    todos, err := store.Query().
+        ParentID("1"). // Smart ID resolution works here too
+        Activity("active").
+        Find()
+
+    Complex Filtering
+
+    // Find active, high-priority todos that are not completed
+    todos, err := store.Query().
+        Activity("active").
+        Priority("high").
+        StatusNot("done").
+        OrderBy("created_at").
+        Limit(10).
+        Find()
+
+7. Search Functionality
+
+    Text Search Across Titles
+
+    $ too search "Pack"
+
+    // Behind the scenes: text search
+    todos, err := store.Query().
+        Search("Pack"). // Searches title and body fields
+        Activity("active").
+        Find()
+
+Output:
+
+    ○ 2. Pack for Trip
+
+    Found 1 match
+
+    Combined Search and Filtering
+
+    // Find high-priority todos containing "important"
+    todos, err := store.Query().
+        Search("important").
+        Priority("high").
+        StatusNot("done").
+        Find()
+
+8. Status Management and Soft Delete
+
+    Completing a Todo
+
+    $ too complete 1.2  # Complete "Bread"
+
+    // Behind the scenes: status update
+    err := store.Update("1.2", &TodoItem{
+        Status: "done",
+    })
+    // ID automatically changes from "1.2" to "d1.2" due to prefix
+
+Output with --all flag to show completed items:
+
+    ◐ 1. Groceries
+      ○ 1.3. Eggs
+      ● d1.2. Bread      # Notice the 'd' prefix and filled circle
+      ○ 1.1. Milk
+    ○ 2. Pack for Trip
+      ○ 2.3. Passport
+      ○ 2.2. Camera Gear
+      ○ 2.1. Clothes
+
+    Soft Delete (Archive)
+
+    $ too archive 1.1   # Archive "Milk"
+
+    // Behind the scenes: activity update
+    err := store.Update("1.1", &TodoItem{
+        Activity: "archived",
+    })
+
+    Hard Delete (Cleanup)
+
+    $ too cleanup --days 30  # Delete items archived 30+ days ago
+
+    // Behind the scenes: permanent deletion
+    cutoffDate := time.Now().AddDate(0, 0, -30)
+    archivedTodos, err := store.Query().
+        Activity("archived").
+        UpdatedAtBefore(cutoffDate). // Custom date filter
+        Find()
+
+    for _, todo := range archivedTodos {
+        err := store.Delete(todo.UUID, true) // cascade=true
+    }
+
+    Status Transitions
+
+    // Activate a todo
+    err := store.Update("1.3", &TodoItem{
+        Status: "active",
+    })
+
+    // Set high priority  
+    err := store.Update("2.1", &TodoItem{
+        Priority: "high",
+    })
+    // ID automatically changes to "h2.1" due to prefix
+
+9. Advanced Operations
+
+    Bulk Operations
+
+    // Complete all subtasks of a parent
+    subtasks, err := store.Query().
+        ParentID("1").
+        StatusNot("done").
+        Find()
+
+    for _, task := range subtasks {
+        task.Status = "done"
+        err := store.Update(task.UUID, &task)
+    }
+
+    Moving Todos (Reparenting)
+
+    // Move a todo to be a subtask of another
+    err := store.Update("2.1", &TodoItem{
+        ParentID: "1", // Move "Clothes" under "Groceries"
+    })
+    // ID automatically regenerates to maintain hierarchy
+
+    Counting and Aggregation
+
+    // Count pending todos
+    count, err := store.Query().
+        Status("pending").
+        Activity("active").
+        Count()
+
+    // Check if any high-priority todos exist
+    hasUrgent, err := store.Query().
+        Priority("high").
+        StatusNot("done").
+        Exists()
+
+    // Get the first pending todo
+    next, err := store.Query().
+        Status("pending").
+        OrderBy("created_at").
+        First()
+
+    Batch Creation
+
+    groceries := []string{"Milk", "Bread", "Eggs", "Cheese"}
+    var parentID string
+
+    // Create parent
+    parentID, err := store.Create("Groceries", &TodoItem{
+        Priority: "high",
+    })
+
+    // Create all subtasks
+    for _, item := range groceries {
+        _, err := store.Create(item, &TodoItem{
+            ParentID: parentID,
+            Priority: "medium",
+        })
+    }
+
+10. Best Practices
+
+    1. Use Type-Safe Updates
+
+    // Good: Type-safe update
+    todo, err := store.Get("1.2")
+    if err != nil {
+        return err
+    }
+    todo.Status = "done"
+    todo.Priority = "high"
+    err = store.Update(todo.UUID, &todo)
+
+    // Avoid: Manual dimension maps
+    err = store.Update("1.2", map[string]interface{}{
+        "status": "done",    // No compile-time checking
+        "priority": "high",
+    })
+
+    2. Leverage Smart ID Resolution
+
+    // Both work - use what's convenient
+    err := store.Update("1.2", &todo)        // User-facing ID
+    err := store.Update(todo.UUID, &todo)    // Internal UUID
+
+    3. Efficient Querying
+
+    // Good: Specific queries
+    todos, err := store.Query().
+        Activity("active").
+        Status("pending").
+        ParentID(parentID).
+        Limit(20).
+        Find()
+
+    // Avoid: Over-fetching then filtering
+    allTodos, err := store.Query().Find()
+    // ... filter in Go code
+
+    4. Handle Prefixes Thoughtfully
+
+    // Status prefixes change IDs - plan accordingly
+    type TodoItem struct {
+        Status string `values:"pending,active,done" prefix:"done=d,active=a"`
+        //                                                   ↑ Multiple prefixes
+    }
+
+    5. Use Hierarchical Queries Efficiently
+
+    // Find all descendants (children, grandchildren, etc.)
+    descendants, err := store.Query().
+        ParentIDStartsWith("1."). // All under "1"
+        Find()
+
+    // Find direct children only
+    children, err := store.Query().
+        ParentID("1").
+        Find()
+
+    6. Implement Proper Error Handling
+
+    todo, err := store.Get("nonexistent")
+    if err != nil {
+        if errors.Is(err, nanostore.ErrNotFound) {
+            // Handle missing todo
+            return fmt.Errorf("todo not found")
+        }
+        return fmt.Errorf("database error: %w", err)
+    }
+
+11. Complete Working Example
+
+    Here's a complete implementation that you can run to see all the concepts in action:
+
+    package main
+
+    import (
+        "fmt"
+        "log"
+        "time"
+        
+        "github.com/arthur-debert/nanostore/nanostore"
+    )
+
+    // TodoItem represents a todo item with hierarchical support
+    type TodoItem struct {
+        nanostore.Document
+        
+        Status   string `values:"pending,active,done" prefix:"done=d" default:"pending"`
+        Priority string `values:"low,medium,high" prefix:"high=h" default:"medium"`
+        Activity string `values:"active,archived,deleted" default:"active"`
+        ParentID string `dimension:"parent_id,ref"`
+    }
+
+    func main() {
+        // Initialize the store
+        store, err := nanostore.NewFromType[TodoItem](":memory:")
+        if err != nil {
+            log.Fatal(err)
+        }
+        defer store.Close()
+        
+        fmt.Println("=== Creating Todo Structure ===")
+        
+        // Create root todos
+        groceriesID, _ := store.Create("Groceries", &TodoItem{})
+        fmt.Printf("Created: %s. Groceries\n", groceriesID)
+        
+        tripID, _ := store.Create("Pack for Trip", &TodoItem{Priority: "high"})
+        fmt.Printf("Created: %s. Pack for Trip\n", tripID)
+        
+        // Add groceries
+        milkID, _ := store.Create("Milk", &TodoItem{ParentID: groceriesID})
+        breadID, _ := store.Create("Bread", &TodoItem{ParentID: groceriesID})
+        eggsID, _ := store.Create("Eggs", &TodoItem{ParentID: groceriesID})
+        
+        fmt.Printf("Created: %s. Milk\n", milkID)
+        fmt.Printf("Created: %s. Bread\n", breadID)
+        fmt.Printf("Created: %s. Eggs\n", eggsID)
+        
+        // Add trip items
+        clothesID, _ := store.Create("Clothes", &TodoItem{ParentID: tripID})
+        cameraID, _ := store.Create("Camera Gear", &TodoItem{ParentID: tripID, Priority: "high"})
+        passportID, _ := store.Create("Passport", &TodoItem{ParentID: tripID, Priority: "high"})
+        
+        fmt.Printf("Created: %s. Clothes\n", clothesID)
+        fmt.Printf("Created: %s. Camera Gear\n", cameraID)
+        fmt.Printf("Created: %s. Passport\n", passportID)
+        
+        fmt.Println("\n=== Current Todo List ===")
+        printTodos(store)
+        
+        fmt.Println("\n=== Completing Some Tasks ===")
+        
+        // Complete bread
+        breadTodo, _ := store.Get(breadID)
+        breadTodo.Status = "done"
+        store.Update(breadTodo.UUID, &breadTodo)
+        fmt.Printf("Completed: Bread (new ID after completion)\n")
+        
+        // Set passport as active
+        passportTodo, _ := store.Get(passportID)
+        passportTodo.Status = "active"
+        store.Update(passportTodo.UUID, &passportTodo)
+        fmt.Printf("Activated: Passport\n")
+        
+        fmt.Println("\n=== Updated Todo List (with completed items) ===")
+        printTodosWithCompleted(store)
+        
+        fmt.Println("\n=== High Priority Items Only ===")
+        highPriorityTodos, _ := store.Query().
+            Priority("high").
+            Activity("active").
+            Find()
+        
+        for _, todo := range highPriorityTodos {
+            fmt.Printf("%s. %s (priority: %s, status: %s)\n", 
+                todo.UserFacingID, todo.Title, todo.Priority, todo.Status)
+        }
+        
+        fmt.Println("\n=== Search for 'Pack' ===")
+        searchResults, _ := store.Query().
+            Search("Pack").
+            Activity("active").
+            Find()
+        
+        for _, todo := range searchResults {
+            fmt.Printf("%s. %s\n", todo.UserFacingID, todo.Title)
+        }
+        
+        fmt.Println("\n=== Root Todos Only ===")
+        rootTodos, _ := store.Query().
+            ParentIDNotExists().
+            Activity("active").
+            Find()
+        
+        for _, todo := range rootTodos {
+            fmt.Printf("%s. %s\n", todo.UserFacingID, todo.Title)
+        }
+        
+        fmt.Println("\n=== Statistics ===")
+        totalCount, _ := store.Query().Activity("active").Count()
+        pendingCount, _ := store.Query().Status("pending").Activity("active").Count()
+        doneCount, _ := store.Query().Status("done").Count()
+        highPriorityCount, _ := store.Query().Priority("high").Activity("active").Count()
+        
+        fmt.Printf("Total active todos: %d\n", totalCount)
+        fmt.Printf("Pending todos: %d\n", pendingCount)
+        fmt.Printf("Completed todos: %d\n", doneCount)
+        fmt.Printf("High priority todos: %d\n", highPriorityCount)
+    }
+
+    func printTodos(store *nanostore.TypedStore[TodoItem]) {
+        todos, _ := store.Query().
+            Activity("active").
+            StatusIn("pending", "active").
+            OrderBy("created_at").
+            Find()
+        
+        for _, todo := range todos {
+            indent := ""
+            if todo.ParentID != "" {
+                indent = "  "
+            }
+            
+            status := "○"
+            if todo.Status == "active" {
+                status = "◐"
+            }
+            
+            fmt.Printf("%s%s %s. %s\n", indent, status, todo.UserFacingID, todo.Title)
+        }
+    }
+
+    func printTodosWithCompleted(store *nanostore.TypedStore[TodoItem]) {
+        todos, _ := store.Query().
+            Activity("active").
+            OrderBy("created_at").
+            Find()
+        
+        for _, todo := range todos {
+            indent := ""
+            if todo.ParentID != "" {
+                indent = "  "
+            }
+            
+            status := "○" // pending
+            if todo.Status == "active" {
+                status = "◐"
+            } else if todo.Status == "done" {
+                status = "●"
+            }
+            
+            fmt.Printf("%s%s %s. %s\n", indent, status, todo.UserFacingID, todo.Title)
+        }
+    }
+
+    Expected Output
+
+    === Creating Todo Structure ===
+    Created: 1. Groceries
+    Created: h2. Pack for Trip
+    Created: 1.1. Milk
+    Created: 1.2. Bread
+    Created: 1.3. Eggs
+    Created: h2.1. Clothes
+    Created: h2.2. Camera Gear
+    Created: h2.3. Passport
+
+    === Current Todo List ===
+    ○ 1. Groceries
+      ○ 1.3. Eggs
+      ○ 1.2. Bread
+      ○ 1.1. Milk
+    ○ h2. Pack for Trip
+      ○ h2.3. Passport
+      ○ h2.2. Camera Gear
+      ○ h2.1. Clothes
+
+    === Completing Some Tasks ===
+    Completed: Bread (new ID after completion)
+    Activated: Passport
+
+    === Updated Todo List (with completed items) ===
+    ○ 1. Groceries
+      ○ 1.3. Eggs
+      ● d1.2. Bread
+      ○ 1.1. Milk
+    ○ h2. Pack for Trip
+      ◐ h2.3. Passport
+      ○ h2.2. Camera Gear
+      ○ h2.1. Clothes
+
+    === High Priority Items Only ===
+    h2. Pack for Trip (priority: high, status: pending)
+    h2.2. Camera Gear (priority: high, status: pending)
+    h2.3. Passport (priority: high, status: active)
+
+    === Search for 'Pack' ===
+    h2. Pack for Trip
+
+    === Root Todos Only ===
+    1. Groceries
+    h2. Pack for Trip
+
+    === Statistics ===
+    Total active todos: 7
+    Pending todos: 6
+    Completed todos: 1
+    High priority todos: 3
+
+    This example demonstrates all the key features:
+
+- Automatic ID generation: 1, h2 (high priority), 1.1, 1.2, etc.
+- Hierarchical relationships: Subtasks properly nested
+- Prefix handling: High priority items get h prefix, completed items get d prefix
+- Type-safe querying: All queries use generated methods
+- Smart ID resolution: Works with both user-facing IDs and UUIDs
+- Status management: Transitions between pending, active, and done
+- Flexible filtering: By status, priority, activity, hierarchy, and text search
+
+Implementation Notes
+
+    Shell Command Integration
+
+    The shell commands shown throughout this guide (too add, too list, etc.) are examples of how you might build a CLI tool on top of nanostore. The pattern is:
+
+    1. Parse command-line arguments into structured data
+    2. Call nanostore APIs with type-safe operations
+    3. Format and display the results using the auto-generated IDs
+
+    For example, too add --to 1 "Buy milk" would:
+
+    // Parse arguments
+    parentID := "1"  // from --to flag
+    title := "Buy milk"
+
+    // Call nanostore
+    id, err := store.Create(title, &TodoItem{
+        ParentID: parentID,
+    })
+
+    // Display result
+    fmt.Printf("Created: %s. %s\n", id, title)
+
+    Production Considerations
+
+    For production applications:
+
+    - Use proper database paths instead of :memory:
+    - Implement proper error handling and validation
+    - Add transaction support for bulk operations
+    - Consider indexing for performance on large datasets
+    - Implement backup/restore functionality
+    - Add user authentication and multi-tenancy if needed
+
+    Next Steps
+
+    - Try the complete working example above
+    - Explore the type-specific operators guide for advanced filtering
+    - See the performance optimization guide for large-scale usage
+    - Check out multi-user patterns for collaborative applications
+
+    The nanostore Declarative API provides:
+
+    - Automatic ID generation with intuitive hierarchical ordering
+    - Type-safe operations generated from struct tags  
+    - Flexible querying with method chaining
+    - Smart ID resolution for user-friendly interfaces
+    - Built-in hierarchical support for complex data structures
+
+    The key insight is that by defining your data model declaratively, nanostore handles all the complexity of ID management, hierarchy, and querying - letting you focus on building your application logic.
+
+    Try the examples above to see how nanostore makes hierarchical data management both powerful and intuitive!
