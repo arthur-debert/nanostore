@@ -434,6 +434,13 @@ func (s *jsonFileStore) Add(title string, dimensions map[string]interface{}) (st
 		}
 	}
 
+	// Also store any _data prefixed values directly
+	for key, value := range dimensions {
+		if strings.HasPrefix(key, "_data.") {
+			doc.Dimensions[key] = value
+		}
+	}
+
 	// Add to store
 	s.data.Documents = append(s.data.Documents, doc)
 
@@ -492,8 +499,24 @@ func (s *jsonFileStore) Update(id string, updates UpdateRequest) error {
 			}
 		}
 
-		// Validate dimension updates
+		// First handle _data prefixed values (no validation needed)
 		for dimName, value := range updates.Dimensions {
+			if strings.HasPrefix(dimName, "_data.") {
+				if value != nil {
+					doc.Dimensions[dimName] = value
+				} else {
+					delete(doc.Dimensions, dimName)
+				}
+			}
+		}
+
+		// Then validate and process dimension updates
+		for dimName, value := range updates.Dimensions {
+			// Skip _data prefixed fields (already handled)
+			if strings.HasPrefix(dimName, "_data.") {
+				continue
+			}
+
 			// Find dimension config
 			var dimConfig *DimensionConfig
 			for _, dc := range s.config.Dimensions {

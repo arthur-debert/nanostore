@@ -165,12 +165,12 @@ func TestDeclarativeRobustness(t *testing.T) {
 					t.Fatalf("failed to retrieve: %v", err)
 				}
 
-				// Compare values - numeric fields might not be preserved if not dimensions
-				if retrieved.IntField == 0 && test.item.IntField != 0 {
-					t.Logf("KNOWN ISSUE: non-dimension int fields not preserved: got %v, want %v", retrieved.IntField, test.item.IntField)
+				// Compare values - all fields should now be preserved
+				if retrieved.IntField != test.item.IntField {
+					t.Errorf("IntField not preserved: got %v, want %v", retrieved.IntField, test.item.IntField)
 				}
-				if retrieved.FloatField == 0 && test.item.FloatField != 0 {
-					t.Logf("KNOWN ISSUE: non-dimension float fields not preserved: got %v, want %v", retrieved.FloatField, test.item.FloatField)
+				if retrieved.FloatField != test.item.FloatField {
+					t.Errorf("FloatField not preserved: got %v, want %v", retrieved.FloatField, test.item.FloatField)
 				}
 			})
 		}

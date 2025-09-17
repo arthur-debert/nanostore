@@ -13,7 +13,7 @@ type Document struct {
 	SimpleID   string                 // Generated ID like "1", "c2", "1.2.c3"
 	Title      string                 // Document title
 	Body       string                 // Optional document body
-	Dimensions map[string]interface{} // All dimension values for this document
+	Dimensions map[string]interface{} // All dimension values and data (data prefixed with "_data.")
 	CreatedAt  time.Time              // Creation timestamp
 	UpdatedAt  time.Time              // Last update timestamp
 }

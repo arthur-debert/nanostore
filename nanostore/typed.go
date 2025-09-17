@@ -8,19 +8,20 @@ import (
 	"time"
 )
 
-// MarshalDimensions converts a struct with dimension tags into a dimensions map
-func MarshalDimensions(v interface{}) (map[string]interface{}, error) {
+// MarshalDimensions converts a struct with dimension tags into dimensions and data maps
+func MarshalDimensions(v interface{}) (dimensions map[string]interface{}, data map[string]interface{}, err error) {
 	val := reflect.ValueOf(v)
 	if val.Kind() == reflect.Ptr {
 		val = val.Elem()
 	}
 
 	if val.Kind() != reflect.Struct {
-		return nil, fmt.Errorf("expected struct, got %s", val.Kind())
+		return nil, nil, fmt.Errorf("expected struct, got %s", val.Kind())
 	}
 
 	typ := val.Type()
-	dimensions := make(map[string]interface{})
+	dimensions = make(map[string]interface{})
+	data = make(map[string]interface{})
 
 	for i := 0; i < typ.NumField(); i++ {
 		field := typ.Field(i)
@@ -36,48 +37,58 @@ func MarshalDimensions(v interface{}) (map[string]interface{}, error) {
 			continue
 		}
 
-		// Check for dimension tag
-		dimTag := field.Tag.Get("dimension")
-		if dimTag == "" {
-			// Also check for values tag (declarative API style)
-			if field.Tag.Get("values") != "" {
-				dimTag = strings.ToLower(field.Name)
-			} else {
-				continue
-			}
-		}
-
-		// Handle dimension:"name,options" format
-		parts := strings.Split(dimTag, ",")
-		dimName := parts[0]
-
-		// Skip if dimension name is "-"
-		if dimName == "-" {
-			continue
-		}
-
 		// Get the value
 		value := fieldVal.Interface()
 
-		// Skip zero values (except false for bools)
-		if isZeroValue(fieldVal) && fieldVal.Kind() != reflect.Bool {
-			continue
+		// Check for dimension tag
+		dimTag := field.Tag.Get("dimension")
+		isDimension := false
+		
+		if dimTag != "" {
+			isDimension = true
+		} else if field.Tag.Get("values") != "" {
+			// Also check for values tag (declarative API style)
+			dimTag = strings.ToLower(field.Name)
+			isDimension = true
 		}
 
-		// Validate that the value is a simple type
-		if err := validateSimpleType(value, dimName); err != nil {
-			return nil, err
-		}
+		if isDimension {
+			// Handle dimension:"name,options" format
+			parts := strings.Split(dimTag, ",")
+			dimName := parts[0]
 
-		// For values tag style, use lowercase field name as dimension name
-		if field.Tag.Get("values") != "" && dimTag == strings.ToLower(field.Name) {
-			dimName = strings.ToLower(field.Name)
-		}
+			// Skip if dimension name is "-"
+			if dimName == "-" {
+				continue
+			}
 
-		dimensions[dimName] = value
+			// Skip zero values for dimensions (except false for bools)
+			if isZeroValue(fieldVal) && fieldVal.Kind() != reflect.Bool {
+				continue
+			}
+
+			// Validate that the dimension value is a simple type
+			if err = validateSimpleType(value, dimName); err != nil {
+				return nil, nil, err
+			}
+
+			// For values tag style, use lowercase field name as dimension name
+			if field.Tag.Get("values") != "" && dimTag == strings.ToLower(field.Name) {
+				dimName = strings.ToLower(field.Name)
+			}
+
+			dimensions[dimName] = value
+		} else {
+			// Non-dimension field - store in data map
+			// Skip zero values to avoid storing empty data
+			if !isZeroValue(fieldVal) {
+				// Store all non-dimension fields in data map
+				data[field.Name] = value
+			}
+		}
 	}
 
-	return dimensions, nil
+	return dimensions, data, nil
 }
 
 // UnmarshalDimensions populates a struct from a Document, mapping dimensions to tagged fields
@@ -93,6 +104,15 @@ func UnmarshalDimensions(doc Document, v interface{}) error {
 	}
 
 	typ := val.Type()
+	
+	// Extract _data prefixed values to a separate map
+	dataMap := make(map[string]interface{})
+	for key, value := range doc.Dimensions {
+		if strings.HasPrefix(key, "_data.") {
+			fieldName := strings.TrimPrefix(key, "_data.")
+			dataMap[fieldName] = value
+		}
+	}
 
 	// First, populate the embedded Document fields if present
 	for i := 0; i < typ.NumField(); i++ {
@@ -122,16 +142,18 @@ func UnmarshalDimensions(doc Document, v interface{}) error {
 		dimTag := field.Tag.Get("dimension")
 		var dimName string
 		var defaultValue string
+		isDimension := false
 
-		if dimTag == "" {
+		if dimTag != "" {
+			isDimension = true
+		} else if field.Tag.Get("values") != "" {
 			// Check for values tag (declarative API style)
-			if field.Tag.Get("values") != "" {
-				dimName = strings.ToLower(field.Name)
-				defaultValue = field.Tag.Get("default")
-			} else {
-				continue
-			}
-		} else {
+			dimName = strings.ToLower(field.Name)
+			defaultValue = field.Tag.Get("default")
+			isDimension = true
+		}
+
+		if isDimension && dimTag != "" {
 			// Parse dimension tag
 			parts := strings.Split(dimTag, ",")
 			dimName = parts[0]
@@ -150,20 +172,29 @@ func UnmarshalDimensions(doc Document, v interface{}) error {
 			}
 		}
 
-		// Get value from dimensions map
-		dimValue, exists := doc.Dimensions[dimName]
-		if !exists && defaultValue != "" {
-			// Use default value
-			if err := setFieldValue(fieldVal, defaultValue); err != nil {
-				return fmt.Errorf("failed to set default for field %s: %w", field.Name, err)
+		if isDimension {
+			// Get value from dimensions map
+			dimValue, exists := doc.Dimensions[dimName]
+			if !exists && defaultValue != "" {
+				// Use default value
+				if err := setFieldValue(fieldVal, defaultValue); err != nil {
+					return fmt.Errorf("failed to set default for field %s: %w", field.Name, err)
+				}
+				continue
 			}
-			continue
-		}
 
-		if exists {
-			// Set the field value
-			if err := setFieldFromInterface(fieldVal, dimValue); err != nil {
-				return fmt.Errorf("failed to set field %s: %w", field.Name, err)
+			if exists {
+				// Set the field value
+				if err := setFieldFromInterface(fieldVal, dimValue); err != nil {
+					return fmt.Errorf("failed to set field %s: %w", field.Name, err)
+				}
+			}
+		} else {
+			// Non-dimension field - check our extracted data map
+			if dataValue, exists := dataMap[field.Name]; exists {
+				if err := setFieldFromInterface(fieldVal, dataValue); err != nil {
+					return fmt.Errorf("failed to set data field %s: %w", field.Name, err)
+				}
 			}
 		}
 	}

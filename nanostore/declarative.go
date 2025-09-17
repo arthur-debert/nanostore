@@ -45,9 +45,14 @@ func NewFromType[T any](filePath string) (*TypedStore[T], error) {
 
 // Create adds a new document with the given title and typed data
 func (ts *TypedStore[T]) Create(title string, data *T) (string, error) {
-	dimensions, err := MarshalDimensions(data)
+	dimensions, extraData, err := MarshalDimensions(data)
 	if err != nil {
 		return "", fmt.Errorf("failed to marshal dimensions: %w", err)
+	}
+
+	// Store extra data in dimensions with a special prefix
+	for key, value := range extraData {
+		dimensions["_data."+key] = value
 	}
 
 	return ts.store.Add(title, dimensions)
@@ -83,9 +88,14 @@ func (ts *TypedStore[T]) Get(id string) (*T, error) {
 
 // Update modifies an existing document with typed data
 func (ts *TypedStore[T]) Update(id string, data *T) error {
-	dimensions, err := MarshalDimensions(data)
+	dimensions, extraData, err := MarshalDimensions(data)
 	if err != nil {
 		return fmt.Errorf("failed to marshal dimensions: %w", err)
+	}
+
+	// Store extra data in dimensions with a special prefix
+	for key, value := range extraData {
+		dimensions["_data."+key] = value
 	}
 
 	// Extract title and body if they're set
