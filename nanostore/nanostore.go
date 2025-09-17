@@ -9,13 +9,13 @@ import "time"
 
 // Document represents a document in the store with its generated ID
 type Document struct {
-	UUID         string                 // Stable internal identifier
-	UserFacingID string                 // Generated ID like "1", "c2", "1.2.c3"
-	Title        string                 // Document title
-	Body         string                 // Optional document body
-	Dimensions   map[string]interface{} // All dimension values for this document
-	CreatedAt    time.Time              // Creation timestamp
-	UpdatedAt    time.Time              // Last update timestamp
+	UUID       string                 // Stable internal identifier
+	SimpleID   string                 // Generated ID like "1", "c2", "1.2.c3"
+	Title      string                 // Document title
+	Body       string                 // Optional document body
+	Dimensions map[string]interface{} // All dimension values for this document
+	CreatedAt  time.Time              // Creation timestamp
+	UpdatedAt  time.Time              // Last update timestamp
 }
 
 // ListOptions configures how documents are listed
@@ -153,8 +153,8 @@ type Store interface {
 	// Update modifies an existing document
 	Update(id string, updates UpdateRequest) error
 
-	// ResolveUUID converts a user-facing ID (e.g., "1.2.c3") to a UUID
-	ResolveUUID(userFacingID string) (string, error)
+	// ResolveUUID converts a simple ID (e.g., "1.2.c3") to a UUID
+	ResolveUUID(simpleID string) (string, error)
 
 	// Delete removes a document and optionally its children
 	// If cascade is true, all child documents are also deleted

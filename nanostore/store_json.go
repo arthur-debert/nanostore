@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -117,19 +118,124 @@ func (s *jsonFileStore) List(opts ListOptions) ([]Document, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	// For now, just return all documents (no filtering/ordering/pagination yet)
-	// We'll implement the full query engine in the next step
+	// Start with all documents
+	result := make([]Document, 0, len(s.data.Documents))
+	
+	// Apply filters
+	for _, doc := range s.data.Documents {
+		// Check dimension filters
+		if !s.matchesFilters(doc, opts.Filters) {
+			continue
+		}
 
-	// Make a copy of documents to avoid mutations
-	result := make([]Document, len(s.data.Documents))
-	copy(result, s.data.Documents)
+		// Check text search filter
+		if opts.FilterBySearch != "" && !s.matchesSearch(doc, opts.FilterBySearch) {
+			continue
+		}
 
-	// Set UserFacingID to UUID for now (will be replaced with proper ID generation)
-	for i := range result {
-		result[i].UserFacingID = result[i].UUID
+		// Make a copy to avoid mutations
+		docCopy := doc
+		// Set SimpleID to UUID for now (will be replaced with proper ID generation)
+		docCopy.SimpleID = doc.UUID
+		result = append(result, docCopy)
 	}
 
+	// TODO: Apply ordering
+	// TODO: Apply pagination (limit/offset)
+
 	return result, nil
+}
+
+// matchesFilters checks if a document matches all the provided filters
+func (s *jsonFileStore) matchesFilters(doc Document, filters map[string]interface{}) bool {
+	if len(filters) == 0 {
+		return true // No filters means match all
+	}
+
+	for filterKey, filterValue := range filters {
+		// Handle special filter for UUID
+		if filterKey == "uuid" {
+			if doc.UUID != fmt.Sprintf("%v", filterValue) {
+				return false
+			}
+			continue
+		}
+
+		// Check if it's a dimension filter
+		docValue, exists := doc.Dimensions[filterKey]
+		if !exists {
+			// Document doesn't have this dimension
+			// Check if it's a hierarchical dimension ref field
+			found := false
+			for _, dim := range s.config.Dimensions {
+				if dim.Type == Hierarchical && dim.RefField == filterKey {
+					// It's a hierarchical ref field
+					if parentValue, ok := doc.Dimensions[dim.RefField]; ok {
+						docValue = parentValue
+						exists = true
+						found = true
+						break
+					}
+				}
+			}
+			if !found {
+				return false
+			}
+		}
+
+		// Handle slice values (for "IN" style filtering)
+		switch fv := filterValue.(type) {
+		case []string:
+			// Filter value is a slice, check if document value is in the slice
+			docStr := fmt.Sprintf("%v", docValue)
+			found := false
+			for _, v := range fv {
+				if docStr == v {
+					found = true
+					break
+				}
+			}
+			if !found {
+				return false
+			}
+		case []interface{}:
+			// Filter value is a slice, check if document value is in the slice
+			docStr := fmt.Sprintf("%v", docValue)
+			found := false
+			for _, v := range fv {
+				if docStr == fmt.Sprintf("%v", v) {
+					found = true
+					break
+				}
+			}
+			if !found {
+				return false
+			}
+		default:
+			// Simple equality check
+			if fmt.Sprintf("%v", docValue) != fmt.Sprintf("%v", filterValue) {
+				return false
+			}
+		}
+	}
+
+	return true
+}
+
+// matchesSearch checks if a document matches the search text
+func (s *jsonFileStore) matchesSearch(doc Document, searchText string) bool {
+	// Simple case-insensitive substring search in title and body
+	searchLower := strings.ToLower(searchText)
+	
+	if strings.Contains(strings.ToLower(doc.Title), searchLower) {
+		return true
+	}
+	
+	if strings.Contains(strings.ToLower(doc.Body), searchLower) {
+		return true
+	}
+	
+	return false
 }
 
 // Add creates a new document
@@ -263,8 +369,8 @@ func (s *jsonFileStore) Update(id string, updates UpdateRequest) error {
 	return nil
 }
 
-// ResolveUUID converts a user-facing ID to a UUID
-func (s *jsonFileStore) ResolveUUID(userFacingID string) (string, error) {
+// ResolveUUID converts a simple ID to a UUID
+func (s *jsonFileStore) ResolveUUID(simpleID string) (string, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -404,7 +510,7 @@ func (s *jsonFileStore) generateCanonicalView() ([]Document, error) {
 	return nil, errors.New("not implemented")
 }
 
-// mapIDToUUID creates a mapping from user-facing IDs to UUIDs
+// mapIDToUUID creates a mapping from simple IDs to UUIDs
 func (s *jsonFileStore) mapIDToUUID() (map[string]string, error) {
 	// TODO: Implement ID mapping based on canonical view
 	return nil, errors.New("not implemented")
