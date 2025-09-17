@@ -132,7 +132,7 @@ func nanostore_list(handle *C.char, filtersJSON *C.char, outBuffer *C.char, buff
 	for i, doc := range docs {
 		result[i] = map[string]interface{}{
 			"uuid":           doc.UUID,
-			"user_facing_id": doc.UserFacingID,
+			"user_facing_id": doc.SimpleID,
 			"title":          doc.Title,
 			"body":           doc.Body,
 			"dimensions":     doc.Dimensions,

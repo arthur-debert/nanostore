@@ -119,7 +119,7 @@ func (s *jsonFileStore) save() error {
 
 	// Rename temp file to actual file (atomic on most filesystems)
 	if err := os.Rename(tmpFile, s.filePath); err != nil {
-		os.Remove(tmpFile) // Clean up temp file
+		_ = os.Remove(tmpFile) // Clean up temp file
 		return fmt.Errorf("failed to rename file: %w", err)
 	}
 
@@ -133,7 +133,7 @@ func (s *jsonFileStore) List(opts ListOptions) ([]Document, error) {
 
 	// Start with all documents
 	result := make([]Document, 0, len(s.data.Documents))
-	
+
 	// Apply filters
 	for _, doc := range s.data.Documents {
 		// Check dimension filters
@@ -181,7 +181,7 @@ func (s *jsonFileStore) matchesFilters(doc Document, filters map[string]interfac
 		// Handle datetime filters and dimension filters
 		var docValue interface{}
 		var exists bool
-		
+
 		switch filterKey {
 		case "created_at":
 			docValue = doc.CreatedAt
@@ -215,7 +215,7 @@ func (s *jsonFileStore) matchesFilters(doc Document, filters map[string]interfac
 
 		// Convert values to comparable strings
 		docStr := s.valueToString(docValue)
-		
+
 		// Handle slice values (for "IN" style filtering)
 		switch fv := filterValue.(type) {
 		case []string:
@@ -258,15 +258,15 @@ func (s *jsonFileStore) matchesFilters(doc Document, filters map[string]interfac
 func (s *jsonFileStore) matchesSearch(doc Document, searchText string) bool {
 	// Simple case-insensitive substring search in title and body
 	searchLower := strings.ToLower(searchText)
-	
+
 	if strings.Contains(strings.ToLower(doc.Title), searchLower) {
 		return true
 	}
-	
+
 	if strings.Contains(strings.ToLower(doc.Body), searchLower) {
 		return true
 	}
-	
+
 	return false
 }
 
@@ -291,7 +291,8 @@ func (s *jsonFileStore) Add(title string, dimensions map[string]interface{}) (st
 
 	// Apply dimension values
 	for _, dimConfig := range s.config.Dimensions {
-		if dimConfig.Type == Enumerated {
+		switch dimConfig.Type {
+		case Enumerated:
 			// Check if value was provided
 			if val, exists := dimensions[dimConfig.Name]; exists {
 				// Validate the value
@@ -304,7 +305,7 @@ func (s *jsonFileStore) Add(title string, dimensions map[string]interface{}) (st
 				// Use default value
 				doc.Dimensions[dimConfig.Name] = dimConfig.DefaultValue
 			}
-		} else if dimConfig.Type == Hierarchical {
+		case Hierarchical:
 			// Handle parent reference
 			if val, exists := dimensions[dimConfig.RefField]; exists {
 				doc.Dimensions[dimConfig.RefField] = fmt.Sprintf("%v", val)
@@ -535,18 +536,6 @@ func (s *jsonFileStore) UpdateWhere(whereClause string, updates UpdateRequest, a
 func (s *jsonFileStore) Close() error {
 	// Save any pending changes
 	return s.save()
-}
-
-// generateCanonicalView generates the canonical view for ID mapping
-func (s *jsonFileStore) generateCanonicalView() ([]Document, error) {
-	// TODO: Implement canonical view generation
-	return nil, errors.New("not implemented")
-}
-
-// mapIDToUUID creates a mapping from simple IDs to UUIDs
-func (s *jsonFileStore) mapIDToUUID() (map[string]string, error) {
-	// TODO: Implement ID mapping based on canonical view
-	return nil, errors.New("not implemented")
 }
 
 // contains checks if a slice contains a string
