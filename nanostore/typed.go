@@ -239,3 +239,4 @@ func setFieldFromInterface(field reflect.Value, value interface{}) error {
 	strVal := fmt.Sprintf("%v", value)
 	return setFieldValue(field, strVal)
 }
+

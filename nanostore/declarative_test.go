@@ -225,3 +225,4 @@ func TestDeclarativeAPI(t *testing.T) {
 		}
 	})
 }
+
