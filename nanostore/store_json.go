@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -152,7 +153,11 @@ func (s *jsonFileStore) List(opts ListOptions) ([]Document, error) {
 		result = append(result, docCopy)
 	}
 
-	// TODO: Apply ordering
+	// Apply ordering
+	if len(opts.OrderBy) > 0 {
+		s.sortDocuments(result, opts.OrderBy)
+	}
+
 	// TODO: Apply pagination (limit/offset)
 
 	return result, nil
@@ -579,5 +584,54 @@ func (s *jsonFileStore) valueToString(value interface{}) string {
 		return v
 	default:
 		return fmt.Sprintf("%v", value)
+	}
+}
+
+// sortDocuments sorts documents according to the order clauses
+func (s *jsonFileStore) sortDocuments(docs []Document, orderBy []OrderClause) {
+	sort.Slice(docs, func(i, j int) bool {
+		for _, clause := range orderBy {
+			// Get values for comparison
+			valI := s.getDocumentValue(docs[i], clause.Column)
+			valJ := s.getDocumentValue(docs[j], clause.Column)
+
+			// Convert to comparable strings
+			strI := s.valueToString(valI)
+			strJ := s.valueToString(valJ)
+
+			// Compare
+			if strI < strJ {
+				return !clause.Descending
+			} else if strI > strJ {
+				return clause.Descending
+			}
+			// If equal, continue to next order clause
+		}
+		return false // All equal
+	})
+}
+
+// getDocumentValue retrieves a value from a document by field name
+func (s *jsonFileStore) getDocumentValue(doc Document, column string) interface{} {
+	switch column {
+	case "uuid":
+		return doc.UUID
+	case "simple_id", "simpleid":
+		return doc.SimpleID
+	case "title":
+		return doc.Title
+	case "body":
+		return doc.Body
+	case "created_at":
+		return doc.CreatedAt
+	case "updated_at":
+		return doc.UpdatedAt
+	default:
+		// Check if it's a dimension
+		if val, exists := doc.Dimensions[column]; exists {
+			return val
+		}
+		// Return empty string for non-existent fields
+		return ""
 	}
 }
