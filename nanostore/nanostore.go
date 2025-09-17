@@ -192,11 +192,11 @@ type Store interface {
 }
 
 // New creates a new Store instance with the specified dimension configuration
-// Use ":memory:" for an in-memory database (useful for testing)
-func New(dbPath string, config Config) (Store, error) {
+// The store uses a JSON file backend with file locking for concurrent access
+func New(filePath string, config Config) (Store, error) {
 	// First validate the configuration
 	if err := ValidateConfig(config); err != nil {
 		return nil, err
 	}
-	return newConfigurableStore(dbPath, config)
+	return newJSONFileStore(filePath, config)
 }

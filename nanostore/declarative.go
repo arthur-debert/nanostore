@@ -275,7 +275,7 @@ type TypedStore[T any] struct {
 
 // NewFromType creates a new TypedStore from a struct type definition
 // The struct's tags define the store configuration
-func NewFromType[T any](dbPath string) (*TypedStore[T], error) {
+func NewFromType[T any](filePath string) (*TypedStore[T], error) {
 	var zero T
 	structType := reflect.TypeOf(zero)
 
@@ -297,7 +297,7 @@ func NewFromType[T any](dbPath string) (*TypedStore[T], error) {
 	}
 
 	// Create the underlying store
-	store, err := New(dbPath, *config)
+	store, err := New(filePath, *config)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create store: %w", err)
 	}

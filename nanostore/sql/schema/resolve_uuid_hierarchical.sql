@@ -1,3 +1,0 @@
--- Resolves a hierarchical UUID by walking the hierarchy level by level
--- This is used for IDs like "1.2.c3" which require multi-level resolution
--- Parameters are dynamically bound based on the specific hierarchy being resolved
