@@ -10,13 +10,13 @@ import (
 // Test structs with various pointer configurations
 type StructWithStringPointer struct {
 	nanostore.Document
-	Name   string
-	Value  *string `dimension:"value"`
+	Name  string
+	Value *string `dimension:"value"`
 }
 
 type StructWithIntPointer struct {
 	nanostore.Document
-	Count  *int `dimension:"count"`
+	Count *int `dimension:"count"`
 }
 
 type StructWithNestedPointer struct {
@@ -29,7 +29,7 @@ type StructWithNestedPointer struct {
 
 type StructWithPointerNoTag struct {
 	nanostore.Document
-	Name     string `dimension:"name"`
+	Name     string  `dimension:"name"`
 	PtrField *string // No tag, but still a pointer
 }
 
@@ -82,7 +82,7 @@ func TestPointerFieldValidation(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			// Use a non-existent file - we should fail before trying to open it
 			err := tc.createFunc("/tmp/test_pointer_validation.json")
-			
+
 			if tc.expectErr {
 				if err == nil {
 					t.Fatal("expected error for pointer field, got nil")
@@ -111,7 +111,7 @@ func TestValidStructsWithoutPointers(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected valid struct to work, got error: %v", err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	// Should be able to create documents
 	id, err := store.Create("Test", &ValidStruct{

@@ -70,7 +70,7 @@ func TestQueryRobustness(t *testing.T) {
 	// Test 2: Nil and empty values in multi-value filters
 	t.Run("NilAndEmptyInMultiValueFilters", func(t *testing.T) {
 		// Create some test data
-		store.Create("Test doc", &TodoItem{Status: "active"})
+		_, _ = store.Create("Test doc", &TodoItem{Status: "active"})
 
 		testCases := []struct {
 			name   string
@@ -88,7 +88,7 @@ func TestQueryRobustness(t *testing.T) {
 				results, err := store.Query().
 					StatusIn(tc.values...).
 					Find()
-				
+
 				// Should handle gracefully
 				if err != nil {
 					t.Logf("StatusIn with %s failed: %v", tc.name, err)
@@ -103,7 +103,7 @@ func TestQueryRobustness(t *testing.T) {
 	t.Run("PaginationBoundaries", func(t *testing.T) {
 		// Create 5 test documents
 		for i := 0; i < 5; i++ {
-			store.Create("Doc", &TodoItem{})
+			_, _ = store.Create("Doc", &TodoItem{})
 		}
 
 		paginationTests := []struct {
@@ -149,15 +149,15 @@ func TestQueryRobustness(t *testing.T) {
 			title    string
 			priority string
 		}{
-			{"", "high"},           // empty title
-			{"\x00null", "medium"}, // null byte in title
+			{"", "high"},                             // empty title
+			{"\x00null", "medium"},                   // null byte in title
 			{"Z" + strings.Repeat("z", 1000), "low"}, // very long title
-			{"123", "high"},        // numeric title
-			{"!@#$%", "medium"},    // special characters
+			{"123", "high"},                          // numeric title
+			{"!@#$%", "medium"},                      // special characters
 		}
 
 		for _, doc := range edgeCaseDocs {
-			store.Create(doc.title, &TodoItem{Priority: doc.priority})
+			_, _ = store.Create(doc.title, &TodoItem{Priority: doc.priority})
 		}
 
 		// Test multiple orderings
@@ -198,8 +198,8 @@ func TestQueryRobustness(t *testing.T) {
 	// Test 5: Search with malicious patterns
 	t.Run("SearchPatternRobustness", func(t *testing.T) {
 		// Create some searchable content
-		store.Create("Normal document", &TodoItem{})
-		store.Create("Document with special chars !@#$", &TodoItem{})
+		_, _ = store.Create("Normal document", &TodoItem{})
+		_, _ = store.Create("Document with special chars !@#$", &TodoItem{})
 
 		searchPatterns := []struct {
 			name    string

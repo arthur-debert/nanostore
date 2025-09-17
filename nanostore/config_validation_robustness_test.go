@@ -477,7 +477,7 @@ func validateConfig(config nanostore.Config) error {
 
 				// Invalid characters (only alphanumeric allowed)
 				for _, ch := range prefix {
-					if !((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9')) {
+					if (ch < 'a' || ch > 'z') && (ch < 'A' || ch > 'Z') && (ch < '0' || ch > '9') {
 						return errorf("dimension %d (%s): prefix '%s' contains invalid characters", i, dim.Name, prefix)
 					}
 				}

@@ -11,11 +11,11 @@ import (
 // Test struct with both dimension and non-dimension fields
 type MixedFieldsItem struct {
 	nanostore.Document
-	
+
 	// Dimension fields
 	Status   string `values:"pending,active,done" default:"pending"`
 	Priority string `values:"low,medium,high" default:"medium"`
-	
+
 	// Non-dimension fields that should be preserved
 	Description string
 	Count       int
@@ -32,15 +32,15 @@ func TestNonDimensionFieldsPreserved(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.Remove(tmpfile.Name())
-	tmpfile.Close()
+	defer func() { _ = os.Remove(tmpfile.Name()) }()
+	_ = tmpfile.Close()
 
 	// Create typed store
 	store, err := nanostore.NewFromType[MixedFieldsItem](tmpfile.Name())
 	if err != nil {
 		t.Fatalf("failed to create typed store: %v", err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	t.Run("CreateAndRetrieveWithNonDimensionFields", func(t *testing.T) {
 		// Create item with all fields populated
@@ -157,7 +157,7 @@ func TestNonDimensionFieldsPreserved(t *testing.T) {
 			Count:       100,
 		}
 		item2 := &MixedFieldsItem{
-			Status:      "pending", 
+			Status:      "pending",
 			Description: "Same description",
 			Count:       100,
 		}
@@ -229,10 +229,10 @@ func TestNonDimensionFieldTypes(t *testing.T) {
 	// Test various field types are handled correctly
 	type ComplexFieldsItem struct {
 		nanostore.Document
-		
+
 		// Dimension
 		Type string `values:"A,B,C" default:"A"`
-		
+
 		// Various non-dimension types
 		IntField    int
 		Int64Field  int64
@@ -247,14 +247,14 @@ func TestNonDimensionFieldTypes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.Remove(tmpfile.Name())
-	tmpfile.Close()
+	defer func() { _ = os.Remove(tmpfile.Name()) }()
+	_ = tmpfile.Close()
 
 	store, err := nanostore.NewFromType[ComplexFieldsItem](tmpfile.Name())
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	now := time.Now().Round(time.Second) // Round to avoid nanosecond precision issues
 	item := &ComplexFieldsItem{

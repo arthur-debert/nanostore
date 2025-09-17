@@ -11,17 +11,17 @@ import (
 // Edge case struct types for testing
 type EdgeCaseItem struct {
 	nanostore.Document
-	
+
 	// Various field types to test edge cases
-	StringField   string  `default:"default"`
-	IntField      int     `default:"42"`
-	BoolField     bool    `default:"true"`
-	FloatField    float64 `default:"3.14"`
-	PointerField  *string
-	
+	StringField  string  `default:"default"`
+	IntField     int     `default:"42"`
+	BoolField    bool    `default:"true"`
+	FloatField   float64 `default:"3.14"`
+	PointerField *string
+
 	// Dimension with special characters in tag
 	WeirdDimension string `dimension:"weird-dimension!@#" values:"val1,val2,val3"`
-	
+
 	// Multiple tags
 	MultiTag string `values:"a,b,c" prefix:"a=x,b=y" default:"a" dimension:"multi_tag"`
 }
@@ -29,36 +29,36 @@ type EdgeCaseItem struct {
 // Same type without pointer field for other tests
 type SafeEdgeCaseItem struct {
 	nanostore.Document
-	
+
 	// Various field types to test edge cases
-	StringField   string  `default:"default"`
-	IntField      int     `default:"42"`
-	BoolField     bool    `default:"true"`
-	FloatField    float64 `default:"3.14"`
-	
+	StringField string  `default:"default"`
+	IntField    int     `default:"42"`
+	BoolField   bool    `default:"true"`
+	FloatField  float64 `default:"3.14"`
+
 	// Dimension with special characters in tag
 	WeirdDimension string `dimension:"weird-dimension!@#" values:"val1,val2,val3"`
-	
+
 	// Multiple tags
 	MultiTag string `values:"a,b,c" prefix:"a=x,b=y" default:"a" dimension:"multi_tag"`
 }
 
 type InvalidTagsItem struct {
 	nanostore.Document
-	
+
 	// Invalid default values
 	BadDefault string `default:"nonexistent" values:"valid1,valid2"`
-	
+
 	// Empty values list
 	EmptyValues string `values:""`
-	
+
 	// Duplicate prefixes
 	DupPrefix string `values:"x,y,z" prefix:"x=a,y=a"`
 }
 
 type ConflictingItem struct {
 	nanostore.Document
-	
+
 	// Same dimension name as parent in hierarchical
 	ParentID string `dimension:"parent_id" values:"should,not,work"`
 }
@@ -70,8 +70,8 @@ func TestDeclarativeRobustness(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer os.Remove(tmpfile.Name())
-		tmpfile.Close()
+		defer func() { _ = os.Remove(tmpfile.Name()) }()
+		_ = tmpfile.Close()
 
 		_, err = nanostore.NewFromType[EdgeCaseItem](tmpfile.Name())
 		if err == nil {
@@ -80,7 +80,7 @@ func TestDeclarativeRobustness(t *testing.T) {
 		if !strings.Contains(err.Error(), "pointer fields are not supported") {
 			t.Fatalf("expected pointer field error, got: %v", err)
 		}
-		
+
 		// Test passes - pointer fields are properly rejected
 		t.Log("Pointer fields correctly rejected with error")
 	})
@@ -91,8 +91,8 @@ func TestDeclarativeRobustness(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer os.Remove(tmpfile.Name())
-		tmpfile.Close()
+		defer func() { _ = os.Remove(tmpfile.Name()) }()
+		_ = tmpfile.Close()
 
 		// This might fail during store creation
 		store, err := nanostore.NewFromType[InvalidTagsItem](tmpfile.Name())
@@ -101,7 +101,7 @@ func TestDeclarativeRobustness(t *testing.T) {
 			t.Logf("Store creation failed as expected: %v", err)
 			return
 		}
-		defer store.Close()
+		defer func() { _ = store.Close() }()
 
 		// If it doesn't fail, test the behavior
 		_, err = store.Create("Test", &InvalidTagsItem{
@@ -118,25 +118,25 @@ func TestDeclarativeRobustness(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer os.Remove(tmpfile.Name())
-		tmpfile.Close()
+		defer func() { _ = os.Remove(tmpfile.Name()) }()
+		_ = tmpfile.Close()
 
 		store, err := nanostore.NewFromType[SafeEdgeCaseItem](tmpfile.Name())
 		if err != nil {
 			t.Fatalf("failed to create store: %v", err)
 		}
-		defer store.Close()
+		defer func() { _ = store.Close() }()
 
 		extremeValues := []struct {
-			name  string
-			item  SafeEdgeCaseItem
+			name string
+			item SafeEdgeCaseItem
 		}{
 			{
 				"max int",
 				SafeEdgeCaseItem{IntField: 9223372036854775807},
 			},
 			{
-				"min int", 
+				"min int",
 				SafeEdgeCaseItem{IntField: -9223372036854775808},
 			},
 			{
@@ -182,19 +182,19 @@ func TestDeclarativeRobustness(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer os.Remove(tmpfile.Name())
-		tmpfile.Close()
+		defer func() { _ = os.Remove(tmpfile.Name()) }()
+		_ = tmpfile.Close()
 
 		store, err := nanostore.NewFromType[SafeEdgeCaseItem](tmpfile.Name())
 		if err != nil {
 			t.Fatalf("failed to create store: %v", err)
 		}
-		defer store.Close()
+		defer func() { _ = store.Close() }()
 
 		// Create initial item
 		id, err := store.Create("Update test", &SafeEdgeCaseItem{
 			StringField: "initial",
-			IntField: 100,
+			IntField:    100,
 		})
 		if err != nil {
 			t.Fatalf("failed to create: %v", err)
@@ -256,14 +256,14 @@ func TestDeclarativeRobustness(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer os.Remove(tmpfile.Name())
-		tmpfile.Close()
+		defer func() { _ = os.Remove(tmpfile.Name()) }()
+		_ = tmpfile.Close()
 
 		store, err := nanostore.NewFromType[SafeEdgeCaseItem](tmpfile.Name())
 		if err != nil {
 			t.Fatalf("failed to create store: %v", err)
 		}
-		defer store.Close()
+		defer func() { _ = store.Close() }()
 
 		// Create base documents
 		var ids []string

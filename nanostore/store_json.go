@@ -46,7 +46,7 @@ func newJSONFileStore(filePath string, config Config) (*jsonFileStore, error) {
 	// Use a separate lock file to avoid issues with file replacement during save
 	lockPath := filePath + ".lock"
 	fileLock := flock.New(lockPath)
-	
+
 	store := &jsonFileStore{
 		filePath: filePath,
 		config:   config,
@@ -95,7 +95,7 @@ func (s *jsonFileStore) acquireLock(ctx context.Context) error {
 		if locked {
 			return nil
 		}
-		
+
 		// Wait before retrying
 		select {
 		case <-ctx.Done():
@@ -104,7 +104,7 @@ func (s *jsonFileStore) acquireLock(ctx context.Context) error {
 			// Continue to next retry
 		}
 	}
-	
+
 	return fmt.Errorf("failed to acquire lock after %d attempts", lockMaxRetries)
 }
 
@@ -117,13 +117,13 @@ func (s *jsonFileStore) releaseLock() error {
 func (s *jsonFileStore) loadWithLock() error {
 	ctx, cancel := context.WithTimeout(context.Background(), lockTimeout)
 	defer cancel()
-	
+
 	// Acquire file lock
 	if err := s.acquireLock(ctx); err != nil {
 		return err
 	}
-	defer s.releaseLock()
-	
+	defer func() { _ = s.releaseLock() }()
+
 	// Load data while holding the lock
 	return s.load()
 }
@@ -163,13 +163,13 @@ func (s *jsonFileStore) load() error {
 func (s *jsonFileStore) saveWithLock() error {
 	ctx, cancel := context.WithTimeout(context.Background(), lockTimeout)
 	defer cancel()
-	
+
 	// Acquire file lock
 	if err := s.acquireLock(ctx); err != nil {
 		return err
 	}
-	defer s.releaseLock()
-	
+	defer func() { _ = s.releaseLock() }()
+
 	// Save data while holding the lock
 	return s.save()
 }
@@ -240,16 +240,16 @@ func (s *jsonFileStore) List(opts ListOptions) ([]Document, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate canonical view: %w", err)
 	}
-	
+
 	// Generate ID mappings from canonical view
 	idMap := s.generateIDMappings(canonicalDocs)
-	
+
 	// Create reverse mapping (UUID -> SimpleID)
 	uuidToID := make(map[string]string)
 	for simpleID, uuid := range idMap {
 		uuidToID[uuid] = simpleID
 	}
-	
+
 	// Assign SimpleIDs to results
 	for i := range result {
 		if simpleID, exists := uuidToID[result[i].UUID]; exists {
@@ -267,7 +267,7 @@ func (s *jsonFileStore) List(opts ListOptions) ([]Document, error) {
 		}
 		result = result[*opts.Offset:]
 	}
-	
+
 	if opts.Limit != nil && *opts.Limit > 0 {
 		if *opts.Limit < len(result) {
 			result = result[:*opts.Limit]
@@ -307,22 +307,26 @@ func (s *jsonFileStore) matchesFilters(doc Document, filters map[string]interfac
 			// Check if it's a dimension filter
 			docValue, exists = doc.Dimensions[filterKey]
 			if !exists {
-				// Document doesn't have this dimension
-				// Check if it's a hierarchical dimension ref field
-				found := false
-				for _, dim := range s.config.Dimensions {
-					if dim.Type == Hierarchical && dim.RefField == filterKey {
-						// It's a hierarchical ref field
-						if parentValue, ok := doc.Dimensions[dim.RefField]; ok {
-							docValue = parentValue
-							exists = true
-							found = true
-							break
+				// Try with _data prefix for non-dimension fields
+				docValue, exists = doc.Dimensions["_data."+filterKey]
+				if !exists {
+					// Document doesn't have this dimension or data field
+					// Check if it's a hierarchical dimension ref field
+					found := false
+					for _, dim := range s.config.Dimensions {
+						if dim.Type == Hierarchical && dim.RefField == filterKey {
+							// It's a hierarchical ref field
+							if parentValue, ok := doc.Dimensions[dim.RefField]; ok {
+								docValue = parentValue
+								exists = true
+								found = true
+								break
+							}
 						}
 					}
-				}
-				if !found {
-					return false
+					if !found {
+						return false
+					}
 				}
 			}
 		}
@@ -702,12 +706,12 @@ func (s *jsonFileStore) UpdateWhere(whereClause string, updates UpdateRequest, a
 func (s *jsonFileStore) Close() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	
+
 	// Don't need to save - data is saved on each operation
 	// Just ensure the lock file is cleaned up
 	lockPath := s.filePath + ".lock"
 	_ = os.Remove(lockPath)
-	
+
 	return nil
 }
 
@@ -727,7 +731,7 @@ func (s *jsonFileStore) getCanonicalView() ([]Document, error) {
 	// 1. All documents
 	// 2. Filtered by default filters (if any)
 	// 3. Ordered by enumerated dimensions, then created_at
-	
+
 	opts := ListOptions{
 		Filters: make(map[string]interface{}),
 		OrderBy: []OrderClause{},
@@ -751,7 +755,7 @@ func (s *jsonFileStore) getCanonicalView() ([]Document, error) {
 
 	// Get all documents in canonical order
 	result := make([]Document, 0, len(s.data.Documents))
-	
+
 	for _, doc := range s.data.Documents {
 		// Make a copy to avoid mutations
 		docCopy := doc
@@ -767,15 +771,15 @@ func (s *jsonFileStore) getCanonicalView() ([]Document, error) {
 // generateIDMappings creates a map of simple IDs to UUIDs based on the canonical view
 func (s *jsonFileStore) generateIDMappings(docs []Document) map[string]string {
 	idMap := make(map[string]string)
-	
+
 	// Track counters for each dimension combination
 	type dimensionKey string
 	counters := make(map[dimensionKey]int)
-	
+
 	// Track hierarchical relationships for nested IDs
-	parentIDs := make(map[string]string) // UUID -> SimpleID
+	parentIDs := make(map[string]string)  // UUID -> SimpleID
 	childCounters := make(map[string]int) // ParentUUID -> counter for children
-	
+
 	// Find hierarchical dimension if any
 	var hierDim *DimensionConfig
 	for _, dim := range s.config.Dimensions {
@@ -784,7 +788,7 @@ func (s *jsonFileStore) generateIDMappings(docs []Document) map[string]string {
 			break
 		}
 	}
-	
+
 	// First pass: assign IDs to root documents
 	for _, doc := range docs {
 		// Skip if this has a parent - we'll do it in second pass
@@ -793,18 +797,18 @@ func (s *jsonFileStore) generateIDMappings(docs []Document) map[string]string {
 				continue
 			}
 		}
-		
+
 		// Build dimension key from enumerated dimensions
 		var keyParts []string
 		var idParts []string
-		
+
 		// Add prefixes from enumerated dimensions
 		for _, dim := range s.config.Dimensions {
 			if dim.Type == Enumerated {
 				if val, exists := doc.Dimensions[dim.Name]; exists {
 					strVal := fmt.Sprintf("%v", val)
 					keyParts = append(keyParts, dim.Name+":"+strVal)
-					
+
 					// Add prefix if configured
 					if dim.Prefixes != nil {
 						if prefix, hasPrefix := dim.Prefixes[strVal]; hasPrefix && prefix != "" {
@@ -814,22 +818,22 @@ func (s *jsonFileStore) generateIDMappings(docs []Document) map[string]string {
 				}
 			}
 		}
-		
+
 		// Create dimension key
 		dimKey := dimensionKey(strings.Join(keyParts, "|"))
-		
+
 		// Get or initialize counter
 		counter := counters[dimKey] + 1
 		counters[dimKey] = counter
-		
+
 		// Build the simple ID
 		simpleID := s.buildSimpleID(idParts, counter)
-		
+
 		// Store the mapping
 		idMap[simpleID] = doc.UUID
 		parentIDs[doc.UUID] = simpleID
 	}
-	
+
 	// Second pass: assign IDs to children (may need multiple passes for deep hierarchies)
 	maxDepth := 10 // Prevent infinite loops
 	for depth := 0; depth < maxDepth; depth++ {
@@ -839,7 +843,7 @@ func (s *jsonFileStore) generateIDMappings(docs []Document) map[string]string {
 			if _, hasID := parentIDs[doc.UUID]; hasID {
 				continue
 			}
-			
+
 			// Check if this has a parent
 			if hierDim != nil {
 				if parentUUID, hasParent := doc.Dimensions[hierDim.RefField]; hasParent && parentUUID != nil && parentUUID != "" {
@@ -848,9 +852,9 @@ func (s *jsonFileStore) generateIDMappings(docs []Document) map[string]string {
 						// Parent has an ID, we can assign child ID
 						childCounter := childCounters[parentUUIDStr] + 1
 						childCounters[parentUUIDStr] = childCounter
-						
+
 						simpleID := fmt.Sprintf("%s.%d", parentID, childCounter)
-						
+
 						// Store the mapping
 						idMap[simpleID] = doc.UUID
 						parentIDs[doc.UUID] = simpleID
@@ -859,13 +863,13 @@ func (s *jsonFileStore) generateIDMappings(docs []Document) map[string]string {
 				}
 			}
 		}
-		
+
 		// If we didn't find any new children, we're done
 		if !foundAny {
 			break
 		}
 	}
-	
+
 	return idMap
 }
 
@@ -949,6 +953,10 @@ func (s *jsonFileStore) getDocumentValue(doc Document, column string) interface{
 	default:
 		// Check if it's a dimension
 		if val, exists := doc.Dimensions[column]; exists {
+			return val
+		}
+		// Try with _data prefix for non-dimension fields (transparent ordering support)
+		if val, exists := doc.Dimensions["_data."+column]; exists {
 			return val
 		}
 		// Return empty string for non-existent fields
