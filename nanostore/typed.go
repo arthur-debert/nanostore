@@ -5,6 +5,7 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // MarshalDimensions converts a struct with dimension tags into a dimensions map
@@ -61,6 +62,11 @@ func MarshalDimensions(v interface{}) (map[string]interface{}, error) {
 		// Skip zero values (except false for bools)
 		if isZeroValue(fieldVal) && fieldVal.Kind() != reflect.Bool {
 			continue
+		}
+
+		// Validate that the value is a simple type
+		if err := validateSimpleType(value, dimName); err != nil {
+			return nil, err
 		}
 
 		// For values tag style, use lowercase field name as dimension name
@@ -235,8 +241,50 @@ func setFieldFromInterface(field reflect.Value, value interface{}) error {
 		return nil
 	}
 
-	// Otherwise convert through string
+	// Check if the value is a complex type that we can't convert
+	switch valReflect.Kind() {
+	case reflect.Map, reflect.Slice, reflect.Array, reflect.Struct:
+		// Don't silently convert complex types to strings
+		return fmt.Errorf("cannot convert %T to %s", value, field.Type())
+	}
+
+	// Otherwise convert through string for simple types
 	strVal := fmt.Sprintf("%v", value)
 	return setFieldValue(field, strVal)
+}
+
+// validateSimpleType ensures a dimension value is a simple type (string, number, bool)
+func validateSimpleType(value interface{}, dimensionName string) error {
+	if value == nil {
+		return nil
+	}
+
+	// Check the type using reflection
+	v := reflect.ValueOf(value)
+	switch v.Kind() {
+	case reflect.String, reflect.Bool,
+		reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64,
+		reflect.Float32, reflect.Float64:
+		return nil
+	case reflect.Slice, reflect.Array:
+		return fmt.Errorf("dimension '%s' cannot be an array/slice type, got %T", dimensionName, value)
+	case reflect.Map:
+		return fmt.Errorf("dimension '%s' cannot be a map type, got %T", dimensionName, value)
+	case reflect.Struct:
+		// Allow time.Time as it's commonly used
+		if _, ok := value.(time.Time); ok {
+			return nil
+		}
+		return fmt.Errorf("dimension '%s' cannot be a struct type, got %T", dimensionName, value)
+	case reflect.Ptr, reflect.Interface:
+		// Dereference and check the underlying type
+		if v.IsNil() {
+			return nil
+		}
+		return validateSimpleType(v.Elem().Interface(), dimensionName)
+	default:
+		return fmt.Errorf("dimension '%s' must be a simple type (string, number, or bool), got %T", dimensionName, value)
+	}
 }
 

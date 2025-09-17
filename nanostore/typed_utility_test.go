@@ -173,7 +173,7 @@ func TestSetFieldFromInterface(t *testing.T) {
 
 		// Invalid conversions
 		{"invalid string to int", reflect.TypeOf(int(0)), "abc", 0, true},
-		{"struct to string", reflect.TypeOf(""), struct{}{}, "{}", false}, // fmt.Sprintf converts struct{} to "{}"
+		{"struct to string", reflect.TypeOf(""), struct{}{}, "", true}, // Now properly rejects struct types
 	}
 
 	for _, tt := range tests {

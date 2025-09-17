@@ -403,6 +403,13 @@ func (s *jsonFileStore) Add(title string, dimensions map[string]interface{}) (st
 		Dimensions: make(map[string]interface{}),
 	}
 
+	// Validate all provided dimensions are simple types
+	for name, value := range dimensions {
+		if err := validateSimpleType(value, name); err != nil {
+			return "", err
+		}
+	}
+
 	// Apply dimension values
 	for _, dimConfig := range s.config.Dimensions {
 		switch dimConfig.Type {
@@ -476,6 +483,15 @@ func (s *jsonFileStore) Update(id string, updates UpdateRequest) error {
 
 	// Update dimensions if provided
 	if updates.Dimensions != nil {
+		// Validate all dimensions are simple types
+		for name, value := range updates.Dimensions {
+			if value != nil {
+				if err := validateSimpleType(value, name); err != nil {
+					return err
+				}
+			}
+		}
+
 		// Validate dimension updates
 		for dimName, value := range updates.Dimensions {
 			// Find dimension config
