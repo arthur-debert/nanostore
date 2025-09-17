@@ -1,6 +1,7 @@
 package nanostore
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -10,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/gofrs/flock"
 	"github.com/google/uuid"
 )
 
@@ -17,7 +19,8 @@ import (
 type jsonFileStore struct {
 	filePath string
 	config   Config
-	mu       sync.RWMutex
+	mu       sync.RWMutex // In-process synchronization
+	fileLock *flock.Flock // Cross-process file locking
 	data     *storeData
 	// timeFunc is used to get the current time, defaults to time.Now
 	// Can be overridden for testing
@@ -39,9 +42,15 @@ type storeMetadata struct {
 
 // newJSONFileStore creates a new JSON file store
 func newJSONFileStore(filePath string, config Config) (*jsonFileStore, error) {
+	// Create a file lock for the data file
+	// Use a separate lock file to avoid issues with file replacement during save
+	lockPath := filePath + ".lock"
+	fileLock := flock.New(lockPath)
+	
 	store := &jsonFileStore{
 		filePath: filePath,
 		config:   config,
+		fileLock: fileLock,
 		timeFunc: time.Now, // Default to time.Now
 		data: &storeData{
 			Documents: []Document{},
@@ -53,8 +62,10 @@ func newJSONFileStore(filePath string, config Config) (*jsonFileStore, error) {
 		},
 	}
 
-	// Try to load existing data (ignore if file doesn't exist)
-	_ = store.load() // Ignore errors for now since load() is not implemented
+	// Try to load existing data with lock
+	if err := store.loadWithLock(); err != nil {
+		return nil, fmt.Errorf("failed to load data: %w", err)
+	}
 
 	return store, nil
 }
@@ -65,6 +76,56 @@ func (s *jsonFileStore) SetTimeFunc(fn func() time.Time) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.timeFunc = fn
+}
+
+// Constants for file locking
+const (
+	lockTimeout    = 3 * time.Second
+	lockMaxRetries = 3
+	lockRetryDelay = 100 * time.Millisecond
+)
+
+// acquireLock attempts to acquire an exclusive file lock with retry logic
+func (s *jsonFileStore) acquireLock(ctx context.Context) error {
+	for i := 0; i < lockMaxRetries; i++ {
+		locked, err := s.fileLock.TryLockContext(ctx, lockRetryDelay)
+		if err != nil {
+			return fmt.Errorf("failed to acquire lock: %w", err)
+		}
+		if locked {
+			return nil
+		}
+		
+		// Wait before retrying
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(lockRetryDelay):
+			// Continue to next retry
+		}
+	}
+	
+	return fmt.Errorf("failed to acquire lock after %d attempts", lockMaxRetries)
+}
+
+// releaseLock releases the file lock
+func (s *jsonFileStore) releaseLock() error {
+	return s.fileLock.Unlock()
+}
+
+// loadWithLock loads the data file with proper locking
+func (s *jsonFileStore) loadWithLock() error {
+	ctx, cancel := context.WithTimeout(context.Background(), lockTimeout)
+	defer cancel()
+	
+	// Acquire file lock
+	if err := s.acquireLock(ctx); err != nil {
+		return err
+	}
+	defer s.releaseLock()
+	
+	// Load data while holding the lock
+	return s.load()
 }
 
 // load reads the JSON file into memory
@@ -96,6 +157,21 @@ func (s *jsonFileStore) load() error {
 
 	s.data = &storeData
 	return nil
+}
+
+// saveWithLock saves the data with proper locking
+func (s *jsonFileStore) saveWithLock() error {
+	ctx, cancel := context.WithTimeout(context.Background(), lockTimeout)
+	defer cancel()
+	
+	// Acquire file lock
+	if err := s.acquireLock(ctx); err != nil {
+		return err
+	}
+	defer s.releaseLock()
+	
+	// Save data while holding the lock
+	return s.save()
 }
 
 // save writes the in-memory data to the JSON file
@@ -158,7 +234,45 @@ func (s *jsonFileStore) List(opts ListOptions) ([]Document, error) {
 		s.sortDocuments(result, opts.OrderBy)
 	}
 
-	// TODO: Apply pagination (limit/offset)
+	// Generate SimpleIDs for the filtered and ordered results
+	// We need to generate IDs based on the canonical view, then map them
+	canonicalDocs, err := s.getCanonicalView()
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate canonical view: %w", err)
+	}
+	
+	// Generate ID mappings from canonical view
+	idMap := s.generateIDMappings(canonicalDocs)
+	
+	// Create reverse mapping (UUID -> SimpleID)
+	uuidToID := make(map[string]string)
+	for simpleID, uuid := range idMap {
+		uuidToID[uuid] = simpleID
+	}
+	
+	// Assign SimpleIDs to results
+	for i := range result {
+		if simpleID, exists := uuidToID[result[i].UUID]; exists {
+			result[i].SimpleID = simpleID
+		} else {
+			// Fallback to UUID if not found (shouldn't happen)
+			result[i].SimpleID = result[i].UUID
+		}
+	}
+
+	// Apply pagination
+	if opts.Offset != nil && *opts.Offset > 0 {
+		if *opts.Offset >= len(result) {
+			return []Document{}, nil
+		}
+		result = result[*opts.Offset:]
+	}
+	
+	if opts.Limit != nil && *opts.Limit > 0 {
+		if *opts.Limit < len(result) {
+			result = result[:*opts.Limit]
+		}
+	}
 
 	return result, nil
 }
@@ -317,7 +431,7 @@ func (s *jsonFileStore) Add(title string, dimensions map[string]interface{}) (st
 	s.data.Documents = append(s.data.Documents, doc)
 
 	// Save to file
-	if err := s.save(); err != nil {
+	if err := s.saveWithLock(); err != nil {
 		// Remove the document on save failure
 		s.data.Documents = s.data.Documents[:len(s.data.Documents)-1]
 		return "", fmt.Errorf("failed to save: %w", err)
@@ -396,7 +510,7 @@ func (s *jsonFileStore) Update(id string, updates UpdateRequest) error {
 	}
 
 	// Save to file
-	if err := s.save(); err != nil {
+	if err := s.saveWithLock(); err != nil {
 		return fmt.Errorf("failed to save: %w", err)
 	}
 
@@ -408,8 +522,21 @@ func (s *jsonFileStore) ResolveUUID(simpleID string) (string, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	// TODO: Implement canonical view ID resolution
-	return "", errors.New("not implemented")
+	// Generate the canonical view
+	docs, err := s.getCanonicalView()
+	if err != nil {
+		return "", fmt.Errorf("failed to generate canonical view: %w", err)
+	}
+
+	// Generate ID mappings
+	idMap := s.generateIDMappings(docs)
+
+	// Look up the UUID for the simple ID
+	if uuid, exists := idMap[simpleID]; exists {
+		return uuid, nil
+	}
+
+	return "", fmt.Errorf("simple ID not found: %s", simpleID)
 }
 
 // Delete removes a document
@@ -495,7 +622,7 @@ func (s *jsonFileStore) deleteInternal(id string, cascade bool) error {
 	s.data.Documents = append(s.data.Documents[:docIndex], s.data.Documents[docIndex+1:]...)
 
 	// Save to file
-	if err := s.save(); err != nil {
+	if err := s.saveWithLock(); err != nil {
 		return fmt.Errorf("failed to save: %w", err)
 	}
 
@@ -534,8 +661,15 @@ func (s *jsonFileStore) UpdateWhere(whereClause string, updates UpdateRequest, a
 
 // Close releases any resources
 func (s *jsonFileStore) Close() error {
-	// Save any pending changes
-	return s.save()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	
+	// Don't need to save - data is saved on each operation
+	// Just ensure the lock file is cleaned up
+	lockPath := s.filePath + ".lock"
+	_ = os.Remove(lockPath)
+	
+	return nil
 }
 
 // contains checks if a slice contains a string
@@ -546,6 +680,164 @@ func contains(slice []string, str string) bool {
 		}
 	}
 	return false
+}
+
+// getCanonicalView returns documents sorted in the canonical order for ID assignment
+func (s *jsonFileStore) getCanonicalView() ([]Document, error) {
+	// The canonical view is defined as:
+	// 1. All documents
+	// 2. Filtered by default filters (if any)
+	// 3. Ordered by enumerated dimensions, then created_at
+	
+	opts := ListOptions{
+		Filters: make(map[string]interface{}),
+		OrderBy: []OrderClause{},
+	}
+
+	// Add ordering by enumerated dimensions first
+	for _, dim := range s.config.Dimensions {
+		if dim.Type == Enumerated {
+			opts.OrderBy = append(opts.OrderBy, OrderClause{
+				Column:     dim.Name,
+				Descending: false,
+			})
+		}
+	}
+
+	// Then order by created_at for stability
+	opts.OrderBy = append(opts.OrderBy, OrderClause{
+		Column:     "created_at",
+		Descending: false,
+	})
+
+	// Get all documents in canonical order
+	result := make([]Document, 0, len(s.data.Documents))
+	
+	for _, doc := range s.data.Documents {
+		// Make a copy to avoid mutations
+		docCopy := doc
+		result = append(result, docCopy)
+	}
+
+	// Apply ordering
+	s.sortDocuments(result, opts.OrderBy)
+
+	return result, nil
+}
+
+// generateIDMappings creates a map of simple IDs to UUIDs based on the canonical view
+func (s *jsonFileStore) generateIDMappings(docs []Document) map[string]string {
+	idMap := make(map[string]string)
+	
+	// Track counters for each dimension combination
+	type dimensionKey string
+	counters := make(map[dimensionKey]int)
+	
+	// Track hierarchical relationships for nested IDs
+	parentIDs := make(map[string]string) // UUID -> SimpleID
+	childCounters := make(map[string]int) // ParentUUID -> counter for children
+	
+	// Find hierarchical dimension if any
+	var hierDim *DimensionConfig
+	for _, dim := range s.config.Dimensions {
+		if dim.Type == Hierarchical {
+			hierDim = &dim
+			break
+		}
+	}
+	
+	// First pass: assign IDs to root documents
+	for _, doc := range docs {
+		// Skip if this has a parent - we'll do it in second pass
+		if hierDim != nil {
+			if parentUUID, hasParent := doc.Dimensions[hierDim.RefField]; hasParent && parentUUID != nil && parentUUID != "" {
+				continue
+			}
+		}
+		
+		// Build dimension key from enumerated dimensions
+		var keyParts []string
+		var idParts []string
+		
+		// Add prefixes from enumerated dimensions
+		for _, dim := range s.config.Dimensions {
+			if dim.Type == Enumerated {
+				if val, exists := doc.Dimensions[dim.Name]; exists {
+					strVal := fmt.Sprintf("%v", val)
+					keyParts = append(keyParts, dim.Name+":"+strVal)
+					
+					// Add prefix if configured
+					if dim.Prefixes != nil {
+						if prefix, hasPrefix := dim.Prefixes[strVal]; hasPrefix && prefix != "" {
+							idParts = append(idParts, prefix)
+						}
+					}
+				}
+			}
+		}
+		
+		// Create dimension key
+		dimKey := dimensionKey(strings.Join(keyParts, "|"))
+		
+		// Get or initialize counter
+		counter := counters[dimKey] + 1
+		counters[dimKey] = counter
+		
+		// Build the simple ID
+		simpleID := s.buildSimpleID(idParts, counter)
+		
+		// Store the mapping
+		idMap[simpleID] = doc.UUID
+		parentIDs[doc.UUID] = simpleID
+	}
+	
+	// Second pass: assign IDs to children (may need multiple passes for deep hierarchies)
+	maxDepth := 10 // Prevent infinite loops
+	for depth := 0; depth < maxDepth; depth++ {
+		foundAny := false
+		for _, doc := range docs {
+			// Skip if already has ID
+			if _, hasID := parentIDs[doc.UUID]; hasID {
+				continue
+			}
+			
+			// Check if this has a parent
+			if hierDim != nil {
+				if parentUUID, hasParent := doc.Dimensions[hierDim.RefField]; hasParent && parentUUID != nil && parentUUID != "" {
+					parentUUIDStr := fmt.Sprintf("%v", parentUUID)
+					if parentID, exists := parentIDs[parentUUIDStr]; exists {
+						// Parent has an ID, we can assign child ID
+						childCounter := childCounters[parentUUIDStr] + 1
+						childCounters[parentUUIDStr] = childCounter
+						
+						simpleID := fmt.Sprintf("%s.%d", parentID, childCounter)
+						
+						// Store the mapping
+						idMap[simpleID] = doc.UUID
+						parentIDs[doc.UUID] = simpleID
+						foundAny = true
+					}
+				}
+			}
+		}
+		
+		// If we didn't find any new children, we're done
+		if !foundAny {
+			break
+		}
+	}
+	
+	return idMap
+}
+
+// buildSimpleID constructs a simple ID from parts and counter
+func (s *jsonFileStore) buildSimpleID(prefixParts []string, counter int) string {
+	if len(prefixParts) > 0 {
+		// Join prefixes and add counter
+		return strings.Join(prefixParts, "") + fmt.Sprintf("%d", counter)
+	}
+	// No prefixes - just use counter
+	return fmt.Sprintf("%d", counter)
 }
 
 // valueToString converts any value to a string for comparison
