@@ -113,14 +113,19 @@ func TestNotImplemented(t *testing.T) {
 	}
 	defer store.Close()
 
-	// All operations should return "not implemented" error
-	_, err = store.Add("test", nil)
+	// Operations that are still not implemented
+	_, err = store.ResolveUUID("1")
 	if err == nil || err.Error() != "not implemented" {
-		t.Errorf("expected 'not implemented' error, got %v", err)
+		t.Errorf("ResolveUUID: expected 'not implemented' error, got %v", err)
 	}
 
-	_, err = store.List(nanostore.ListOptions{})
+	_, err = store.DeleteByDimension(map[string]interface{}{"status": "todo"})
 	if err == nil || err.Error() != "not implemented" {
-		t.Errorf("expected 'not implemented' error, got %v", err)
+		t.Errorf("DeleteByDimension: expected 'not implemented' error, got %v", err)
+	}
+
+	_, err = store.UpdateByDimension(map[string]interface{}{"status": "todo"}, nanostore.UpdateRequest{})
+	if err == nil || err.Error() != "not implemented" {
+		t.Errorf("UpdateByDimension: expected 'not implemented' error, got %v", err)
 	}
 }
