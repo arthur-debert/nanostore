@@ -26,6 +26,7 @@ type ListOptions struct {
 	Filters map[string]interface{}
 
 	// FilterBySearch performs a text search on title and body
+	// Empty string returns all documents (no filtering)
 	FilterBySearch string
 
 	// OrderBy specifies the order of results
@@ -33,11 +34,13 @@ type ListOptions struct {
 	OrderBy []OrderClause
 
 	// Limit specifies the maximum number of results to return
-	// nil means no limit
+	// nil or negative values mean no limit
+	// 0 returns no results
 	Limit *int
 
 	// Offset specifies the number of results to skip
-	// nil means no offset
+	// nil or negative values mean no offset (start from beginning)
+	// Values greater than result count return empty results
 	Offset *int
 }
 
