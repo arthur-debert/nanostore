@@ -349,6 +349,16 @@ func generateConfigFromType(typ reflect.Type) (Config, error) {
 	for i := 0; i < typ.NumField(); i++ {
 		field := typ.Field(i)
 
+		// Skip embedded Document field
+		if field.Anonymous && field.Type == reflect.TypeOf(Document{}) {
+			continue
+		}
+
+		// Check for pointer fields (not allowed)
+		if field.Type.Kind() == reflect.Ptr {
+			return config, fmt.Errorf("field %s: pointer fields are not supported", field.Name)
+		}
+
 		// Look for field tags in different formats
 		if tagValue := field.Tag.Get("values"); tagValue != "" {
 			// Parse enumerated dimension from tags like:
