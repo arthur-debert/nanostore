@@ -12,12 +12,15 @@ import (
 	"github.com/google/uuid"
 )
 
-// jsonFileStore implements the Store interface using a JSON file backend
+// jsonFileStore implements the Store and TestStore interfaces using a JSON file backend
 type jsonFileStore struct {
 	filePath string
 	config   Config
 	mu       sync.RWMutex
 	data     *storeData
+	// timeFunc is used to get the current time, defaults to time.Now
+	// Can be overridden for testing
+	timeFunc func() time.Time
 }
 
 // storeData represents the in-memory data structure
@@ -38,6 +41,7 @@ func newJSONFileStore(filePath string, config Config) (*jsonFileStore, error) {
 	store := &jsonFileStore{
 		filePath: filePath,
 		config:   config,
+		timeFunc: time.Now, // Default to time.Now
 		data: &storeData{
 			Documents: []Document{},
 			Metadata: storeMetadata{
@@ -52,6 +56,14 @@ func newJSONFileStore(filePath string, config Config) (*jsonFileStore, error) {
 	_ = store.load() // Ignore errors for now since load() is not implemented
 
 	return store, nil
+}
+
+// SetTimeFunc sets a custom time function for testing
+// This allows tests to provide deterministic timestamps
+func (s *jsonFileStore) SetTimeFunc(fn func() time.Time) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.timeFunc = fn
 }
 
 // load reads the JSON file into memory
@@ -90,7 +102,7 @@ func (s *jsonFileStore) save() error {
 	// No locking here - caller must handle locking
 
 	// Update metadata
-	s.data.Metadata.UpdatedAt = time.Now()
+	s.data.Metadata.UpdatedAt = s.timeFunc()
 
 	// Marshal to JSON with pretty printing
 	data, err := json.MarshalIndent(s.data, "", "  ")
@@ -161,33 +173,48 @@ func (s *jsonFileStore) matchesFilters(doc Document, filters map[string]interfac
 			continue
 		}
 
-		// Check if it's a dimension filter
-		docValue, exists := doc.Dimensions[filterKey]
-		if !exists {
-			// Document doesn't have this dimension
-			// Check if it's a hierarchical dimension ref field
-			found := false
-			for _, dim := range s.config.Dimensions {
-				if dim.Type == Hierarchical && dim.RefField == filterKey {
-					// It's a hierarchical ref field
-					if parentValue, ok := doc.Dimensions[dim.RefField]; ok {
-						docValue = parentValue
-						exists = true
-						found = true
-						break
+		// Handle datetime filters and dimension filters
+		var docValue interface{}
+		var exists bool
+		
+		switch filterKey {
+		case "created_at":
+			docValue = doc.CreatedAt
+			exists = true
+		case "updated_at":
+			docValue = doc.UpdatedAt
+			exists = true
+		default:
+			// Check if it's a dimension filter
+			docValue, exists = doc.Dimensions[filterKey]
+			if !exists {
+				// Document doesn't have this dimension
+				// Check if it's a hierarchical dimension ref field
+				found := false
+				for _, dim := range s.config.Dimensions {
+					if dim.Type == Hierarchical && dim.RefField == filterKey {
+						// It's a hierarchical ref field
+						if parentValue, ok := doc.Dimensions[dim.RefField]; ok {
+							docValue = parentValue
+							exists = true
+							found = true
+							break
+						}
 					}
 				}
-			}
-			if !found {
-				return false
+				if !found {
+					return false
+				}
 			}
 		}
 
+		// Convert values to comparable strings
+		docStr := s.valueToString(docValue)
+		
 		// Handle slice values (for "IN" style filtering)
 		switch fv := filterValue.(type) {
 		case []string:
 			// Filter value is a slice, check if document value is in the slice
-			docStr := fmt.Sprintf("%v", docValue)
 			found := false
 			for _, v := range fv {
 				if docStr == v {
@@ -200,10 +227,9 @@ func (s *jsonFileStore) matchesFilters(doc Document, filters map[string]interfac
 			}
 		case []interface{}:
 			// Filter value is a slice, check if document value is in the slice
-			docStr := fmt.Sprintf("%v", docValue)
 			found := false
 			for _, v := range fv {
-				if docStr == fmt.Sprintf("%v", v) {
+				if docStr == s.valueToString(v) {
 					found = true
 					break
 				}
@@ -213,7 +239,8 @@ func (s *jsonFileStore) matchesFilters(doc Document, filters map[string]interfac
 			}
 		default:
 			// Simple equality check
-			if fmt.Sprintf("%v", docValue) != fmt.Sprintf("%v", filterValue) {
+			filterStr := s.valueToString(filterValue)
+			if docStr != filterStr {
 				return false
 			}
 		}
@@ -247,12 +274,13 @@ func (s *jsonFileStore) Add(title string, dimensions map[string]interface{}) (st
 	docUUID := uuid.New().String()
 
 	// Create document
+	now := s.timeFunc()
 	doc := Document{
 		UUID:       docUUID,
 		Title:      title,
 		Body:       "", // Empty body by default
-		CreatedAt:  time.Now(),
-		UpdatedAt:  time.Now(),
+		CreatedAt:  now,
+		UpdatedAt:  now,
 		Dimensions: make(map[string]interface{}),
 	}
 
@@ -314,7 +342,7 @@ func (s *jsonFileStore) Update(id string, updates UpdateRequest) error {
 
 	// Apply updates
 	doc := &s.data.Documents[docIndex]
-	doc.UpdatedAt = time.Now()
+	doc.UpdatedAt = s.timeFunc()
 
 	// Update title if provided
 	if updates.Title != nil {
@@ -524,4 +552,32 @@ func contains(slice []string, str string) bool {
 		}
 	}
 	return false
+}
+
+// valueToString converts any value to a string for comparison
+// Special handling for time.Time values to use RFC3339Nano format
+func (s *jsonFileStore) valueToString(value interface{}) string {
+	switch v := value.(type) {
+	case time.Time:
+		// Use RFC3339Nano for consistent datetime comparison with nanosecond precision
+		return v.Format(time.RFC3339Nano)
+	case string:
+		// Check if it's a datetime string and normalize it
+		// Try various datetime formats
+		for _, format := range []string{
+			time.RFC3339Nano,
+			time.RFC3339,
+			"2006-01-02T15:04:05Z",
+			"2006-01-02 15:04:05",
+			"2006-01-02",
+		} {
+			if t, err := time.Parse(format, v); err == nil {
+				return t.Format(time.RFC3339Nano)
+			}
+		}
+		// Not a datetime, return as-is
+		return v
+	default:
+		return fmt.Sprintf("%v", value)
+	}
 }
