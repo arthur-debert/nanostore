@@ -63,8 +63,8 @@ func TestNewJSONStore(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.Remove(tmpfile.Name())
-	tmpfile.Close()
+	defer func() { _ = os.Remove(tmpfile.Name()) }()
+	_ = tmpfile.Close()
 
 	config := nanostore.Config{
 		Dimensions: []nanostore.DimensionConfig{
@@ -81,7 +81,7 @@ func TestNewJSONStore(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	// The store should be created successfully
 	if store == nil {
@@ -95,8 +95,8 @@ func TestNotImplemented(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.Remove(tmpfile.Name())
-	tmpfile.Close()
+	defer func() { _ = os.Remove(tmpfile.Name()) }()
+	_ = tmpfile.Close()
 
 	store, err := nanostore.New(tmpfile.Name(), nanostore.Config{
 		Dimensions: []nanostore.DimensionConfig{
@@ -111,14 +111,9 @@ func TestNotImplemented(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	// Operations that are still not implemented
-	_, err = store.ResolveUUID("1")
-	if err == nil || err.Error() != "not implemented" {
-		t.Errorf("ResolveUUID: expected 'not implemented' error, got %v", err)
-	}
-
 	_, err = store.DeleteByDimension(map[string]interface{}{"status": "todo"})
 	if err == nil || err.Error() != "not implemented" {
 		t.Errorf("DeleteByDimension: expected 'not implemented' error, got %v", err)

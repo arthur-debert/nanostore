@@ -13,8 +13,8 @@ func TestBasicOperations(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.Remove(tmpfile.Name())
-	tmpfile.Close()
+	defer func() { _ = os.Remove(tmpfile.Name()) }()
+	_ = tmpfile.Close()
 
 	config := nanostore.Config{
 		Dimensions: []nanostore.DimensionConfig{
@@ -37,7 +37,7 @@ func TestBasicOperations(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	t.Run("Add", func(t *testing.T) {
 		// Add a document with default dimensions
@@ -157,8 +157,8 @@ func TestHierarchicalOperations(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.Remove(tmpfile.Name())
-	tmpfile.Close()
+	defer func() { _ = os.Remove(tmpfile.Name()) }()
+	_ = tmpfile.Close()
 
 	config := nanostore.Config{
 		Dimensions: []nanostore.DimensionConfig{
@@ -174,7 +174,7 @@ func TestHierarchicalOperations(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	t.Run("ParentChild", func(t *testing.T) {
 		// Add parent

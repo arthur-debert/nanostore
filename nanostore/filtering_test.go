@@ -14,8 +14,8 @@ func TestFiltering(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.Remove(tmpfile.Name())
-	tmpfile.Close()
+	defer func() { _ = os.Remove(tmpfile.Name()) }()
+	_ = tmpfile.Close()
 
 	config := nanostore.Config{
 		Dimensions: []nanostore.DimensionConfig{
@@ -43,7 +43,7 @@ func TestFiltering(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	// Add test documents
 	_, _ = store.Add("Fix bug in login", map[string]interface{}{
@@ -154,7 +154,7 @@ func TestFiltering(t *testing.T) {
 		bodyTitle := "Search test"
 		bodyText := "This document contains important information about searching"
 		docWithBody, _ := store.Add(bodyTitle, nil)
-		store.Update(docWithBody, nanostore.UpdateRequest{
+		_ = store.Update(docWithBody, nanostore.UpdateRequest{
 			Body: &bodyText,
 		})
 
@@ -270,8 +270,8 @@ func TestEmptyFilters(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.Remove(tmpfile.Name())
-	tmpfile.Close()
+	defer func() { _ = os.Remove(tmpfile.Name()) }()
+	_ = tmpfile.Close()
 
 	config := nanostore.Config{
 		Dimensions: []nanostore.DimensionConfig{
@@ -288,12 +288,12 @@ func TestEmptyFilters(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	// Add some documents
-	store.Add("Doc 1", nil)
-	store.Add("Doc 2", nil)
-	store.Add("Doc 3", nil)
+	_, _ = store.Add("Doc 1", nil)
+	_, _ = store.Add("Doc 2", nil)
+	_, _ = store.Add("Doc 3", nil)
 
 	// List with no filters should return all
 	docs, err := store.List(nanostore.ListOptions{})

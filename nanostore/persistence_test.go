@@ -15,8 +15,8 @@ func TestPersistence(t *testing.T) {
 		t.Fatal(err)
 	}
 	filename := tmpfile.Name()
-	tmpfile.Close()
-	defer os.Remove(filename)
+	_ = tmpfile.Close()
+	defer func() { _ = os.Remove(filename) }()
 
 	config := nanostore.Config{
 		Dimensions: []nanostore.DimensionConfig{
@@ -67,7 +67,7 @@ func TestPersistence(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create second store: %v", err)
 	}
-	defer store2.Close()
+	defer func() { _ = store2.Close() }()
 
 	// Verify documents were loaded
 	docs, err := store2.List(nanostore.ListOptions{})

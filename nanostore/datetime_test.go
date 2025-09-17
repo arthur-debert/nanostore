@@ -14,8 +14,8 @@ func TestDateTimeFiltering(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.Remove(tmpfile.Name())
-	tmpfile.Close()
+	defer func() { _ = os.Remove(tmpfile.Name()) }()
+	_ = tmpfile.Close()
 
 	config := nanostore.Config{
 		Dimensions: []nanostore.DimensionConfig{
@@ -32,7 +32,7 @@ func TestDateTimeFiltering(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	// Get test store interface
 	testStore := nanostore.AsTestStore(store)
@@ -219,8 +219,8 @@ func TestDateTimeConsistency(t *testing.T) {
 		t.Fatal(err)
 	}
 	filename := tmpfile.Name()
-	tmpfile.Close()
-	defer os.Remove(filename)
+	_ = tmpfile.Close()
+	defer func() { _ = os.Remove(filename) }()
 
 	config := nanostore.Config{
 		Dimensions: []nanostore.DimensionConfig{
@@ -247,14 +247,14 @@ func TestDateTimeConsistency(t *testing.T) {
 	})
 	originalDoc := docs[0]
 	
-	store1.Close()
+	_ = store1.Close()
 
 	// Reopen the store
 	store2, err := nanostore.New(filename, config)
 	if err != nil {
 		t.Fatalf("failed to reopen store: %v", err)
 	}
-	defer store2.Close()
+	defer func() { _ = store2.Close() }()
 
 	// Filter by the original created_at time
 	docs, err = store2.List(nanostore.ListOptions{

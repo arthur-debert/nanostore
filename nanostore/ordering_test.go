@@ -14,8 +14,8 @@ func TestOrdering(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.Remove(tmpfile.Name())
-	tmpfile.Close()
+	defer func() { _ = os.Remove(tmpfile.Name()) }()
+	_ = tmpfile.Close()
 
 	config := nanostore.Config{
 		Dimensions: []nanostore.DimensionConfig{
@@ -38,7 +38,7 @@ func TestOrdering(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	// Get test store for time control
 	testStore := nanostore.AsTestStore(store)
@@ -56,19 +56,19 @@ func TestOrdering(t *testing.T) {
 	})
 
 	// Add test documents with different values
-	store.Add("Zebra task", map[string]interface{}{
+	_, _ = store.Add("Zebra task", map[string]interface{}{
 		"priority": "low",
 		"status":   "done",
 	})
-	store.Add("Alpha task", map[string]interface{}{
+	_, _ = store.Add("Alpha task", map[string]interface{}{
 		"priority": "high",
 		"status":   "todo",
 	})
-	store.Add("Beta task", map[string]interface{}{
+	_, _ = store.Add("Beta task", map[string]interface{}{
 		"priority": "medium",
 		"status":   "in_progress",
 	})
-	store.Add("Charlie task", map[string]interface{}{
+	_, _ = store.Add("Charlie task", map[string]interface{}{
 		"priority": "high",
 		"status":   "todo",
 	})
@@ -254,8 +254,8 @@ func TestOrderingEdgeCases(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.Remove(tmpfile.Name())
-	tmpfile.Close()
+	defer func() { _ = os.Remove(tmpfile.Name()) }()
+	_ = tmpfile.Close()
 
 	config := nanostore.Config{
 		Dimensions: []nanostore.DimensionConfig{
@@ -272,12 +272,12 @@ func TestOrderingEdgeCases(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	t.Run("EmptyOrderBy", func(t *testing.T) {
-		store.Add("B", nil)
-		store.Add("A", nil)
-		store.Add("C", nil)
+		_, _ = store.Add("B", nil)
+		_, _ = store.Add("A", nil)
+		_, _ = store.Add("C", nil)
 
 		// No ordering specified - documents should be in their natural order
 		docs, err := store.List(nanostore.ListOptions{})
@@ -293,11 +293,11 @@ func TestOrderingEdgeCases(t *testing.T) {
 	t.Run("EmptyStore", func(t *testing.T) {
 		// Create new empty store
 		tmpfile2, _ := os.CreateTemp("", "test*.json")
-		defer os.Remove(tmpfile2.Name())
-		tmpfile2.Close()
+		defer func() { _ = os.Remove(tmpfile2.Name()) }()
+		_ = tmpfile2.Close()
 
 		emptyStore, _ := nanostore.New(tmpfile2.Name(), config)
-		defer emptyStore.Close()
+		defer func() { _ = emptyStore.Close() }()
 
 		docs, err := emptyStore.List(nanostore.ListOptions{
 			OrderBy: []nanostore.OrderClause{
@@ -316,13 +316,13 @@ func TestOrderingEdgeCases(t *testing.T) {
 	t.Run("SingleDocument", func(t *testing.T) {
 		// Create new store with single document
 		tmpfile3, _ := os.CreateTemp("", "test*.json")
-		defer os.Remove(tmpfile3.Name())
-		tmpfile3.Close()
+		defer func() { _ = os.Remove(tmpfile3.Name()) }()
+		_ = tmpfile3.Close()
 
 		singleStore, _ := nanostore.New(tmpfile3.Name(), config)
-		defer singleStore.Close()
+		defer func() { _ = singleStore.Close() }()
 
-		singleStore.Add("Only task", nil)
+		_, _ = singleStore.Add("Only task", nil)
 
 		docs, err := singleStore.List(nanostore.ListOptions{
 			OrderBy: []nanostore.OrderClause{
