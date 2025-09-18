@@ -1,8 +1,8 @@
-// Package nanostore provides a document and ID store library that uses SQLite
-// to manage document storage and dynamically generate user-facing, contiguous IDs.
+// Package nanostore provides a document and ID store library that uses JSON file storage
+// to manage document storage and dynamically generate user-facing, hierarchical IDs.
 //
-// This package replaces pkg/idm and parts of pkg/too/store with a cleaner,
-// more focused approach to document management with configurable ID schemes.
+// This package provides a clean approach to document management with configurable
+// ID schemes, automatic hierarchical organization, and human-friendly ID generation.
 package nanostore
 
 // New creates a new Store instance with the specified dimension configuration
