@@ -5,7 +5,12 @@ import (
 	"sort"
 )
 
-// IDGenerator handles the generation of SimpleIDs for documents
+// IDGenerator handles the generation of SimpleIDs for documents.
+//
+// This is the main implementation of the ID generation system. For comprehensive
+// documentation on how the ID system works, including partitions, hierarchical
+// relationships, prefixes, canonical views, and transformation algorithms,
+// see the detailed documentation in nanostore/ids/doc.go.
 type IDGenerator struct {
 	dimensionSet  *DimensionSet
 	canonicalView *CanonicalView

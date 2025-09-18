@@ -7,7 +7,10 @@ import (
 	"github.com/arthur-debert/nanostore/types"
 )
 
-// IDGenerator handles the generation of SimpleIDs for documents
+// IDGenerator handles the generation of SimpleIDs for documents.
+//
+// For a comprehensive understanding of the ID generation system, partitions,
+// hierarchical relationships, and the transformation process, see doc.go in this package.
 type IDGenerator struct {
 	dimensionSet  *types.DimensionSet
 	canonicalView *types.CanonicalView

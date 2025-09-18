@@ -22,7 +22,114 @@ func (e *IDResolutionError) Unwrap() error {
 	return e.WrappedError
 }
 
-// commandPreprocessor handles centralized preprocessing of commands including ID resolution
+// commandPreprocessor handles centralized preprocessing of commands including ID resolution.
+//
+// This system provides a unified approach to preparing commands before execution,
+// with a primary focus on resolving SimpleIDs to UUIDs throughout nested data structures.
+// The preprocessor uses reflection to traverse arbitrary command structures and locate
+// ID fields that require resolution.
+//
+// # Core Responsibilities
+//
+// 1. **ID Resolution**: Convert SimpleIDs to UUIDs in command structures
+// 2. **Nested Traversal**: Handle complex nested structs, slices, pointers, and maps
+// 3. **Error Handling**: Distinguish between resolution failures and other errors
+// 4. **Reference Fields**: Process hierarchical dimension references (parent_id, etc.)
+//
+// # Architecture Benefits
+//
+// The centralized preprocessing approach solves several architectural problems:
+//
+// - **Eliminates Code Duplication**: No need for scattered ID resolution logic
+// - **Prevents Omissions**: Automatic discovery ensures all ID fields are processed
+// - **Consistent Error Handling**: Unified approach to resolution failures
+// - **Future-Proof**: New command types automatically benefit from preprocessing
+// - **Testable**: Complex resolution logic is isolated and thoroughly tested
+//
+// # Reflection-Based Field Discovery
+//
+// The preprocessor uses Go's reflection system to automatically discover ID fields:
+//
+// 1. **Field Name Matching**: Fields named "ID", "ParentID", or "UUID"
+// 2. **Tag-Based Discovery**: Fields with `id:"true"` struct tags
+// 3. **Reference Field Detection**: Hierarchical dimension reference fields
+// 4. **Nested Structure Traversal**: Recursive processing of embedded structs
+//
+// Example field discovery:
+//
+//	type UpdateCommand struct {
+//	    ID      string `id:"true"`     // Discovered by tag
+//	    ParentID string               // Discovered by name
+//	    Data    NestedStruct          // Recursively processed
+//	    Items   []SubCommand          // Slice elements processed
+//	}
+//
+// # Error Handling Strategy
+//
+// The preprocessor distinguishes between different types of errors:
+//
+// - **IDResolutionError**: SimpleID could not be resolved (non-fatal)
+//   - Allows external references or IDs that don't exist yet
+//   - Original value is preserved for later validation
+//   - Calling method decides if this should be fatal
+//
+// - **Other Errors**: Structural problems, invalid data types (fatal)
+//   - Reflection errors, type conversion failures
+//   - These indicate bugs or invalid command structures
+//
+// This approach supports scenarios like:
+//   - Bulk imports where parent documents might not exist yet
+//   - External system integrations with foreign IDs
+//   - Partial command validation during development
+//
+// # Supported Data Structures
+//
+// The preprocessor handles a wide variety of Go data structures:
+//
+// - **Simple Fields**: string fields with ID values
+// - **Pointer Fields**: *string fields that may be nil
+// - **Nested Structs**: Embedded structures with their own ID fields
+// - **Slices**: []Struct with ID fields in each element
+// - **Maps**: map[string]interface{} with special handling for reference fields
+// - **Mixed Structures**: Complex combinations of the above
+//
+// # Integration with Store Operations
+//
+// The preprocessor integrates seamlessly with store operations:
+//
+//	// Before preprocessing
+//	cmd := &UpdateCommand{
+//	    ID: "1.dh3",                    // SimpleID
+//	    Request: UpdateRequest{
+//	        Dimensions: map[string]interface{}{
+//	            "parent_id": "1.2",     // SimpleID in reference field
+//	        },
+//	    },
+//	}
+//
+//	// After preprocessing
+//	cmd := &UpdateCommand{
+//	    ID: "550e8400-e29b-41d4-a716-446655440000",  // Resolved UUID
+//	    Request: UpdateRequest{
+//	        Dimensions: map[string]interface{}{
+//	            "parent_id": "550e8400-e29b-41d4-a716-446655440001", // Resolved UUID
+//	        },
+//	    },
+//	}
+//
+// # Performance Characteristics
+//
+// - **Time Complexity**: O(n) where n = number of fields in the command structure
+// - **Space Complexity**: O(1) additional memory (in-place modification)
+// - **Reflection Overhead**: Minimal - only used for structure traversal
+// - **Resolution Caching**: Store-level caching minimizes UUID lookup overhead
+//
+// # Thread Safety
+//
+// The commandPreprocessor is thread-safe:
+//   - Immutable after creation (only stores reference to store)
+//   - No shared mutable state between preprocessing calls
+//   - Store operations are protected by the centralized lock manager
 type commandPreprocessor struct {
 	store *jsonFileStore
 }

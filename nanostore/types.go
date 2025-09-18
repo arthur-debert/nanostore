@@ -69,30 +69,148 @@ const (
 	Hierarchical
 )
 
-// DimensionConfig defines a single dimension for ID partitioning
+// DimensionConfig defines a single dimension for ID partitioning and document organization.
+//
+// Dimensions are the core organizing principle in nanostore, determining how documents
+// are partitioned for ID generation and how hierarchical relationships are established.
+// Each dimension represents a discrete aspect of document classification.
+//
+// # Dimension Types
+//
+// ## Enumerated Dimensions
+//
+// Enumerated dimensions have a finite, predefined set of valid values. They are used
+// for categorical data like status, priority, or type. Enumerated dimensions support:
+//
+// - **Value Validation**: Only predefined values are accepted
+// - **Prefix Mapping**: Values can be mapped to single-character prefixes for compact IDs
+// - **Default Values**: Canonical values that are omitted from short IDs
+// - **Partition Creation**: Documents with the same value belong to the same partition
+//
+// Example enumerated dimension:
+//
+//	{
+//	    Name: "status",
+//	    Type: Enumerated,
+//	    Values: []string{"active", "pending", "completed", "cancelled"},
+//	    Prefixes: map[string]string{
+//	        "pending": "p",
+//	        "completed": "c",
+//	        "cancelled": "x",
+//	        // "active" has no prefix (default/canonical value)
+//	    },
+//	    DefaultValue: "active",
+//	}
+//
+// ## Hierarchical Dimensions
+//
+// Hierarchical dimensions create parent-child relationships between documents,
+// enabling tree-like organizational structures. They support:
+//
+// - **Parent References**: Documents can reference other documents as parents
+// - **Nested IDs**: Child documents inherit parent ID prefixes (e.g., "1.2.3")
+// - **Cascade Operations**: Deletion can optionally cascade to children
+// - **Unlimited Depth**: No artificial limits on hierarchy depth
+//
+// Example hierarchical dimension:
+//
+//	{
+//	    Name: "location",
+//	    Type: Hierarchical,
+//	    RefField: "parent_id",
+//	}
+//
+// # ID Generation Impact
+//
+// Dimensions directly influence how SimpleIDs are generated:
+//
+// 1. **Partition Formation**: Documents with identical dimension values form partitions
+// 2. **Position Assignment**: Documents get sequential positions within their partition
+// 3. **Prefix Application**: Enumerated values become prefixes in the final ID
+// 4. **Hierarchical Paths**: Parent-child relationships create dot-separated ID segments
+//
+// Example ID generation with multiple dimensions:
+//   - Document: status=completed, priority=high, parent=1, position=3
+//   - Generated ID: "1.ch3" (parent=1, completed="c", high="h", position=3)
+//
+// # Configuration Validation
+//
+// The system enforces several validation rules:
+//
+// - **Unique Names**: No duplicate dimension names
+// - **Valid Values**: Non-empty values for enumerated dimensions
+// - **Prefix Conflicts**: No duplicate prefixes across dimensions
+// - **Reference Fields**: Hierarchical dimensions must specify RefField
+// - **Default Validation**: DefaultValue must be in Values list
+// - **Type Consistency**: Type-specific fields must be properly configured
+//
+// # Performance Considerations
+//
+// - **Dimension Count**: Limited to 7 dimensions for optimal performance
+// - **Value Count**: No limit on enumerated values, but affects validation time
+// - **Prefix Length**: Single-character prefixes recommended for compact IDs
+// - **Hierarchy Depth**: Deep hierarchies may impact ID resolution performance
+//
+// # Best Practices
+//
+// 1. **Canonical Values**: Use empty prefixes for most common values
+// 2. **Meaningful Prefixes**: Choose intuitive single-character prefixes
+// 3. **Stable Configuration**: Avoid changing dimension configs after deployment
+// 4. **Logical Ordering**: Order dimensions by importance/frequency
+// 5. **RefField Naming**: Use consistent naming (e.g., "parent_id", "parent_uuid")
 type DimensionConfig struct {
-	// Name is the database column name and identifier for this dimension
+	// Name is the database column name and identifier for this dimension.
+	// Must be unique across all dimensions in the configuration.
+	// Used in partition keys, filtering, and API operations.
+	//
+	// Examples: "status", "priority", "category", "location"
 	Name string
 
-	// Type specifies whether this is an enumerated or hierarchical dimension
+	// Type specifies whether this is an enumerated or hierarchical dimension.
+	// This fundamentally changes how the dimension behaves:
+	// - Enumerated: Fixed set of values with optional prefixes
+	// - Hierarchical: Parent-child relationships with unlimited values
 	Type DimensionType
 
-	// Values lists the valid values for enumerated dimensions
-	// Ignored for hierarchical dimensions
+	// Values lists the valid values for enumerated dimensions.
+	// Each value represents a possible state or category.
+	// Order is preserved but doesn't affect functionality.
+	// Ignored for hierarchical dimensions.
+	//
+	// Example: []string{"draft", "review", "approved", "published"}
 	Values []string
 
-	// Prefixes maps values to their ID prefixes
-	// For enumerated dimensions: value -> prefix (e.g., "completed" -> "c")
-	// Ignored for hierarchical dimensions
+	// Prefixes maps enumerated values to their single-character ID prefixes.
+	// Prefixes allow values to be represented compactly in SimpleIDs.
+	// Values without prefixes are considered "canonical" and omitted from IDs.
+	// Ignored for hierarchical dimensions.
+	//
+	// Example: map[string]string{
+	//     "draft": "d",
+	//     "review": "r",
+	//     "published": "p",
+	//     // "approved" has no prefix (canonical value)
+	// }
 	Prefixes map[string]string
 
-	// RefField specifies the foreign key field name for hierarchical dimensions
-	// For hierarchical dimensions: typically "parent_uuid"
-	// Ignored for enumerated dimensions
+	// RefField specifies the foreign key field name for hierarchical dimensions.
+	// This field in document dimensions will contain the parent document's UUID.
+	// The field name is used for:
+	// - Storing parent references in document data
+	// - Command preprocessing to resolve parent SimpleIDs
+	// - Cascade deletion operations
+	// Ignored for enumerated dimensions.
+	//
+	// Common values: "parent_id", "parent_uuid", "location_parent"
 	RefField string
 
-	// DefaultValue specifies the default value for enumerated dimensions
-	// Used when inserting new documents without explicit value
+	// DefaultValue specifies the default value for enumerated dimensions.
+	// Used when creating documents without an explicit value for this dimension.
+	// Must be present in the Values list.
+	// Canonical views often use default values to define "normal" document states.
+	// Ignored for hierarchical dimensions.
+	//
+	// Example: "active" for a status dimension with values ["active", "archived"]
 	DefaultValue string
 }
 
