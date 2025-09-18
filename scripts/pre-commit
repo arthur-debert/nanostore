@@ -100,7 +100,22 @@ run_checks() {
         overall_success=false
     fi
 
-    echo "" # Add blank line before final result
+    echo "" # Add blank line before test guideline reminder
+    
+    # Check if any test files are being modified
+    if git diff --cached --name-only | grep -q '_test\.go$'; then
+        echo "📚 Test Guidelines Reminder:"
+        echo "   You are modifying test files. Please follow the test guidelines in"
+        echo "   testutil/examples_test.go which demonstrate:"
+        echo "   • Using testutil.LoadUniverse() for one-line test setup"
+        echo "   • Using assertion helpers for cleaner tests"
+        echo "   • Leveraging the fixture data instead of creating test data"
+        echo ""
+        echo "   💡 Consider migrating the entire test file to the new infrastructure"
+        echo "      if you're making significant changes. This helps maintain consistency"
+        echo "      and makes tests more maintainable."
+        echo ""
+    fi
 
     # Exit based on overall result
     if [ "$overall_success" = true ]; then
