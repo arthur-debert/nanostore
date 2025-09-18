@@ -636,7 +636,21 @@ func (s *jsonFileStore) Delete(id string, cascade bool) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	return s.deleteInternal(id, cascade)
+	// Resolve ID to UUID if it's a simple ID
+	resolvedID := id
+	if !isValidUUID(id) {
+		// Try to resolve as simple ID
+		// Need to unlock to call ResolveUUID which also needs lock
+		s.mu.Unlock()
+		uuid, err := s.ResolveUUID(id)
+		s.mu.Lock()
+		if err != nil {
+			return fmt.Errorf("failed to resolve ID %s: %w", id, err)
+		}
+		resolvedID = uuid
+	}
+
+	return s.deleteInternal(resolvedID, cascade)
 }
 
 // deleteInternal is the internal delete method that doesn't lock
