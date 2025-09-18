@@ -1,4 +1,4 @@
-package nanostore
+package api
 
 import (
 	"reflect"

@@ -40,18 +40,18 @@ Nanostore: Design and Problem Space
     
         $ todo list 
             ○ 143. Groceries
-            ○ 143.144. Eggs
-            ○ 143.145. Bread
-            ○ 143.158. Milk
+                ○ 143.144. Eggs
+                ○ 143.145. Bread
+                ○ 143.158. Milk
             ○ 149. Pack for Trip
-            ○ 149.150. Camera Gear
-            ○ 149.151. Clothes
-            ○ 149.178. Passport
+                ○ 149.150. Camera Gear
+                ○ 149.151. Clothes
+                ○ 149.178. Passport
             
         $ todo search "es"
             ○ 1. Groceries
             ○ 2. Pack for Trip
-            ○ 2.1. Clothes
+              ○ 2.1. Clothes
             
         $ todo complete 2.1 
         
@@ -259,49 +259,8 @@ Nanostore: Design and Problem Space
     - Multi-tenant systems with strict data isolation requirements
     - Systems requiring ACID transactions across multiple operations
 
-6. Comparison with Alternatives
 
-6.1 Traditional Databases (SQLite, PostgreSQL)
-
-    Advantages of databases:
-    - Better performance on large datasets
-    - ACID transactions
-    - Complex query capabilities
-    - Mature tooling and administration
-
-    Advantages of nanostore:
-    - Automatic human-friendly ID generation
-    - No schema migration complexity
-    - Single-file deployment
-    - Type-safe declarative API
-    - Built-in hierarchical relationships
-
-6.2 Key-Value Stores (BoltDB, BadgerDB)
-
-    Advantages of key-value stores:
-    - Better performance
-    - Lower memory usage
-    - Structured storage
-
-    Advantages of nanostore:
-    - Higher-level abstractions
-    - Automatic querying and filtering
-    - ID management system
-    - Human-readable storage format
-
-6.3 In-Memory Solutions (sync.Map, caches)
-
-    Advantages of in-memory:
-    - Faster access
-    - No I/O overhead
-
-    Advantages of nanostore:
-    - Persistence across restarts
-    - Structured query capabilities
-    - Type safety
-    - Automatic ID generation
-
-7. Implementation Strategy
+6. Implementation Strategy
 
     Nanostore works declaratively: you describe the schema (fields and their
     dimension properties), and nanostore handles dimension partitioning, ID

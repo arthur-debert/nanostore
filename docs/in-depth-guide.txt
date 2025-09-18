@@ -81,8 +81,8 @@ Table of Contents
 
     Dimension vs Non-Dimension Fields:
     
-    - **Dimension fields** (with struct tags) affect ID generation and are used for partitioning
-    - **Non-dimension fields** (without tags) are preserved as regular data and support transparent filtering/ordering
+    - Dimension fields (with struct tags) affect ID generation and are used for partitioning
+    - Non-dimension fields (without tags) are preserved as regular data and support transparent filtering/ordering
     - Both types can be used in queries, but only dimensions affect the generated IDs
     
     For example:

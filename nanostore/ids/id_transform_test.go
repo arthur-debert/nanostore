@@ -1,42 +1,44 @@
-package nanostore
+package ids
 
 import (
 	"testing"
+
+	"github.com/arthur-debert/nanostore/types"
 )
 
 func TestIDTransformer(t *testing.T) {
 	// Set up test dimensions
-	dims := []Dimension{
+	dims := []types.Dimension{
 		{
 			Name:     "parent",
-			Type:     Hierarchical,
+			Type: types.Hierarchical,
 			RefField: "parent_uuid",
-			Meta:     DimensionMetadata{Order: 0},
+			Meta:     types.DimensionMetadata{Order: 0},
 		},
 		{
 			Name:         "status",
-			Type:         Enumerated,
+			Type: types.Enumerated,
 			Values:       []string{"pending", "active", "done"},
 			Prefixes:     map[string]string{"done": "d", "active": "a"},
 			DefaultValue: "pending",
-			Meta:         DimensionMetadata{Order: 1},
+			Meta:         types.DimensionMetadata{Order: 1},
 		},
 		{
 			Name:         "priority",
-			Type:         Enumerated,
+			Type: types.Enumerated,
 			Values:       []string{"low", "medium", "high"},
 			Prefixes:     map[string]string{"high": "h", "low": "l"},
 			DefaultValue: "medium",
-			Meta:         DimensionMetadata{Order: 2},
+			Meta:         types.DimensionMetadata{Order: 2},
 		},
 	}
-	ds := NewDimensionSet(dims)
+	ds := types.NewDimensionSet(dims)
 
 	// Set up canonical view (pending status, medium priority)
-	cv := NewCanonicalView(
-		CanonicalFilter{Dimension: "status", Value: "pending"},
-		CanonicalFilter{Dimension: "priority", Value: "medium"},
-		CanonicalFilter{Dimension: "parent", Value: "*"},
+	cv := types.NewCanonicalView(
+		types.CanonicalFilter{Dimension: "status", Value: "pending"},
+		types.CanonicalFilter{Dimension: "priority", Value: "medium"},
+		types.CanonicalFilter{Dimension: "parent", Value: "*"},
 	)
 
 	transformer := NewIDTransformer(ds, cv)
@@ -44,13 +46,13 @@ func TestIDTransformer(t *testing.T) {
 	t.Run("ToShortForm", func(t *testing.T) {
 		tests := []struct {
 			name      string
-			partition Partition
+			partition types.Partition
 			expected  string
 		}{
 			{
 				name: "root with canonical values",
-				partition: Partition{
-					Values: []DimensionValue{
+				partition: types.Partition{
+					Values: []types.DimensionValue{
 						{Dimension: "status", Value: "pending"},
 						{Dimension: "priority", Value: "medium"},
 					},
@@ -60,8 +62,8 @@ func TestIDTransformer(t *testing.T) {
 			},
 			{
 				name: "root with done status",
-				partition: Partition{
-					Values: []DimensionValue{
+				partition: types.Partition{
+					Values: []types.DimensionValue{
 						{Dimension: "status", Value: "done"},
 						{Dimension: "priority", Value: "medium"},
 					},
@@ -71,8 +73,8 @@ func TestIDTransformer(t *testing.T) {
 			},
 			{
 				name: "root with high priority",
-				partition: Partition{
-					Values: []DimensionValue{
+				partition: types.Partition{
+					Values: []types.DimensionValue{
 						{Dimension: "status", Value: "pending"},
 						{Dimension: "priority", Value: "high"},
 					},
@@ -82,8 +84,8 @@ func TestIDTransformer(t *testing.T) {
 			},
 			{
 				name: "root with done and high",
-				partition: Partition{
-					Values: []DimensionValue{
+				partition: types.Partition{
+					Values: []types.DimensionValue{
 						{Dimension: "status", Value: "done"},
 						{Dimension: "priority", Value: "high"},
 					},
@@ -93,8 +95,8 @@ func TestIDTransformer(t *testing.T) {
 			},
 			{
 				name: "child with canonical values",
-				partition: Partition{
-					Values: []DimensionValue{
+				partition: types.Partition{
+					Values: []types.DimensionValue{
 						{Dimension: "parent", Value: "1"},
 						{Dimension: "status", Value: "pending"},
 						{Dimension: "priority", Value: "medium"},
@@ -105,8 +107,8 @@ func TestIDTransformer(t *testing.T) {
 			},
 			{
 				name: "child with done status",
-				partition: Partition{
-					Values: []DimensionValue{
+				partition: types.Partition{
+					Values: []types.DimensionValue{
 						{Dimension: "parent", Value: "1"},
 						{Dimension: "status", Value: "done"},
 						{Dimension: "priority", Value: "medium"},
@@ -117,8 +119,8 @@ func TestIDTransformer(t *testing.T) {
 			},
 			{
 				name: "grandchild with high priority",
-				partition: Partition{
-					Values: []DimensionValue{
+				partition: types.Partition{
+					Values: []types.DimensionValue{
 						{Dimension: "parent", Value: "1.2"},
 						{Dimension: "status", Value: "pending"},
 						{Dimension: "priority", Value: "high"},
@@ -143,14 +145,14 @@ func TestIDTransformer(t *testing.T) {
 		tests := []struct {
 			name     string
 			shortID  string
-			expected Partition
+			expected types.Partition
 			wantErr  bool
 		}{
 			{
 				name:    "simple root",
 				shortID: "1",
-				expected: Partition{
-					Values: []DimensionValue{
+				expected: types.Partition{
+					Values: []types.DimensionValue{
 						{Dimension: "status", Value: "pending"},
 						{Dimension: "priority", Value: "medium"},
 					},
@@ -160,8 +162,8 @@ func TestIDTransformer(t *testing.T) {
 			{
 				name:    "root with done prefix",
 				shortID: "d2",
-				expected: Partition{
-					Values: []DimensionValue{
+				expected: types.Partition{
+					Values: []types.DimensionValue{
 						{Dimension: "status", Value: "done"},
 						{Dimension: "priority", Value: "medium"},
 					},
@@ -171,8 +173,8 @@ func TestIDTransformer(t *testing.T) {
 			{
 				name:    "root with high prefix",
 				shortID: "h3",
-				expected: Partition{
-					Values: []DimensionValue{
+				expected: types.Partition{
+					Values: []types.DimensionValue{
 						{Dimension: "priority", Value: "high"},
 						{Dimension: "status", Value: "pending"},
 					},
@@ -182,8 +184,8 @@ func TestIDTransformer(t *testing.T) {
 			{
 				name:    "root with multiple prefixes",
 				shortID: "dh4",
-				expected: Partition{
-					Values: []DimensionValue{
+				expected: types.Partition{
+					Values: []types.DimensionValue{
 						{Dimension: "status", Value: "done"},
 						{Dimension: "priority", Value: "high"},
 					},
@@ -193,8 +195,8 @@ func TestIDTransformer(t *testing.T) {
 			{
 				name:    "child",
 				shortID: "1.2",
-				expected: Partition{
-					Values: []DimensionValue{
+				expected: types.Partition{
+					Values: []types.DimensionValue{
 						{Dimension: "parent", Value: "1"},
 						{Dimension: "status", Value: "pending"},
 						{Dimension: "priority", Value: "medium"},
@@ -205,8 +207,8 @@ func TestIDTransformer(t *testing.T) {
 			{
 				name:    "child with prefix",
 				shortID: "1.d3",
-				expected: Partition{
-					Values: []DimensionValue{
+				expected: types.Partition{
+					Values: []types.DimensionValue{
 						{Dimension: "parent", Value: "1"},
 						{Dimension: "status", Value: "done"},
 						{Dimension: "priority", Value: "medium"},
@@ -274,16 +276,16 @@ func TestIDTransformer(t *testing.T) {
 
 	t.Run("RoundTrip", func(t *testing.T) {
 		// Test that ToShortForm and FromShortForm are inverses
-		partitions := []Partition{
+		partitions := []types.Partition{
 			{
-				Values: []DimensionValue{
+				Values: []types.DimensionValue{
 					{Dimension: "status", Value: "pending"},
 					{Dimension: "priority", Value: "medium"},
 				},
 				Position: 1,
 			},
 			{
-				Values: []DimensionValue{
+				Values: []types.DimensionValue{
 					{Dimension: "parent", Value: "1"},
 					{Dimension: "status", Value: "done"},
 					{Dimension: "priority", Value: "high"},
@@ -291,7 +293,7 @@ func TestIDTransformer(t *testing.T) {
 				Position: 5,
 			},
 			{
-				Values: []DimensionValue{
+				Values: []types.DimensionValue{
 					{Dimension: "parent", Value: "2.3"},
 					{Dimension: "status", Value: "active"},
 					{Dimension: "priority", Value: "low"},
