@@ -3,6 +3,8 @@ package nanostore
 import (
 	"fmt"
 	"strings"
+
+	"github.com/arthur-debert/nanostore/types"
 )
 
 // CanonicalFilter represents a filter for the canonical view
@@ -39,7 +41,7 @@ func (cv *CanonicalView) String() string {
 }
 
 // Matches checks if a document matches the canonical view filters
-func (cv *CanonicalView) Matches(doc Document, dimensionSet *DimensionSet) bool {
+func (cv *CanonicalView) Matches(doc Document, dimensionSet *types.DimensionSet) bool {
 	if cv == nil || len(cv.Filters) == 0 {
 		// No filters means everything matches
 		return true
@@ -115,8 +117,8 @@ func (cv *CanonicalView) IsCanonicalValue(dimension, value string) bool {
 
 // ExtractFromPartition extracts canonical filters from a partition
 // Returns dimension values that should be removed from the user-facing ID
-func (cv *CanonicalView) ExtractFromPartition(partition Partition) []DimensionValue {
-	var canonical []DimensionValue
+func (cv *CanonicalView) ExtractFromPartition(partition types.Partition) []types.DimensionValue {
+	var canonical []types.DimensionValue
 
 	for _, dv := range partition.Values {
 		// Only extract if there's a filter for this dimension AND the value matches

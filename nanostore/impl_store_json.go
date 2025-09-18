@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/arthur-debert/nanostore/types"
 	"github.com/gofrs/flock"
 	"github.com/google/uuid"
 )
@@ -18,7 +19,7 @@ import (
 type jsonFileStore struct {
 	filePath      string
 	config        Config
-	dimensionSet  *DimensionSet
+	dimensionSet  *types.DimensionSet
 	canonicalView *CanonicalView
 	idGenerator   *IDGenerator
 	preprocessor  *commandPreprocessor

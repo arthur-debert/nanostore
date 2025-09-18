@@ -92,6 +92,14 @@ run_checks() {
         overall_success=false
     fi
 
+    # Run build check (suppress output)
+    if go build -v ./... >/dev/null 2>&1 && (cd "${PROJECT_ROOT}"/samples/todos && go build -v ./... >/dev/null 2>&1); then
+        echo -e "    ${GREEN}✓ Build${NC}"
+    else
+        echo -e "    ${RED}✗ Build failed${NC}"
+        overall_success=false
+    fi
+
     echo "" # Add blank line before final result
 
     # Exit based on overall result

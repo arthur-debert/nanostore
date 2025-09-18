@@ -343,6 +343,86 @@ func (ts *TypedStore[T]) Delete(id string, cascade bool) error {
 	return ts.store.Delete(id, cascade)
 }
 
+// DeleteByDimension removes all documents matching the given dimension filters
+// Multiple filters are combined with AND. Returns the number of documents deleted.
+func (ts *TypedStore[T]) DeleteByDimension(filters map[string]interface{}) (int, error) {
+	return ts.store.DeleteByDimension(filters)
+}
+
+// DeleteWhere removes all documents matching a custom WHERE clause
+// The where clause should not include the "WHERE" keyword itself.
+// Use with caution as it allows arbitrary SQL conditions.
+// Returns the number of documents deleted.
+func (ts *TypedStore[T]) DeleteWhere(whereClause string, args ...interface{}) (int, error) {
+	return ts.store.DeleteWhere(whereClause, args...)
+}
+
+// UpdateByDimension updates all documents matching the given dimension filters
+// Multiple filters are combined with AND. Returns the number of documents updated.
+func (ts *TypedStore[T]) UpdateByDimension(filters map[string]interface{}, data *T) (int, error) {
+	dimensions, extraData, err := MarshalDimensions(data)
+	if err != nil {
+		return 0, fmt.Errorf("failed to marshal dimensions: %w", err)
+	}
+
+	// Store extra data in dimensions with a special prefix
+	for key, value := range extraData {
+		dimensions["_data."+key] = value
+	}
+
+	// Extract title and body if they're set
+	var req nanostore.UpdateRequest
+	req.Dimensions = dimensions
+
+	// Use reflection to check if Title or Body fields are set
+	val := reflect.ValueOf(data).Elem()
+	if docField := val.FieldByName("Document"); docField.IsValid() {
+		doc := docField.Interface().(nanostore.Document)
+		if doc.Title != "" {
+			req.Title = &doc.Title
+		}
+		if doc.Body != "" {
+			req.Body = &doc.Body
+		}
+	}
+
+	return ts.store.UpdateByDimension(filters, req)
+}
+
+// UpdateWhere updates all documents matching a custom WHERE clause
+// The where clause should not include the "WHERE" keyword itself.
+// Use with caution as it allows arbitrary SQL conditions.
+// Returns the number of documents updated.
+func (ts *TypedStore[T]) UpdateWhere(whereClause string, data *T, args ...interface{}) (int, error) {
+	dimensions, extraData, err := MarshalDimensions(data)
+	if err != nil {
+		return 0, fmt.Errorf("failed to marshal dimensions: %w", err)
+	}
+
+	// Store extra data in dimensions with a special prefix
+	for key, value := range extraData {
+		dimensions["_data."+key] = value
+	}
+
+	// Extract title and body if they're set
+	var req nanostore.UpdateRequest
+	req.Dimensions = dimensions
+
+	// Use reflection to check if Title or Body fields are set
+	val := reflect.ValueOf(data).Elem()
+	if docField := val.FieldByName("Document"); docField.IsValid() {
+		doc := docField.Interface().(nanostore.Document)
+		if doc.Title != "" {
+			req.Title = &doc.Title
+		}
+		if doc.Body != "" {
+			req.Body = &doc.Body
+		}
+	}
+
+	return ts.store.UpdateWhere(whereClause, req, args...)
+}
+
 // Query returns a new typed query builder
 func (ts *TypedStore[T]) Query() *TypedQuery[T] {
 	return &TypedQuery[T]{

@@ -1,37 +1,13 @@
 Nanostore API Reference
 
-1. Core Store Interface
+1. TypedStore Interface
 
-1.1 Creating a Store
+1.1 Creating a Typed Store
 
-    Basic Store Creation:
+    The primary way to use nanostore is through the TypedStore API, which automatically
+    generates configuration from struct tags:
     
         import "github.com/arthur-debert/nanostore/nanostore"
-        
-        config := nanostore.Config{
-            Dimensions: []nanostore.DimensionConfig{
-                {
-                    Name:         "status",
-                    Type:         nanostore.Enumerated,
-                    Values:       []string{"pending", "active", "done"},
-                    Prefixes:     map[string]string{"done": "d"},
-                    DefaultValue: "pending",
-                },
-                {
-                    Name:     "parent",
-                    Type:     nanostore.Hierarchical,
-                    RefField: "parent_uuid",
-                },
-            },
-        }
-        
-        store, err := nanostore.New("data.json", config)
-        if err != nil {
-            return err
-        }
-        defer store.Close()
-
-    Declarative Store Creation:
     
         type TaskItem struct {
             nanostore.Document
@@ -46,75 +22,75 @@ Nanostore API Reference
         }
         
         store, err := nanostore.NewFromType[TaskItem]("tasks.json")
+        if err != nil {
+            return err
+        }
+        defer store.Close()
 
-1.2 Store Interface Methods
+1.2 TypedStore Interface Methods
 
-    type Store interface {
-        List(opts ListOptions) ([]Document, error)
-        Add(title string, dimensions map[string]interface{}) (string, error)
-        Update(id string, updates UpdateRequest) error
-        ResolveUUID(simpleID string) (string, error)
+    The TypedStore provides type-safe operations:
+
+    type TypedStore[T any] interface {
+        Create(title string, data *T) (string, error)
+        Get(id string) (*T, error)
+        Update(id string, data *T) error
         Delete(id string, cascade bool) error
         DeleteByDimension(filters map[string]interface{}) (int, error)
         DeleteWhere(whereClause string, args ...interface{}) (int, error)
-        UpdateByDimension(filters map[string]interface{}, updates UpdateRequest) (int, error)
-        UpdateWhere(whereClause string, updates UpdateRequest, args ...interface{}) (int, error)
+        UpdateByDimension(filters map[string]interface{}, data *T) (int, error)
+        UpdateWhere(whereClause string, data *T, args ...interface{}) (int, error)
+        Query() *TypedQuery[T]
         Close() error
     }
 
 2. Document Operations
 
-2.1 Adding Documents
+2.1 Creating Documents
 
-    Basic Addition:
+    Type-Safe Creation:
     
-        uuid, err := store.Add("Task Title", map[string]interface{}{
-            "status":      "pending",
-            "priority":    "high",
-            "parent_uuid": parentUUID,
-        })
-
-    With Custom Data:
-    
-        uuid, err := store.Add("Task Title", map[string]interface{}{
-            "status":              "active",
-            "_data.assigned_to":   "alice",
-            "_data.due_date":      time.Now().AddDate(0, 0, 7),
-            "_data.tags":          "urgent,important",
-        })
+        task := &TaskItem{
+            Status:      "pending",
+            Priority:    "high",
+            ParentID:    parentID,  // Can be UUID or SimpleID
+            Description: "Important task",
+            AssignedTo:  "alice",
+        }
+        
+        id, err := store.Create("Task Title", task)
+        if err != nil {
+            return err
+        }
+        // Returns user-friendly ID like "h1" (high priority, position 1)
 
 2.2 Updating Documents
 
-    Basic Update:
+    Type-Safe Update:
     
-        err := store.Update(id, nanostore.UpdateRequest{
-            Title: &newTitle,
-            Body:  &newBody,
-            Dimensions: map[string]interface{}{
-                "status":   "done",
-                "priority": "low",
-            },
-        })
+        // Update fields selectively
+        task.Status = "done"
+        task.Priority = "low"
+        task.AssignedTo = "bob"
+        
+        err := store.Update(id, task)
+        if err != nil {
+            return err
+        }
 
-    Partial Updates:
+2.3 Retrieving Documents
+
+    Get Single Document:
     
-        err := store.Update(id, nanostore.UpdateRequest{
-            Dimensions: map[string]interface{}{
-                "status": "active",
-                // Other dimensions remain unchanged
-            },
-        })
+        task, err := store.Get(id)
+        if err != nil {
+            return err
+        }
+        
+        fmt.Printf("Task: %s (Status: %s, Priority: %s)\n", 
+            task.Title, task.Status, task.Priority)
 
-    Custom Data Updates:
-    
-        err := store.Update(id, nanostore.UpdateRequest{
-            Dimensions: map[string]interface{}{
-                "_data.assigned_to": "bob",
-                "_data.notes":       "Updated notes",
-            },
-        })
-
-2.3 Deleting Documents
+2.4 Deleting Documents
 
     Simple Delete:
     
@@ -126,12 +102,145 @@ Nanostore API Reference
 
     Bulk Delete by Dimension:
     
-        count, err := store.DeleteByDimension(map[string]interface{}{
-            "status":   "done",
-            "activity": "archived",
+        deletedCount, err := store.DeleteByDimension(map[string]interface{}{
+            "status": "done",
         })
 
-2.4 ID Resolution
+3. Type-Safe Querying
+
+3.1 Basic Queries
+
+    Find All Documents:
+    
+        tasks, err := store.Query().Find()
+
+    Filter by Single Dimension:
+    
+        activeTasks, err := store.Query().
+            Status("active").
+            Find()
+
+    Filter by Multiple Dimensions:
+    
+        urgentTasks, err := store.Query().
+            Status("pending").
+            Priority("high").
+            Find()
+
+3.2 Advanced Querying
+
+    Hierarchical Queries:
+    
+        // Find all children of a parent
+        children, err := store.Query().
+            ParentID("1").
+            Find()
+        
+        // Find root-level items (no parent)
+        roots, err := store.Query().
+            ParentIDNotExists().
+            Find()
+
+    Text Search:
+    
+        searchResults, err := store.Query().
+            Search("urgent").
+            Status("active").
+            Find()
+
+    Ordering:
+    
+        orderedTasks, err := store.Query().
+            Status("active").
+            OrderBy("created_at").
+            OrderByDesc("priority").
+            Find()
+
+    Pagination:
+    
+        pagedResults, err := store.Query().
+            Status("active").
+            Limit(10).
+            Offset(20).
+            Find()
+
+3.3 Query Result Methods
+
+    Find Multiple:
+    
+        tasks, err := store.Query().Status("active").Find()
+
+    Find First:
+    
+        task, err := store.Query().
+            Priority("high").
+            OrderBy("created_at").
+            First()
+
+    Check Existence:
+    
+        hasUrgent, err := store.Query().
+            Priority("high").
+            Status("pending").
+            Exists()
+
+    Count:
+    
+        count, err := store.Query().
+            Status("active").
+            Count()
+
+4. Struct Tag Configuration
+
+4.1 Enumerated Dimensions
+
+    Basic Enumerated Dimension:
+    
+        type Task struct {
+            Status string `values:"pending,active,done"`
+        }
+
+    With Default Value:
+    
+        type Task struct {
+            Status string `values:"pending,active,done" default:"pending"`
+        }
+
+    With Prefixes:
+    
+        type Task struct {
+            Status   string `values:"pending,active,done" prefix:"done=d,active=a" default:"pending"`
+            Priority string `values:"low,medium,high" prefix:"high=h,low=l" default:"medium"`
+        }
+
+4.2 Hierarchical Dimensions
+
+    Basic Hierarchical Reference:
+    
+        type Task struct {
+            ParentID string `dimension:"parent_id,ref"`
+        }
+
+4.3 Non-Dimension Fields
+
+    Regular fields without tags are stored as custom data:
+    
+        type Task struct {
+            nanostore.Document
+            
+            // Dimension fields
+            Status   string `values:"pending,active,done"`
+            Priority string `values:"low,medium,high"`
+            ParentID string `dimension:"parent_id,ref"`
+            
+            // Custom data fields (stored with _data. prefix)
+            Description string
+            AssignedTo  string
+            DueDate     time.Time
+            Tags        []string
+        }
+
+5. ID Resolution
 
     Convert User ID to Internal UUID:
     

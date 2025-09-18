@@ -1,0 +1,216 @@
+commit afd221c872b7e759351c1b2e532bab7a50b0fdeb
+Author: adebert <debert@gmail.com>
+Date:   Thu Sep 18 15:02:24 2025 -0300
+
+    refactor: improve field search logic consistency and reduce coupling
+    
+    - Extract getAllSearchableFields() helper to centralize field enumeration
+    - Add getFieldInfo() helper as single source of truth for field type detection
+    - Remove duplicate _data. prefix logic between searchDocument and searchFieldDetailed
+    - Simplify field search with cleaner separation of concerns
+    - Add comprehensive test for field type detection and match type assignment
+    - Maintain exact same behavior while improving code maintainability
+    
+    Benefits:
+    - Single responsibility: getFieldInfo() handles all field type logic
+    - Reduced coupling: searchDocument no longer duplicates field type detection
+    - Easier maintenance: centralized field handling logic
+    
+    🤖 Generated with [Claude Code](https://claude.ai/code)
+    
+    Co-Authored-By: Claude <noreply@anthropic.com>
+
+diff --git a/search/engine.go b/search/engine.go
+index 4e17c21..596a5a5 100644
+--- a/search/engine.go
++++ b/search/engine.go
+@@ -77,16 +77,7 @@ func (e *Engine) searchDocument(doc types.Document, query string, options Search
+ 	// Determine which fields to search
+ 	fieldsToSearch := options.Fields
+ 	if len(fieldsToSearch) == 0 {
+-		fieldsToSearch = []string{"title", "body"}
+-		// Add all dimension keys that don't start with "_data."
+-		for key := range doc.Dimensions {
+-			if !strings.HasPrefix(key, "_data.") {
+-				fieldsToSearch = append(fieldsToSearch, key)
+-			} else {
+-				// Add _data fields with their prefix
+-				fieldsToSearch = append(fieldsToSearch, key)
+-			}
+-		}
++		fieldsToSearch = e.getAllSearchableFields(doc)
+ 	}
+ 
+ 	// Search each field
+@@ -137,29 +128,10 @@ func (e *Engine) searchDocument(doc types.Document, query string, options Search
+ 
+ // searchFieldDetailed searches within a specific field and returns detailed match information
+ func (e *Engine) searchFieldDetailed(doc types.Document, fieldName, query string, options SearchOptions, startMarker, endMarker string) *FieldMatch {
+-	var fieldValue string
+-	var baseMatchType MatchType
+-
+-	// Get field value
+-	switch fieldName {
+-	case "title":
+-		fieldValue = doc.Title
+-		baseMatchType = MatchPartialTitle
+-	case "body":
+-		fieldValue = doc.Body
+-		baseMatchType = MatchPartialBody
+-	default:
+-		// Check if it's a dimension or custom data field
+-		if value, exists := doc.Dimensions[fieldName]; exists {
+-			fieldValue = fmt.Sprintf("%v", value)
+-			if strings.HasPrefix(fieldName, "_data.") {
+-				baseMatchType = MatchCustomData
+-			} else {
+-				baseMatchType = MatchDimension
+-			}
+-		} else {
+-			return nil // Field not found
+-		}
++	// Get field value and match type using centralized logic
++	fieldValue, baseMatchType, exists := e.getFieldInfo(doc, fieldName)
++	if !exists {
++		return nil // Field not found
+ 	}
+ 
+ 	// Find all match positions
+@@ -348,3 +320,35 @@ func (e *Engine) highlightMatchesWithMarkers(text, query string, caseSensitive b
+ 
+ 	return builder.String()
+ }
++
++// getAllSearchableFields returns all fields that can be searched in a document
++func (e *Engine) getAllSearchableFields(doc types.Document) []string {
++	fields := []string{"title", "body"}
++
++	// Add all dimension fields
++	for key := range doc.Dimensions {
++		fields = append(fields, key)
++	}
++
++	return fields
++}
++
++// getFieldInfo extracts field value and determines match type for a given field
++func (e *Engine) getFieldInfo(doc types.Document, fieldName string) (string, MatchType, bool) {
++	switch fieldName {
++	case "title":
++		return doc.Title, MatchPartialTitle, true
++	case "body":
++		return doc.Body, MatchPartialBody, true
++	default:
++		// Check if it's a dimension or custom data field
++		if value, exists := doc.Dimensions[fieldName]; exists {
++			fieldValue := fmt.Sprintf("%v", value)
++			if strings.HasPrefix(fieldName, "_data.") {
++				return fieldValue, MatchCustomData, true
++			}
++			return fieldValue, MatchDimension, true
++		}
++		return "", "", false
++	}
++}
+diff --git a/search/engine_test.go b/search/engine_test.go
+index 2502319..ac2e819 100644
+--- a/search/engine_test.go
++++ b/search/engine_test.go
+@@ -570,6 +570,97 @@ func TestEngine_Search_HighlightingMultipleMatches(t *testing.T) {
+ 	}
+ }
+ 
++func TestEngine_Search_FieldTypeDetection(t *testing.T) {
++	provider := NewMockDocumentProvider([]types.Document{
++		{
++			UUID:     "test",
++			SimpleID: "1",
++			Title:    "Test Title",
++			Body:     "Test Body",
++			Dimensions: map[string]interface{}{
++				"status":            "active",
++				"_data.custom_note": "important note",
++			},
++		},
++	})
++	engine := NewEngine(provider)
++
++	// Test that all field types are correctly detected and searched
++	results, err := engine.Search(SearchOptions{
++		Query:               "test", // Should match title and body
++		IncludeMatchDetails: true,
++	}, nil)
++
++	if err != nil {
++		t.Errorf("Expected no error, got %v", err)
++	}
++	if len(results) != 1 {
++		t.Fatalf("Expected 1 result, got %d", len(results))
++	}
++
++	result := results[0]
++	if len(result.FieldMatches) < 2 {
++		t.Fatalf("Expected at least 2 field matches (title, body), got %d", len(result.FieldMatches))
++	}
++
++	// Verify correct match types are assigned
++	matchTypeFound := make(map[MatchType]bool)
++	fieldNameFound := make(map[string]bool)
++
++	for _, fieldMatch := range result.FieldMatches {
++		fieldNameFound[fieldMatch.FieldName] = true
++		for _, match := range fieldMatch.Matches {
++			matchTypeFound[match.MatchType] = true
++		}
++	}
++
++	// Should find title and body fields
++	if !fieldNameFound["title"] {
++		t.Error("Expected to find title field")
++	}
++	if !fieldNameFound["body"] {
++		t.Error("Expected to find body field")
++	}
++
++	// Should have correct match types
++	if !matchTypeFound[MatchPartialTitle] {
++		t.Error("Expected MatchPartialTitle type")
++	}
++	if !matchTypeFound[MatchPartialBody] {
++		t.Error("Expected MatchPartialBody type")
++	}
++
++	// Test custom data field search specifically
++	customResults, err := engine.Search(SearchOptions{
++		Query:               "important",
++		Fields:              []string{"_data.custom_note"},
++		IncludeMatchDetails: true,
++	}, nil)
++
++	if err != nil {
++		t.Errorf("Expected no error, got %v", err)
++	}
++	if len(customResults) != 1 {
++		t.Fatalf("Expected 1 result for custom data search, got %d", len(customResults))
++	}
++
++	customResult := customResults[0]
++	if len(customResult.FieldMatches) != 1 {
++		t.Fatalf("Expected 1 field match for custom data, got %d", len(customResult.FieldMatches))
++	}
++
++	customFieldMatch := customResult.FieldMatches[0]
++	if customFieldMatch.FieldName != "_data.custom_note" {
++		t.Errorf("Expected field name '_data.custom_note', got %q", customFieldMatch.FieldName)
++	}
++
++	for _, match := range customFieldMatch.Matches {
++		if match.MatchType != MatchCustomData {
++			t.Errorf("Expected MatchCustomData type for _data field, got %s", match.MatchType)
++		}
++	}
++}
++
+ func TestEngine_Search_BackwardCompatibility(t *testing.T) {
+ 	provider := NewMockDocumentProvider(SampleDocuments())
+ 	engine := NewEngine(provider)

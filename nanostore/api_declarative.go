@@ -429,4 +429,3 @@ func generateConfigFromType(typ reflect.Type) (Config, error) {
 
 	return config, nil
 }
-

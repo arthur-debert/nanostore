@@ -33,7 +33,7 @@ func NewIDTransformer(dimensionSet *types.DimensionSet, canonicalView *types.Can
 // Example: parent:1,status:pending,priority:medium|3 → 1.3 (with canonical status:pending,priority:medium)
 func (t *IDTransformer) ToShortForm(partition types.Partition) string {
 	// Extract canonical dimension values (to be omitted)
-	canonicalValues := t.canonicalView.ExtractFromPartition(partition)
+	canonicalValues := t.canonicalView.ExtractFromtypes.Partition(partition)
 
 	// Build map of canonical dimensions for quick lookup
 	canonicalMap := make(map[string]bool)
@@ -257,7 +257,7 @@ func (t *IDTransformer) extractPrefixesAndPosition(segment string) (map[string]s
 func (t *IDTransformer) NormalizeID(id string) (string, error) {
 	// First try to parse as partition format
 	if strings.Contains(id, ":") && strings.Contains(id, "|") {
-		partition, err := types.ParsePartition(id)
+		partition, err := types.Parsetypes.Partition(id)
 		if err == nil {
 			return t.ToShortForm(partition), nil
 		}

@@ -140,7 +140,7 @@ func TestBasicOperations(t *testing.T) {
 		}
 	})
 
-	t.Run("InvalidDimensionValue", func(t *testing.T) {
+	t.Run("Invalidtypes.DimensionValue", func(t *testing.T) {
 		// Try to add with invalid status
 		_, err := store.Add("Invalid", map[string]interface{}{
 			"status": "invalid_status",
