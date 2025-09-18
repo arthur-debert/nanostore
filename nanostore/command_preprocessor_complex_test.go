@@ -1,6 +1,7 @@
 package nanostore
 
 import (
+	"os"
 	"testing"
 	"time"
 )
@@ -260,7 +261,14 @@ func createTestStoreWithDocuments(t *testing.T) *jsonFileStore {
 		},
 	}
 
-	store, err := newJSONFileStore(":memory:", config)
+	tmpfile, err := os.CreateTemp("", "test*.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Remove(tmpfile.Name()) })
+	_ = tmpfile.Close()
+
+	store, err := newJSONFileStore(tmpfile.Name(), config)
 	if err != nil {
 		t.Fatal(err)
 	}
