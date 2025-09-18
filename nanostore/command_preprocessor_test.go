@@ -160,6 +160,7 @@ func TestCommandPreprocessor(t *testing.T) {
 		}
 
 		err := preprocessor.preprocessCommand(cmd)
+		// Should succeed but keep the invalid ID
 		if err != nil {
 			t.Errorf("unexpected error: %v", err)
 		}
@@ -167,6 +168,26 @@ func TestCommandPreprocessor(t *testing.T) {
 		// Verify invalid ID was kept as-is (allows for external references)
 		if cmd.ID != "invalid-id" {
 			t.Errorf("expected ID to remain 'invalid-id', got %s", cmd.ID)
+		}
+	})
+
+	t.Run("IDResolutionErrorBehavior", func(t *testing.T) {
+		// Test that IDResolutionError is properly handled
+		// Create a command with an ID that will fail to resolve
+		cmd := &UpdateCommand{
+			ID:      "nonexistent", // Will fail to resolve
+			Request: UpdateRequest{},
+		}
+
+		// The preprocessor should not return an error for IDResolutionError
+		err := preprocessor.preprocessCommand(cmd)
+		if err != nil {
+			t.Errorf("expected no error for unresolvable ID, got: %v", err)
+		}
+
+		// The ID should remain unchanged
+		if cmd.ID != "nonexistent" {
+			t.Errorf("expected ID to remain 'nonexistent', got %s", cmd.ID)
 		}
 	})
 

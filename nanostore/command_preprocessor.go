@@ -1,9 +1,26 @@
 package nanostore
 
 import (
+	"errors"
 	"fmt"
 	"reflect"
 )
+
+// IDResolutionError indicates that a SimpleID could not be resolved to a UUID
+type IDResolutionError struct {
+	ID           string
+	WrappedError error
+}
+
+// Error implements the error interface
+func (e *IDResolutionError) Error() string {
+	return fmt.Sprintf("failed to resolve ID %q: %v", e.ID, e.WrappedError)
+}
+
+// Unwrap allows error unwrapping
+func (e *IDResolutionError) Unwrap() error {
+	return e.WrappedError
+}
 
 // commandPreprocessor handles centralized preprocessing of commands including ID resolution
 type commandPreprocessor struct {
@@ -45,6 +62,14 @@ func (cp *commandPreprocessor) resolveIDsInStruct(v interface{}) error {
 		// Check for ID fields by name or tag
 		if cp.isIDField(fieldType) && field.Kind() == reflect.String {
 			if err := cp.resolveIDField(field); err != nil {
+				// Check if it's an IDResolutionError
+				var resErr *IDResolutionError
+				if errors.As(err, &resErr) {
+					// For ID fields, we treat resolution failures as non-fatal
+					// to support external references or IDs that don't exist yet
+					// The calling method will validate if the ID must exist
+					continue
+				}
 				return fmt.Errorf("failed to resolve ID in field %s: %w", fieldType.Name, err)
 			}
 		} else if field.Kind() == reflect.Map {
@@ -93,9 +118,12 @@ func (cp *commandPreprocessor) resolveIDField(field reflect.Value) error {
 	// Resolve SimpleID to UUID
 	uuid, err := cp.store.resolveUUIDInternal(id)
 	if err != nil {
-		// If resolution fails, keep the original value
-		// This allows for new documents or external references
-		return nil
+		// Return a wrapped error that allows the caller to decide
+		// whether to treat this as fatal or continue with the original value
+		return &IDResolutionError{
+			ID:           id,
+			WrappedError: err,
+		}
 	}
 
 	field.SetString(uuid)
@@ -125,10 +153,16 @@ func (cp *commandPreprocessor) resolveIDsInMap(mapVal reflect.Value) error {
 				id := value.String()
 				if id != "" && !isValidUUID(id) {
 					// Try to resolve
-					if uuid, err := cp.store.resolveUUIDInternal(id); err == nil {
-						// Set the resolved UUID back
-						mapVal.SetMapIndex(key, reflect.ValueOf(uuid))
+					uuid, err := cp.store.resolveUUIDInternal(id)
+					if err != nil {
+						// For reference fields in maps (like parent_id in dimensions),
+						// we don't treat resolution failures as fatal since the parent
+						// might not exist yet (e.g., bulk import scenarios)
+						// The store will validate referential integrity if needed
+						continue
 					}
+					// Set the resolved UUID back
+					mapVal.SetMapIndex(key, reflect.ValueOf(uuid))
 				}
 			}
 		}
