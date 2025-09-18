@@ -742,8 +742,30 @@ func (s *jsonFileStore) DeleteByDimension(filters map[string]interface{}) (int, 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	// TODO: Implement bulk deletion by dimensions
-	return 0, errors.New("not implemented")
+	// Find all documents matching the filters
+	toDelete := []int{}
+	for i, doc := range s.data.Documents {
+		if s.matchesFilters(doc, filters) {
+			toDelete = append(toDelete, i)
+		}
+	}
+
+	// Delete in reverse order to preserve indices
+	deletedCount := 0
+	for i := len(toDelete) - 1; i >= 0; i-- {
+		idx := toDelete[i]
+		s.data.Documents = append(s.data.Documents[:idx], s.data.Documents[idx+1:]...)
+		deletedCount++
+	}
+
+	// Save changes if any documents were deleted
+	if deletedCount > 0 {
+		if err := s.saveWithLock(); err != nil {
+			return 0, fmt.Errorf("failed to save after deletion: %w", err)
+		}
+	}
+
+	return deletedCount, nil
 }
 
 // DeleteWhere removes documents matching a custom WHERE clause

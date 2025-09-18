@@ -114,11 +114,6 @@ func TestNotImplemented(t *testing.T) {
 	defer func() { _ = store.Close() }()
 
 	// Operations that are still not implemented
-	_, err = store.DeleteByDimension(map[string]interface{}{"status": "todo"})
-	if err == nil || err.Error() != "not implemented" {
-		t.Errorf("DeleteByDimension: expected 'not implemented' error, got %v", err)
-	}
-
 	_, err = store.UpdateByDimension(map[string]interface{}{"status": "todo"}, nanostore.UpdateRequest{})
 	if err == nil || err.Error() != "not implemented" {
 		t.Errorf("UpdateByDimension: expected 'not implemented' error, got %v", err)
