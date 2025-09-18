@@ -1,19 +1,21 @@
-package nanostore
+package ids
 
 import (
 	"fmt"
 	"sort"
+
+	"github.com/arthur-debert/nanostore/types"
 )
 
 // IDGenerator handles the generation of SimpleIDs for documents
 type IDGenerator struct {
-	dimensionSet  *DimensionSet
-	canonicalView *CanonicalView
+	dimensionSet  *types.DimensionSet
+	canonicalView *types.CanonicalView
 	transformer   *IDTransformer
 }
 
 // NewIDGenerator creates a new ID generator
-func NewIDGenerator(dimensionSet *DimensionSet, canonicalView *CanonicalView) *IDGenerator {
+func NewIDGenerator(dimensionSet *types.DimensionSet, canonicalView *types.CanonicalView) *IDGenerator {
 	return &IDGenerator{
 		dimensionSet:  dimensionSet,
 		canonicalView: canonicalView,
@@ -23,7 +25,7 @@ func NewIDGenerator(dimensionSet *DimensionSet, canonicalView *CanonicalView) *I
 
 // GenerateIDs generates SimpleIDs for a list of documents
 // The documents should be in the order they were retrieved from the store
-func (g *IDGenerator) GenerateIDs(documents []Document) map[string]string {
+func (g *IDGenerator) GenerateIDs(documents []types.Document) map[string]string {
 	idMap := make(map[string]string)          // SimpleID -> UUID
 	uuidToSimpleID := make(map[string]string) // UUID -> SimpleID
 
@@ -37,8 +39,8 @@ func (g *IDGenerator) GenerateIDs(documents []Document) map[string]string {
 	maxDepth := 10 // Prevent infinite loops
 	for depth := 0; depth < maxDepth && len(remaining) > 0; depth++ {
 		// Find documents whose parents have IDs
-		var toProcess []Document
-		var stillRemaining []Document
+		var toProcess []types.Document
+		var stillRemaining []types.Document
 
 		for _, doc := range remaining {
 			if g.canAssignID(doc, uuidToSimpleID) {
@@ -57,8 +59,8 @@ func (g *IDGenerator) GenerateIDs(documents []Document) map[string]string {
 }
 
 // filterRootDocuments returns documents that have no parent
-func (g *IDGenerator) filterRootDocuments(documents []Document) []Document {
-	var roots []Document
+func (g *IDGenerator) filterRootDocuments(documents []types.Document) []types.Document {
+	var roots []types.Document
 	hierDims := g.dimensionSet.Hierarchical()
 
 	for _, doc := range documents {
@@ -77,8 +79,8 @@ func (g *IDGenerator) filterRootDocuments(documents []Document) []Document {
 }
 
 // filterNonRootDocuments returns documents that have a parent
-func (g *IDGenerator) filterNonRootDocuments(documents []Document) []Document {
-	var nonRoots []Document
+func (g *IDGenerator) filterNonRootDocuments(documents []types.Document) []types.Document {
+	var nonRoots []types.Document
 	hierDims := g.dimensionSet.Hierarchical()
 
 	for _, doc := range documents {
@@ -93,7 +95,7 @@ func (g *IDGenerator) filterNonRootDocuments(documents []Document) []Document {
 }
 
 // canAssignID checks if a document can be assigned an ID (its parent has an ID)
-func (g *IDGenerator) canAssignID(doc Document, uuidToSimpleID map[string]string) bool {
+func (g *IDGenerator) canAssignID(doc types.Document, uuidToSimpleID map[string]string) bool {
 	hierDims := g.dimensionSet.Hierarchical()
 	for _, dim := range hierDims {
 		if parentUUID, exists := doc.Dimensions[dim.RefField]; exists && parentUUID != nil && parentUUID != "" {
@@ -106,7 +108,7 @@ func (g *IDGenerator) canAssignID(doc Document, uuidToSimpleID map[string]string
 }
 
 // assignIDsToDocuments assigns IDs to a set of documents
-func (g *IDGenerator) assignIDsToDocuments(docsToProcess []Document, idMap map[string]string, uuidToSimpleID map[string]string, allDocuments []Document) {
+func (g *IDGenerator) assignIDsToDocuments(docsToProcess []types.Document, idMap map[string]string, uuidToSimpleID map[string]string, allDocuments []types.Document) {
 	// For stable positions, we need to consider ALL documents that have ever been in each partition
 	// This simulates having a position counter per partition that increments but never decreases
 
@@ -167,9 +169,9 @@ func (g *IDGenerator) assignIDsToDocuments(docsToProcess []Document, idMap map[s
 
 // buildHistoricalPartitionMap builds a map of all documents that belong to each partition
 // This includes documents that might have moved to other partitions
-func (g *IDGenerator) buildHistoricalPartitionMap(documents []Document, uuidToSimpleID map[string]string) map[string][]Document {
+func (g *IDGenerator) buildHistoricalPartitionMap(documents []types.Document, uuidToSimpleID map[string]string) map[string][]types.Document {
 	// For each partition key, track all documents that would belong to it
-	partitions := make(map[string][]Document)
+	partitions := make(map[string][]types.Document)
 
 	// We need to consider all possible partition keys based on dimension combinations
 	// For simplicity, we'll just track documents by their current partition
@@ -198,8 +200,8 @@ func (g *IDGenerator) buildHistoricalPartitionMap(documents []Document, uuidToSi
 		// This ensures stable numbering when documents move between partitions
 		if parentSimpleID != "" {
 			// Build canonical partition (with default dimension values)
-			canonicalPartition := Partition{
-				Values: []DimensionValue{
+			canonicalPartition := types.Partition{
+				Values: []types.DimensionValue{
 					{Dimension: "parent", Value: parentSimpleID},
 					{Dimension: "status", Value: "pending"},
 					{Dimension: "priority", Value: "medium"},
@@ -226,24 +228,24 @@ func (g *IDGenerator) buildHistoricalPartitionMap(documents []Document, uuidToSi
 }
 
 // getFullyQualifiedPartition returns a partition with all dimension values and the given position
-func (g *IDGenerator) getFullyQualifiedPartition(doc Document, position int) Partition {
+func (g *IDGenerator) getFullyQualifiedPartition(doc types.Document, position int) types.Partition {
 	// Build partition for this document
-	partition := BuildPartitionForDocument(doc, g.dimensionSet)
+	partition := types.BuildPartitionForDocument(doc, g.dimensionSet)
 	// Set the position
 	partition.Position = position
 	return partition
 }
 
 // getPartitionWithSimpleParentID builds a partition using parent SimpleID instead of UUID
-func (g *IDGenerator) getPartitionWithSimpleParentID(doc Document, uuidToSimpleID map[string]string) Partition {
-	var values []DimensionValue
+func (g *IDGenerator) getPartitionWithSimpleParentID(doc types.Document, uuidToSimpleID map[string]string) types.Partition {
+	var values []types.DimensionValue
 
 	// Build dimension values in order
 	for _, dim := range g.dimensionSet.All() {
 		value := ""
 
 		switch dim.Type {
-		case Enumerated:
+		case types.Enumerated:
 			// Get value from dimensions map
 			if v, exists := doc.Dimensions[dim.Name]; exists {
 				value = fmt.Sprintf("%v", v)
@@ -252,7 +254,7 @@ func (g *IDGenerator) getPartitionWithSimpleParentID(doc Document, uuidToSimpleI
 				value = dim.DefaultValue
 			}
 
-		case Hierarchical:
+		case types.Hierarchical:
 			// For hierarchical dimensions, convert parent UUID to SimpleID
 			if parentUUID, exists := doc.Dimensions[dim.RefField]; exists && parentUUID != nil && parentUUID != "" {
 				parentStr := fmt.Sprintf("%v", parentUUID)
@@ -266,21 +268,21 @@ func (g *IDGenerator) getPartitionWithSimpleParentID(doc Document, uuidToSimpleI
 		}
 
 		if value != "" {
-			values = append(values, DimensionValue{
+			values = append(values, types.DimensionValue{
 				Dimension: dim.Name,
 				Value:     value,
 			})
 		}
 	}
 
-	return Partition{
+	return types.Partition{
 		Values:   values,
 		Position: 0, // Position will be set later
 	}
 }
 
 // ResolveID converts a SimpleID back to a UUID
-func (g *IDGenerator) ResolveID(simpleID string, documents []Document) (string, error) {
+func (g *IDGenerator) ResolveID(simpleID string, documents []types.Document) (string, error) {
 	// Maybe it's already a UUID?
 	if isValidUUID(simpleID) {
 		// Verify it exists

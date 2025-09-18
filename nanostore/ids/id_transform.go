@@ -1,19 +1,21 @@
-package nanostore
+package ids
 
 import (
 	"fmt"
 	"strconv"
 	"strings"
+
+	"github.com/arthur-debert/nanostore/types"
 )
 
 // IDTransformer handles transformations between full partition form and short form IDs
 type IDTransformer struct {
-	dimensionSet  *DimensionSet
-	canonicalView *CanonicalView
+	dimensionSet  *types.DimensionSet
+	canonicalView *types.CanonicalView
 }
 
 // NewIDTransformer creates a new ID transformer
-func NewIDTransformer(dimensionSet *DimensionSet, canonicalView *CanonicalView) *IDTransformer {
+func NewIDTransformer(dimensionSet *types.DimensionSet, canonicalView *types.CanonicalView) *IDTransformer {
 	return &IDTransformer{
 		dimensionSet:  dimensionSet,
 		canonicalView: canonicalView,
@@ -22,7 +24,7 @@ func NewIDTransformer(dimensionSet *DimensionSet, canonicalView *CanonicalView) 
 
 // ToShortForm converts a partition to a user-facing short form ID
 // Example: parent:1,status:pending,priority:medium|3 → 1.3 (with canonical status:pending,priority:medium)
-func (t *IDTransformer) ToShortForm(partition Partition) string {
+func (t *IDTransformer) ToShortForm(partition types.Partition) string {
 	// Extract canonical dimension values (to be omitted)
 	canonicalValues := t.canonicalView.ExtractFromPartition(partition)
 
@@ -43,7 +45,7 @@ func (t *IDTransformer) ToShortForm(partition Partition) string {
 		}
 
 		switch dim.Type {
-		case Hierarchical:
+		case types.Hierarchical:
 			// Hierarchical dimensions are always included in the ID structure
 			// regardless of canonical filters
 			if dv.Value != "" && dv.Value != "0" { // Skip empty/zero parent values
@@ -55,7 +57,7 @@ func (t *IDTransformer) ToShortForm(partition Partition) string {
 					}
 				}
 			}
-		case Enumerated:
+		case types.Enumerated:
 			// Skip canonical enumerated dimensions
 			if canonicalMap[dv.Dimension] {
 				continue
@@ -83,15 +85,15 @@ func (t *IDTransformer) ToShortForm(partition Partition) string {
 // FromShortForm parses a short form ID into dimension values
 // Returns partial partition information (canonical dimensions will need to be added)
 // Example: 1.d2 → parent:1, status:done (inferred from 'd' prefix), position:2
-func (t *IDTransformer) FromShortForm(shortForm string) (Partition, error) {
+func (t *IDTransformer) FromShortForm(shortForm string) (types.Partition, error) {
 	if shortForm == "" {
-		return Partition{}, fmt.Errorf("empty ID")
+		return types.Partition{}, fmt.Errorf("empty ID")
 	}
 
 	// Split by dots for hierarchical segments
 	segments := strings.Split(shortForm, ".")
 
-	var values []DimensionValue
+	var values []types.DimensionValue
 	var position int
 
 	// Build hierarchical path from all segments except the last
@@ -106,7 +108,7 @@ func (t *IDTransformer) FromShortForm(shortForm string) (Partition, error) {
 	if len(hierarchicalPath) > 0 {
 		hierarchical := t.dimensionSet.Hierarchical()
 		if len(hierarchical) > 0 {
-			values = append(values, DimensionValue{
+			values = append(values, types.DimensionValue{
 				Dimension: hierarchical[0].Name,
 				Value:     strings.Join(hierarchicalPath, "."),
 			})
@@ -120,7 +122,7 @@ func (t *IDTransformer) FromShortForm(shortForm string) (Partition, error) {
 			// Extract prefixes and position
 			prefixes, pos, err := t.extractPrefixesAndPosition(lastSegment)
 			if err != nil {
-				return Partition{}, fmt.Errorf("invalid segment %q: %w", lastSegment, err)
+				return types.Partition{}, fmt.Errorf("invalid segment %q: %w", lastSegment, err)
 			}
 			position = pos
 
@@ -128,13 +130,13 @@ func (t *IDTransformer) FromShortForm(shortForm string) (Partition, error) {
 			for prefix, dimName := range prefixes {
 				dim, exists := t.dimensionSet.Get(dimName)
 				if !exists {
-					return Partition{}, fmt.Errorf("unknown dimension %q for prefix %q", dimName, prefix)
+					return types.Partition{}, fmt.Errorf("unknown dimension %q for prefix %q", dimName, prefix)
 				}
 
 				// Find value for this prefix
 				for value, p := range dim.Prefixes {
 					if p == prefix {
-						values = append(values, DimensionValue{
+						values = append(values, types.DimensionValue{
 							Dimension: dimName,
 							Value:     value,
 						})
@@ -162,11 +164,11 @@ func (t *IDTransformer) FromShortForm(shortForm string) (Partition, error) {
 		}
 
 		if !found {
-			values = append(values, DimensionValue(filter))
+			values = append(values, types.DimensionValue(filter))
 		}
 	}
 
-	return Partition{
+	return types.Partition{
 		Values:   values,
 		Position: position,
 	}, nil
@@ -248,7 +250,7 @@ func (t *IDTransformer) extractPrefixesAndPosition(segment string) (map[string]s
 func (t *IDTransformer) NormalizeID(id string) (string, error) {
 	// First try to parse as partition format
 	if strings.Contains(id, ":") && strings.Contains(id, "|") {
-		partition, err := ParsePartition(id)
+		partition, err := types.ParsePartition(id)
 		if err == nil {
 			return t.ToShortForm(partition), nil
 		}
