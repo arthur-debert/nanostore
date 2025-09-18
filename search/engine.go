@@ -60,9 +60,19 @@ func (e *Engine) Search(options SearchOptions, filters map[string]interface{}) (
 
 // searchDocument searches a single document and returns a result if it matches
 func (e *Engine) searchDocument(doc types.Document, query string, options SearchOptions) *SearchResult {
-	var matches []fieldMatch
+	var fieldMatches []FieldMatch
 	var bestMatchType MatchType
 	var maxScore float64
+
+	// Set default highlight markers
+	startMarker := options.HighlightStartMarker
+	endMarker := options.HighlightEndMarker
+	if startMarker == "" {
+		startMarker = "**"
+	}
+	if endMarker == "" {
+		endMarker = "**"
+	}
 
 	// Determine which fields to search
 	fieldsToSearch := options.Fields
@@ -81,17 +91,19 @@ func (e *Engine) searchDocument(doc types.Document, query string, options Search
 
 	// Search each field
 	for _, field := range fieldsToSearch {
-		if match := e.searchField(doc, field, query, options); match != nil {
-			matches = append(matches, *match)
-			if match.score > maxScore {
-				maxScore = match.score
-				bestMatchType = match.matchType
+		if fieldMatch := e.searchFieldDetailed(doc, field, query, options, startMarker, endMarker); fieldMatch != nil {
+			fieldMatches = append(fieldMatches, *fieldMatch)
+			if fieldMatch.FieldScore > maxScore {
+				maxScore = fieldMatch.FieldScore
+				if len(fieldMatch.Matches) > 0 {
+					bestMatchType = fieldMatch.Matches[0].MatchType
+				}
 			}
 		}
 	}
 
 	// No matches found
-	if len(matches) == 0 {
+	if len(fieldMatches) == 0 {
 		return nil
 	}
 
@@ -100,104 +112,82 @@ func (e *Engine) searchDocument(doc types.Document, query string, options Search
 		Document:      doc,
 		Score:         maxScore,
 		MatchType:     bestMatchType,
-		MatchedFields: make([]string, 0, len(matches)),
+		MatchedFields: make([]string, 0, len(fieldMatches)),
 	}
 
-	// Collect highlights and matched fields
+	// Include detailed match data if requested
+	if options.IncludeMatchDetails {
+		result.FieldMatches = fieldMatches
+	}
+
+	// Build legacy highlights and matched fields
 	if options.EnableHighlight {
 		result.Highlights = make(map[string]string)
 	}
 
-	for _, match := range matches {
-		result.MatchedFields = append(result.MatchedFields, match.field)
+	for _, fieldMatch := range fieldMatches {
+		result.MatchedFields = append(result.MatchedFields, fieldMatch.FieldName)
 		if options.EnableHighlight {
-			result.Highlights[match.field] = match.highlightedText
+			result.Highlights[fieldMatch.FieldName] = fieldMatch.HighlightedText
 		}
 	}
 
 	return result
 }
 
-// fieldMatch represents a match within a specific field
-type fieldMatch struct {
-	field           string
-	matchType       MatchType
-	score           float64
-	highlightedText string
-}
-
-// searchField searches within a specific field of a document
-func (e *Engine) searchField(doc types.Document, fieldName, query string, options SearchOptions) *fieldMatch {
+// searchFieldDetailed searches within a specific field and returns detailed match information
+func (e *Engine) searchFieldDetailed(doc types.Document, fieldName, query string, options SearchOptions, startMarker, endMarker string) *FieldMatch {
 	var fieldValue string
-	var matchType MatchType
+	var baseMatchType MatchType
 
 	// Get field value
 	switch fieldName {
 	case "title":
 		fieldValue = doc.Title
-		matchType = MatchPartialTitle
+		baseMatchType = MatchPartialTitle
 	case "body":
 		fieldValue = doc.Body
-		matchType = MatchPartialBody
+		baseMatchType = MatchPartialBody
 	default:
 		// Check if it's a dimension or custom data field
 		if value, exists := doc.Dimensions[fieldName]; exists {
 			fieldValue = fmt.Sprintf("%v", value)
 			if strings.HasPrefix(fieldName, "_data.") {
-				matchType = MatchCustomData
+				baseMatchType = MatchCustomData
 			} else {
-				matchType = MatchDimension
+				baseMatchType = MatchDimension
 			}
 		} else {
 			return nil // Field not found
 		}
 	}
 
-	// Prepare field value for comparison
-	searchValue := fieldValue
-	if !options.CaseSensitive {
-		searchValue = strings.ToLower(searchValue)
-	}
-
-	// Check for match
-	var matched bool
-	var score float64
-
-	if options.ExactMatch {
-		matched = searchValue == query
-		if matched {
-			score = 1.0
-			// Update match type for exact matches
-			switch fieldName {
-			case "title":
-				matchType = MatchExactTitle
-			case "body":
-				matchType = MatchExactBody
-			}
-		}
-	} else {
-		matched = strings.Contains(searchValue, query)
-		if matched {
-			// Calculate score based on match quality
-			score = e.calculateScore(searchValue, query, fieldName)
-		}
-	}
-
-	if !matched {
+	// Find all match positions
+	matches := e.findMatches(fieldValue, query, options, baseMatchType)
+	if len(matches) == 0 {
 		return nil
+	}
+
+	// Calculate field score (highest match score)
+	fieldScore := 0.0
+	for _, match := range matches {
+		if match.Score > fieldScore {
+			fieldScore = match.Score
+		}
 	}
 
 	// Generate highlighted text
 	highlightedText := fieldValue
 	if options.EnableHighlight {
-		highlightedText = e.highlightMatches(fieldValue, query, options.CaseSensitive)
+		highlightedText = e.highlightMatchesWithMarkers(fieldValue, query, options.CaseSensitive, startMarker, endMarker)
 	}
 
-	return &fieldMatch{
-		field:           fieldName,
-		matchType:       matchType,
-		score:           score,
-		highlightedText: highlightedText,
+	return &FieldMatch{
+		FieldName:       fieldName,
+		OriginalText:    fieldValue,
+		Matches:         matches,
+		HighlightedText: highlightedText,
+		FieldScore:      fieldScore,
 	}
 }
 
@@ -236,8 +226,76 @@ func (e *Engine) calculateScore(fieldValue, query, fieldName string) float64 {
 	return baseScore
 }
 
-// highlightMatches adds highlight markers around matches
-func (e *Engine) highlightMatches(text, query string, caseSensitive bool) string {
+// findMatches finds all occurrences of the query in the text and returns detailed match info
+func (e *Engine) findMatches(text, query string, options SearchOptions, baseMatchType MatchType) []MatchInfo {
+	var matches []MatchInfo
+
+	// Prepare text for searching
+	searchText := text
+	searchQuery := query
+	if !options.CaseSensitive {
+		searchText = strings.ToLower(text)
+		searchQuery = strings.ToLower(query)
+	}
+
+	queryLen := len(query)
+	if queryLen == 0 {
+		return matches
+	}
+
+	if options.ExactMatch {
+		// For exact match, only one match is possible
+		if searchText == searchQuery {
+			matchType := baseMatchType
+			// Update match type for exact matches
+			switch baseMatchType {
+			case MatchPartialTitle:
+				matchType = MatchExactTitle
+			case MatchPartialBody:
+				matchType = MatchExactBody
+			}
+
+			matches = append(matches, MatchInfo{
+				Start:     0,
+				End:       len(text),
+				Text:      text,
+				Score:     1.0,
+				MatchType: matchType,
+			})
+		}
+	} else {
+		// Find all substring matches
+		for i := 0; i <= len(searchText)-queryLen; i++ {
+			if searchText[i:i+queryLen] == searchQuery {
+				matchText := text[i : i+queryLen]
+				fieldName := ""
+				switch baseMatchType {
+				case MatchPartialTitle, MatchExactTitle:
+					fieldName = "title"
+				case MatchPartialBody, MatchExactBody:
+					fieldName = "body"
+				}
+				score := e.calculateScore(text, query, fieldName)
+
+				matches = append(matches, MatchInfo{
+					Start:     i,
+					End:       i + queryLen,
+					Text:      matchText,
+					Score:     score,
+					MatchType: baseMatchType,
+				})
+
+				// Skip overlapping matches
+				i += queryLen - 1
+			}
+		}
+	}
+
+	return matches
+}
+
+// highlightMatchesWithMarkers adds configurable highlight markers around matches
+func (e *Engine) highlightMatchesWithMarkers(text, query string, caseSensitive bool, startMarker, endMarker string) string {
 	if query == "" {
 		return text
 	}
@@ -257,7 +315,7 @@ func (e *Engine) highlightMatches(text, query string, caseSensitive bool) string
 	for i := len(searchText) - queryLen; i >= 0; i-- {
 		if i+queryLen <= len(searchText) && searchText[i:i+queryLen] == searchQuery {
 			// Insert highlight markers
-			result = result[:i] + "**" + result[i:i+queryLen] + "**" + result[i+queryLen:]
+			result = result[:i] + startMarker + result[i:i+queryLen] + endMarker + result[i+queryLen:]
 		}
 	}
 

@@ -4,6 +4,8 @@ import (
 	"errors"
 	"strings"
 	"testing"
+
+	"github.com/arthur-debert/nanostore/types"
 )
 
 func TestEngine_Search_EmptyQuery(t *testing.T) {
@@ -381,6 +383,185 @@ func TestEngine_Search_MatchTypes(t *testing.T) {
 	}
 	if !foundPartialTitle {
 		t.Error("Expected to find MatchPartialTitle")
+	}
+}
+
+func TestEngine_Search_CustomHighlightMarkers(t *testing.T) {
+	provider := NewMockDocumentProvider(SampleDocuments())
+	engine := NewEngine(provider)
+
+	results, err := engine.Search(SearchOptions{
+		Query:                "Meeting",
+		EnableHighlight:      true,
+		HighlightStartMarker: "<mark>",
+		HighlightEndMarker:   "</mark>",
+	}, nil)
+
+	if err != nil {
+		t.Errorf("Expected no error, got %v", err)
+	}
+	if len(results) == 0 {
+		t.Fatal("Expected at least one result")
+	}
+
+	// Check for custom markers in highlights
+	found := false
+	for _, result := range results {
+		for field, highlight := range result.Highlights {
+			if strings.Contains(highlight, "<mark>") && strings.Contains(highlight, "</mark>") {
+				t.Logf("Found custom highlight in %s: %s", field, highlight)
+				found = true
+			}
+		}
+	}
+
+	if !found {
+		t.Error("Expected custom highlight markers to be present")
+	}
+}
+
+func TestEngine_Search_StructuredMatchData(t *testing.T) {
+	provider := NewMockDocumentProvider(SampleDocuments())
+	engine := NewEngine(provider)
+
+	results, err := engine.Search(SearchOptions{
+		Query:               "meeting",
+		IncludeMatchDetails: true,
+	}, nil)
+
+	if err != nil {
+		t.Errorf("Expected no error, got %v", err)
+	}
+	if len(results) == 0 {
+		t.Fatal("Expected at least one result")
+	}
+
+	// Check that FieldMatches are populated
+	result := results[0]
+	if len(result.FieldMatches) == 0 {
+		t.Error("Expected FieldMatches to be populated when IncludeMatchDetails is true")
+	}
+
+	// Verify match details structure
+	for _, fieldMatch := range result.FieldMatches {
+		if fieldMatch.FieldName == "" {
+			t.Error("Expected FieldName to be set")
+		}
+		if fieldMatch.OriginalText == "" {
+			t.Error("Expected OriginalText to be set")
+		}
+		if len(fieldMatch.Matches) == 0 {
+			t.Error("Expected at least one match in Matches slice")
+		}
+		if fieldMatch.FieldScore <= 0 {
+			t.Error("Expected FieldScore to be greater than 0")
+		}
+
+		// Verify individual match info
+		for _, match := range fieldMatch.Matches {
+			if match.Start < 0 || match.End <= match.Start {
+				t.Errorf("Invalid match positions: Start=%d, End=%d", match.Start, match.End)
+			}
+			if match.Text == "" {
+				t.Error("Expected match Text to be set")
+			}
+			if match.Score <= 0 {
+				t.Error("Expected match Score to be greater than 0")
+			}
+			if match.MatchType == "" {
+				t.Error("Expected MatchType to be set")
+			}
+
+			// Verify match text is correct
+			expectedText := fieldMatch.OriginalText[match.Start:match.End]
+			if !strings.EqualFold(match.Text, expectedText) {
+				t.Errorf("Match text mismatch: got %q, expected %q", match.Text, expectedText)
+			}
+		}
+	}
+}
+
+func TestEngine_Search_MatchPositions(t *testing.T) {
+	provider := NewMockDocumentProvider([]types.Document{
+		{
+			UUID:     "test",
+			SimpleID: "1",
+			Title:    "test word test",
+			Body:     "another test here",
+		},
+	})
+	engine := NewEngine(provider)
+
+	results, err := engine.Search(SearchOptions{
+		Query:               "test",
+		IncludeMatchDetails: true,
+		Fields:              []string{"title"},
+	}, nil)
+
+	if err != nil {
+		t.Errorf("Expected no error, got %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("Expected 1 result, got %d", len(results))
+	}
+
+	fieldMatch := results[0].FieldMatches[0]
+	if len(fieldMatch.Matches) != 2 {
+		t.Fatalf("Expected 2 matches in title 'test word test', got %d", len(fieldMatch.Matches))
+	}
+
+	// Verify first match
+	match1 := fieldMatch.Matches[0]
+	if match1.Start != 0 || match1.End != 4 {
+		t.Errorf("First match: expected positions 0-4, got %d-%d", match1.Start, match1.End)
+	}
+	if match1.Text != "test" {
+		t.Errorf("First match: expected text 'test', got %q", match1.Text)
+	}
+
+	// Verify second match
+	match2 := fieldMatch.Matches[1]
+	if match2.Start != 10 || match2.End != 14 {
+		t.Errorf("Second match: expected positions 10-14, got %d-%d", match2.Start, match2.End)
+	}
+	if match2.Text != "test" {
+		t.Errorf("Second match: expected text 'test', got %q", match2.Text)
+	}
+}
+
+func TestEngine_Search_BackwardCompatibility(t *testing.T) {
+	provider := NewMockDocumentProvider(SampleDocuments())
+	engine := NewEngine(provider)
+
+	// Test that old API still works without new options
+	results, err := engine.Search(SearchOptions{
+		Query:           "Meeting",
+		EnableHighlight: true,
+	}, nil)
+
+	if err != nil {
+		t.Errorf("Expected no error, got %v", err)
+	}
+	if len(results) == 0 {
+		t.Fatal("Expected at least one result")
+	}
+
+	// Should still use default ** markers
+	result := results[0]
+	if len(result.Highlights) == 0 {
+		t.Error("Expected legacy Highlights to be populated")
+	}
+
+	for _, highlight := range result.Highlights {
+		if strings.Contains(highlight, "**") {
+			// Good - default markers are used
+			break
+		}
+	}
+
+	// FieldMatches should be empty when IncludeMatchDetails is false
+	if len(result.FieldMatches) != 0 {
+		t.Error("Expected FieldMatches to be empty when IncludeMatchDetails is false")
 	}
 }
 
