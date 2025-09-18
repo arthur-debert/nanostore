@@ -34,10 +34,10 @@ func TestIDGenerator(t *testing.T) {
 			Meta:         types.DimensionMetadata{Order: 2},
 		},
 	}
-	ds := types.NewDimensionSet(dims)
+	ds := types.Newtypes.DimensionSet(dims)
 
 	// Set up canonical view (pending status, medium priority)
-	cv := types.NewCanonicalView(
+	cv := types.Newtypes.CanonicalView(
 		types.CanonicalFilter{Dimension: "status", Value: "pending"},
 		types.CanonicalFilter{Dimension: "priority", Value: "medium"},
 		types.CanonicalFilter{Dimension: "parent", Value: "*"},
@@ -87,7 +87,7 @@ func TestIDGenerator(t *testing.T) {
 			},
 			{
 				UUID:      "55555555-5555-5555-5555-555555555555",
-				Title:     "Fifth", 
+				Title:     "Fifth",
 				CreatedAt: baseTime.Add(4 * time.Minute),
 				Dimensions: map[string]interface{}{
 					"parent_uuid": "11111111-1111-1111-1111-111111111111",
@@ -204,7 +204,7 @@ func TestIDGenerator(t *testing.T) {
 		if idMap2["1.3"] != "eggs" {
 			t.Errorf("Expected eggs to remain '1.3' (not renumbered), got %v", idMap2)
 		}
-		
+
 		// Bread should now be in done partition
 		if idMap2["1.d1"] != "bread" {
 			t.Errorf("Expected bread to be '1.d1', got %v", idMap2)
@@ -263,7 +263,7 @@ func TestIDGenerator(t *testing.T) {
 		}
 	})
 
-	t.Run("GetFullyQualifiedPartition", func(t *testing.T) {
+	t.Run("GetFullyQualifiedtypes.Partition", func(t *testing.T) {
 		baseTime := time.Now()
 		doc := types.Document{
 			UUID:      "test-doc",
@@ -276,7 +276,7 @@ func TestIDGenerator(t *testing.T) {
 			},
 		}
 
-		partition := generator.GetFullyQualifiedPartition(doc, 5)
+		partition := generator.GetFullyQualifiedtypes.Partition(doc, 5)
 
 		// Check position
 		if partition.Position != 5 {

@@ -155,7 +155,7 @@ func TestDimensionHelpers(t *testing.T) {
 
 	t.Run("DimensionPrefixes", func(t *testing.T) {
 		statusDim, _ := config.GetDimension("status")
-		
+
 		// Check prefix mapping
 		if prefix, ok := statusDim.Prefixes["done"]; !ok || prefix != "d" {
 			t.Errorf("expected prefix 'd' for 'done' status, got %s", prefix)
@@ -173,9 +173,9 @@ func TestDimensionHelpers(t *testing.T) {
 		}
 	})
 
-	t.Run("DimensionValues", func(t *testing.T) {
+	t.Run("types.DimensionValues", func(t *testing.T) {
 		statusDim, _ := config.GetDimension("status")
-		
+
 		expectedValues := []string{"pending", "active", "done"}
 		if len(statusDim.Values) != len(expectedValues) {
 			t.Errorf("expected %d values for status, got %d", len(expectedValues), len(statusDim.Values))

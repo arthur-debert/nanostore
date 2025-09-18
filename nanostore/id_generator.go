@@ -3,6 +3,8 @@ package nanostore
 import (
 	"fmt"
 	"sort"
+
+	"github.com/arthur-debert/nanostore/types"
 )
 
 // IDGenerator handles the generation of SimpleIDs for documents.
@@ -12,13 +14,13 @@ import (
 // relationships, prefixes, canonical views, and transformation algorithms,
 // see the detailed documentation in nanostore/ids/doc.go.
 type IDGenerator struct {
-	dimensionSet  *DimensionSet
+	dimensionSet  *types.DimensionSet
 	canonicalView *CanonicalView
 	transformer   *IDTransformer
 }
 
 // NewIDGenerator creates a new ID generator
-func NewIDGenerator(dimensionSet *DimensionSet, canonicalView *CanonicalView) *IDGenerator {
+func NewIDGenerator(dimensionSet *types.DimensionSet, canonicalView *CanonicalView) *IDGenerator {
 	return &IDGenerator{
 		dimensionSet:  dimensionSet,
 		canonicalView: canonicalView,
@@ -207,8 +209,8 @@ func (g *IDGenerator) buildHistoricalPartitionMap(documents []Document, uuidToSi
 		// This ensures stable numbering when documents move between partitions
 		if parentSimpleID != "" {
 			// Build canonical partition (with default dimension values)
-			canonicalPartition := Partition{
-				Values: []DimensionValue{
+			canonicalPartition := types.Partition{
+				Values: []types.DimensionValue{
 					{Dimension: "parent", Value: parentSimpleID},
 					{Dimension: "status", Value: "pending"},
 					{Dimension: "priority", Value: "medium"},
@@ -235,8 +237,8 @@ func (g *IDGenerator) buildHistoricalPartitionMap(documents []Document, uuidToSi
 }
 
 // getPartitionWithSimpleParentID builds a partition using parent SimpleID instead of UUID
-func (g *IDGenerator) getPartitionWithSimpleParentID(doc Document, uuidToSimpleID map[string]string) Partition {
-	var values []DimensionValue
+func (g *IDGenerator) getPartitionWithSimpleParentID(doc Document, uuidToSimpleID map[string]string) types.Partition {
+	var values []types.DimensionValue
 
 	// Build dimension values in order
 	for _, dim := range g.dimensionSet.All() {
@@ -266,14 +268,14 @@ func (g *IDGenerator) getPartitionWithSimpleParentID(doc Document, uuidToSimpleI
 		}
 
 		if value != "" {
-			values = append(values, DimensionValue{
+			values = append(values, types.DimensionValue{
 				Dimension: dim.Name,
 				Value:     value,
 			})
 		}
 	}
 
-	return Partition{
+	return types.Partition{
 		Values:   values,
 		Position: 0, // Position will be set later
 	}

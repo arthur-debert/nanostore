@@ -7,7 +7,6 @@ import (
 	"github.com/arthur-debert/nanostore/nanostore"
 )
 
-
 func TestDeclarativeAPI(t *testing.T) {
 	// Create a temporary file
 	tmpfile, err := os.CreateTemp("", "test*.json")
@@ -216,4 +215,3 @@ func TestDeclarativeAPI(t *testing.T) {
 		}
 	})
 }
-

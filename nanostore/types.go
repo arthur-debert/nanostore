@@ -1,6 +1,18 @@
 package nanostore
 
-import "time"
+import (
+	"time"
+
+	"github.com/arthur-debert/nanostore/types"
+)
+
+// Re-export types from the types package for convenience
+type DimensionType = types.DimensionType
+
+const (
+	Enumerated   = types.Enumerated
+	Hierarchical = types.Hierarchical
+)
 
 // Document represents a document in the store with its generated ID
 type Document struct {
@@ -62,16 +74,6 @@ type UpdateRequest struct {
 	Dimensions map[string]interface{} // Optional: dimension values to update (e.g., "status": "completed", "parent_uuid": "some-uuid")
 }
 
-// DimensionType defines the type of dimension for ID partitioning
-type DimensionType int
-
-const (
-	// Enumerated dimensions have predefined values (e.g., status, priority)
-	Enumerated DimensionType = iota
-	// Hierarchical dimensions create parent-child relationships
-	Hierarchical
-)
-
 // DimensionConfig defines a single dimension for ID partitioning and document organization.
 //
 // Dimensions are the core organizing principle in nanostore, determining how documents
@@ -88,7 +90,7 @@ const (
 // - Value Validation: Only predefined values are accepted
 // - Prefix Mapping: Values can be mapped to single-character prefixes for compact IDs
 // - Default Values: Canonical values that are omitted from short IDs
-// - Partition Creation: Documents with the same value belong to the same partition
+// - types.Partition Creation: Documents with the same value belong to the same partition
 //
 // Example enumerated dimension:
 //
@@ -127,7 +129,7 @@ const (
 //
 // Dimensions directly influence how SimpleIDs are generated:
 //
-// 1. Partition Formation: Documents with identical dimension values form partitions
+// 1. types.Partition Formation: Documents with identical dimension values form partitions
 // 2. Position Assignment: Documents get sequential positions within their partition
 // 3. Prefix Application: Enumerated values become prefixes in the final ID
 // 4. Hierarchical Paths: Parent-child relationships create dot-separated ID segments
@@ -226,7 +228,7 @@ type Config struct {
 
 	// dimensionSet is the new internal representation
 	// Will be populated from Dimensions during initialization
-	dimensionSet *DimensionSet
+	dimensionSet *types.DimensionSet
 }
 
 // GetEnumeratedDimensions returns all enumerated dimensions from the config
@@ -262,11 +264,28 @@ func (c Config) GetDimension(name string) (*DimensionConfig, bool) {
 }
 
 // GetDimensionSet returns the dimension set, initializing it if needed
-func (c *Config) GetDimensionSet() *DimensionSet {
+func (c *Config) GetDimensionSet() *types.DimensionSet {
 	if c.dimensionSet == nil {
-		c.dimensionSet = dimensionSetFromConfig(*c)
+		var dims []types.Dimension
+		for _, dimConfig := range c.Dimensions {
+			dim := types.Dimension{
+				Name:         dimConfig.Name,
+				Type:         dimConfig.Type,
+				Values:       dimConfig.Values,
+				Prefixes:     dimConfig.Prefixes,
+				DefaultValue: dimConfig.DefaultValue,
+				RefField:     dimConfig.RefField,
+			}
+			dims = append(dims, dim)
+		}
+		c.dimensionSet = types.NewDimensionSet(dims)
 	}
 	return c.dimensionSet
+}
+
+// ValidateConfig validates a configuration
+func ValidateConfig(config Config) error {
+	return config.GetDimensionSet().Validate()
 }
 
 // Store defines the public interface for the document store

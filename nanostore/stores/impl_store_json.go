@@ -56,7 +56,7 @@ func NewJSONFileStore(filePath string, config types.Config) (*jsonFileStore, err
 	// Create canonical view from config
 	// Default canonical view based on dimension defaults
 	var filters []types.CanonicalFilter
-	for _, dim := range config.GetDimensionSet().Enumerated() {
+	for _, dim := range config.Gettypes.DimensionSet().Enumerated() {
 		if dim.DefaultValue != "" {
 			filters = append(filters, types.CanonicalFilter{
 				Dimension: dim.Name,
@@ -65,20 +65,20 @@ func NewJSONFileStore(filePath string, config types.Config) (*jsonFileStore, err
 		}
 	}
 	// Hierarchical dimensions default to "*" (any value)
-	for _, dim := range config.GetDimensionSet().Hierarchical() {
+	for _, dim := range config.Gettypes.DimensionSet().Hierarchical() {
 		filters = append(filters, types.CanonicalFilter{
 			Dimension: dim.Name,
 			Value:     "*",
 		})
 	}
-	canonicalView := types.NewCanonicalView(filters...)
+	canonicalView := types.Newtypes.CanonicalView(filters...)
 
 	store := &jsonFileStore{
 		filePath:      filePath,
 		config:        config,
-		dimensionSet:  config.GetDimensionSet(),
+		dimensionSet:  config.Gettypes.DimensionSet(),
 		canonicalView: canonicalView,
-		idGenerator:   ids.NewIDGenerator(config.GetDimensionSet(), canonicalView),
+		idGenerator:   ids.NewIDGenerator(config.Gettypes.DimensionSet(), canonicalView),
 		fileLock:      fileLock,
 		timeFunc:      time.Now, // Default to time.Now
 		data: &storeData{

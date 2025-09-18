@@ -9,7 +9,7 @@
 //
 //	Core Concepts
 //
-//	Partitions
+//	types.Partitions
 //
 // A partition represents a logical grouping of documents based on their dimension values.
 // Documents with the same dimension values belong to the same partition and are assigned
@@ -73,11 +73,11 @@
 //
 // Examples:
 //
-//   - Partition `status:active,priority:medium|5` → ID: `5` (all canonical)
+//   - types.Partition `status:active,priority:medium|5` → ID: `5` (all canonical)
 //
-//   - Partition `parent:1,status:done,priority:high|2` → ID: `1.dh2`
+//   - types.Partition `parent:1,status:done,priority:high|2` → ID: `1.dh2`
 //
-//   - Partition `parent:1.2,status:active,priority:low|3` → ID: `1.2.l3`
+//   - types.Partition `parent:1.2,status:active,priority:low|3` → ID: `1.2.l3`
 //
 //     Short Form Parsing (FromShortForm)
 //
@@ -86,15 +86,15 @@
 // 3. Parse Final Segment: Extract prefixes and position number
 // 4. Resolve Prefixes: Convert single-character prefixes back to dimension values
 // 5. Add Canonical Values: Fill in default values from canonical view
-// 6. Construct Partition: Build complete partition with all dimension values
+// 6. Construct types.Partition: Build complete partition with all dimension values
 //
 // Examples:
 //
-//   - ID `5` → Partition: `status:active,priority:medium|5`
+//   - ID `5` → types.Partition: `status:active,priority:medium|5`
 //
-//   - ID `1.dh2` → Partition: `parent:1,status:done,priority:high|2`
+//   - ID `1.dh2` → types.Partition: `parent:1,status:done,priority:high|2`
 //
-//   - ID `1.2.l3` → Partition: `parent:1.2,status:active,priority:low|3`
+//   - ID `1.2.l3` → types.Partition: `parent:1.2,status:active,priority:low|3`
 //
 //     ID Generation Process
 //
@@ -124,7 +124,7 @@
 //
 //   - New documents always get the next available position
 //
-//     Historical Partition Mapping
+//     Historical types.Partition Mapping
 //
 // The generator considers the historical membership of documents in partitions
 // to maintain stable positions even when dimension values change:
@@ -151,13 +151,13 @@
 //
 //   - Memory usage is linear with document count
 //
-//   - Partition maps are cached for efficient lookups
+//   - types.Partition maps are cached for efficient lookups
 //
 //   - No persistent ID storage required (generated on-demand)
 //
 //     Scalability Considerations
 //
-//   - Partition-based approach scales well with document growth
+//   - types.Partition-based approach scales well with document growth
 //
 //   - Hierarchical dimensions may create deep nesting (configurable max depth)
 //
@@ -185,13 +185,13 @@
 //
 //   - Missing required dimension values
 //
-//   - Partition key generation failures
+//   - types.Partition key generation failures
 //
 //     Usage Examples
 //
 //     // Create ID system components
-//     dimensionSet := config.GetDimensionSet()
-//     canonicalView := NewCanonicalView(
+//     dimensionSet := config.Gettypes.DimensionSet()
+//     canonicalView := Newtypes.CanonicalView(
 //     CanonicalFilter{Dimension: "status", Value: "active"},
 //     CanonicalFilter{Dimension: "priority", Value: "medium"},
 //     )

@@ -1,0 +1,306 @@
+{
+  "documents": [
+    {
+      "UUID": "2260b595-dfd2-4fd2-bb2f-6f194cffa9d1",
+      "SimpleID": "",
+      "Title": "Doc1",
+      "Body": "",
+      "CreatedAt": "2025-09-18T14:41:52.644528-03:00",
+      "UpdatedAt": "2025-09-18T14:41:52.644528-03:00",
+      "Dimensions": {
+        "status": "active"
+      }
+    },
+    {
+      "UUID": "9b44f597-f07f-4b0d-9729-6e09410a43de",
+      "SimpleID": "",
+      "Title": "Doc2",
+      "Body": "",
+      "CreatedAt": "2025-09-18T14:41:52.644853-03:00",
+      "UpdatedAt": "2025-09-18T14:41:52.644853-03:00",
+      "Dimensions": {
+        "status": "active"
+      }
+    },
+    {
+      "UUID": "01e9834e-34a5-4521-b553-54b13669bf5b",
+      "SimpleID": "",
+      "Title": "Doc3",
+      "Body": "",
+      "CreatedAt": "2025-09-18T14:41:52.645003-03:00",
+      "UpdatedAt": "2025-09-18T14:41:52.645003-03:00",
+      "Dimensions": {
+        "status": "inactive"
+      }
+    },
+    {
+      "UUID": "4d5a94b8-50a4-43ab-bd37-a9223f668f0d",
+      "SimpleID": "",
+      "Title": "Doc1",
+      "Body": "",
+      "CreatedAt": "2025-09-18T14:42:48.12681-03:00",
+      "UpdatedAt": "2025-09-18T14:42:48.12681-03:00",
+      "Dimensions": {
+        "status": "active"
+      }
+    },
+    {
+      "UUID": "a8849958-ac3a-4471-a08d-c68e17f1571f",
+      "SimpleID": "",
+      "Title": "Doc2",
+      "Body": "",
+      "CreatedAt": "2025-09-18T14:42:48.127088-03:00",
+      "UpdatedAt": "2025-09-18T14:42:48.127088-03:00",
+      "Dimensions": {
+        "status": "active"
+      }
+    },
+    {
+      "UUID": "1a432629-b608-4354-a3e5-9a9ae029aaa8",
+      "SimpleID": "",
+      "Title": "Doc3",
+      "Body": "",
+      "CreatedAt": "2025-09-18T14:42:48.127317-03:00",
+      "UpdatedAt": "2025-09-18T14:42:48.127317-03:00",
+      "Dimensions": {
+        "status": "inactive"
+      }
+    },
+    {
+      "UUID": "a45ab573-ef26-499a-83c8-3e4aeb918e6c",
+      "SimpleID": "",
+      "Title": "Doc1",
+      "Body": "",
+      "CreatedAt": "2025-09-18T14:52:52.481703-03:00",
+      "UpdatedAt": "2025-09-18T14:52:52.481703-03:00",
+      "Dimensions": {
+        "status": "active"
+      }
+    },
+    {
+      "UUID": "7e9d43e7-b077-4094-a425-6a55a9bc370f",
+      "SimpleID": "",
+      "Title": "Doc2",
+      "Body": "",
+      "CreatedAt": "2025-09-18T14:52:52.482154-03:00",
+      "UpdatedAt": "2025-09-18T14:52:52.482154-03:00",
+      "Dimensions": {
+        "status": "active"
+      }
+    },
+    {
+      "UUID": "772d2666-6fd6-4552-b903-a6012f4f28bf",
+      "SimpleID": "",
+      "Title": "Doc3",
+      "Body": "",
+      "CreatedAt": "2025-09-18T14:52:52.482297-03:00",
+      "UpdatedAt": "2025-09-18T14:52:52.482297-03:00",
+      "Dimensions": {
+        "status": "inactive"
+      }
+    },
+    {
+      "UUID": "dd5be407-e26f-47ef-bfa3-bd035018bfb9",
+      "SimpleID": "",
+      "Title": "Doc1",
+      "Body": "",
+      "CreatedAt": "2025-09-18T15:00:45.09804-03:00",
+      "UpdatedAt": "2025-09-18T15:00:45.09804-03:00",
+      "Dimensions": {
+        "status": "active"
+      }
+    },
+    {
+      "UUID": "8c7a3bee-e6c1-4b76-85be-5d3b1bcd74e2",
+      "SimpleID": "",
+      "Title": "Doc2",
+      "Body": "",
+      "CreatedAt": "2025-09-18T15:00:45.098599-03:00",
+      "UpdatedAt": "2025-09-18T15:00:45.098599-03:00",
+      "Dimensions": {
+        "status": "active"
+      }
+    },
+    {
+      "UUID": "fc86d79c-b185-4d04-9583-be4328804a21",
+      "SimpleID": "",
+      "Title": "Doc3",
+      "Body": "",
+      "CreatedAt": "2025-09-18T15:00:45.098755-03:00",
+      "UpdatedAt": "2025-09-18T15:00:45.098755-03:00",
+      "Dimensions": {
+        "status": "inactive"
+      }
+    },
+    {
+      "UUID": "b0b30525-0f6f-4eb9-98ff-1b3122106a85",
+      "SimpleID": "",
+      "Title": "Doc1",
+      "Body": "",
+      "CreatedAt": "2025-09-18T15:02:25.695834-03:00",
+      "UpdatedAt": "2025-09-18T15:02:25.695834-03:00",
+      "Dimensions": {
+        "status": "active"
+      }
+    },
+    {
+      "UUID": "2185e7ec-73ce-4b2e-b41d-e8af7a2d7d43",
+      "SimpleID": "",
+      "Title": "Doc2",
+      "Body": "",
+      "CreatedAt": "2025-09-18T15:02:25.696545-03:00",
+      "UpdatedAt": "2025-09-18T15:02:25.696545-03:00",
+      "Dimensions": {
+        "status": "active"
+      }
+    },
+    {
+      "UUID": "1ee805af-14fc-4343-92f4-b6862d4ac4ae",
+      "SimpleID": "",
+      "Title": "Doc3",
+      "Body": "",
+      "CreatedAt": "2025-09-18T15:02:25.696779-03:00",
+      "UpdatedAt": "2025-09-18T15:02:25.696779-03:00",
+      "Dimensions": {
+        "status": "inactive"
+      }
+    },
+    {
+      "UUID": "d7071838-85d7-4b10-85b4-e355a806cbbc",
+      "SimpleID": "",
+      "Title": "Doc1",
+      "Body": "",
+      "CreatedAt": "2025-09-18T15:38:18.633521-03:00",
+      "UpdatedAt": "2025-09-18T15:38:18.633521-03:00",
+      "Dimensions": {
+        "status": "active"
+      }
+    },
+    {
+      "UUID": "94fa7dea-a811-491b-9400-73b53310772d",
+      "SimpleID": "",
+      "Title": "Doc2",
+      "Body": "",
+      "CreatedAt": "2025-09-18T15:38:18.634182-03:00",
+      "UpdatedAt": "2025-09-18T15:38:18.634182-03:00",
+      "Dimensions": {
+        "status": "active"
+      }
+    },
+    {
+      "UUID": "73e303d8-6917-4e99-9d0b-3b52c6c24893",
+      "SimpleID": "",
+      "Title": "Doc3",
+      "Body": "",
+      "CreatedAt": "2025-09-18T15:38:18.634412-03:00",
+      "UpdatedAt": "2025-09-18T15:38:18.634412-03:00",
+      "Dimensions": {
+        "status": "inactive"
+      }
+    },
+    {
+      "UUID": "47ce4c6c-0013-4c56-a646-30893f8d9161",
+      "SimpleID": "",
+      "Title": "Doc1",
+      "Body": "",
+      "CreatedAt": "2025-09-18T15:49:06.048425-03:00",
+      "UpdatedAt": "2025-09-18T15:49:06.048425-03:00",
+      "Dimensions": {
+        "status": "active"
+      }
+    },
+    {
+      "UUID": "27a10296-cf76-432f-a820-2ff64c8e2800",
+      "SimpleID": "",
+      "Title": "Doc2",
+      "Body": "",
+      "CreatedAt": "2025-09-18T15:49:06.049978-03:00",
+      "UpdatedAt": "2025-09-18T15:49:06.049978-03:00",
+      "Dimensions": {
+        "status": "active"
+      }
+    },
+    {
+      "UUID": "d4fd26ff-6c5d-4aa0-a4a9-3165b12a99aa",
+      "SimpleID": "",
+      "Title": "Doc3",
+      "Body": "",
+      "CreatedAt": "2025-09-18T15:49:06.050704-03:00",
+      "UpdatedAt": "2025-09-18T15:49:06.050704-03:00",
+      "Dimensions": {
+        "status": "inactive"
+      }
+    },
+    {
+      "UUID": "0e2682b0-1651-4dbe-b553-56739162a9b0",
+      "SimpleID": "",
+      "Title": "Doc1",
+      "Body": "",
+      "CreatedAt": "2025-09-18T15:49:28.373042-03:00",
+      "UpdatedAt": "2025-09-18T15:49:28.373042-03:00",
+      "Dimensions": {
+        "status": "active"
+      }
+    },
+    {
+      "UUID": "660c48d0-0c5d-4b66-bf2d-71f3821d701e",
+      "SimpleID": "",
+      "Title": "Doc2",
+      "Body": "",
+      "CreatedAt": "2025-09-18T15:49:28.373627-03:00",
+      "UpdatedAt": "2025-09-18T15:49:28.373627-03:00",
+      "Dimensions": {
+        "status": "active"
+      }
+    },
+    {
+      "UUID": "f7ea087f-a930-444f-b66a-e236b781be5b",
+      "SimpleID": "",
+      "Title": "Doc3",
+      "Body": "",
+      "CreatedAt": "2025-09-18T15:49:28.373902-03:00",
+      "UpdatedAt": "2025-09-18T15:49:28.373902-03:00",
+      "Dimensions": {
+        "status": "inactive"
+      }
+    },
+    {
+      "UUID": "e761ab34-d521-41d9-aa60-70d94bf661fc",
+      "SimpleID": "",
+      "Title": "Doc1",
+      "Body": "",
+      "CreatedAt": "2025-09-18T15:49:47.514523-03:00",
+      "UpdatedAt": "2025-09-18T15:49:47.514523-03:00",
+      "Dimensions": {
+        "status": "active"
+      }
+    },
+    {
+      "UUID": "f4dfd8e2-ac74-4a4f-b8af-e14e19bf64f9",
+      "SimpleID": "",
+      "Title": "Doc2",
+      "Body": "",
+      "CreatedAt": "2025-09-18T15:49:47.514967-03:00",
+      "UpdatedAt": "2025-09-18T15:49:47.514967-03:00",
+      "Dimensions": {
+        "status": "active"
+      }
+    },
+    {
+      "UUID": "6de995d8-81b9-4c5c-94b1-44e91c96e62a",
+      "SimpleID": "",
+      "Title": "Doc3",
+      "Body": "",
+      "CreatedAt": "2025-09-18T15:49:47.515194-03:00",
+      "UpdatedAt": "2025-09-18T15:49:47.515194-03:00",
+      "Dimensions": {
+        "status": "inactive"
+      }
+    }
+  ],
+  "metadata": {
+    "version": "1.0",
+    "created_at": "2025-09-18T14:41:52.644249-03:00",
+    "updated_at": "2025-09-18T15:49:47.515202-03:00"
+  }
+}

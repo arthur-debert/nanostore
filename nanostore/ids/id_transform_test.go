@@ -11,13 +11,13 @@ func TestIDTransformer(t *testing.T) {
 	dims := []types.Dimension{
 		{
 			Name:     "parent",
-			Type: types.Hierarchical,
+			Type:     types.Hierarchical,
 			RefField: "parent_uuid",
 			Meta:     types.DimensionMetadata{Order: 0},
 		},
 		{
 			Name:         "status",
-			Type: types.Enumerated,
+			Type:         types.Enumerated,
 			Values:       []string{"pending", "active", "done"},
 			Prefixes:     map[string]string{"done": "d", "active": "a"},
 			DefaultValue: "pending",
@@ -25,17 +25,17 @@ func TestIDTransformer(t *testing.T) {
 		},
 		{
 			Name:         "priority",
-			Type: types.Enumerated,
+			Type:         types.Enumerated,
 			Values:       []string{"low", "medium", "high"},
 			Prefixes:     map[string]string{"high": "h", "low": "l"},
 			DefaultValue: "medium",
 			Meta:         types.DimensionMetadata{Order: 2},
 		},
 	}
-	ds := types.NewDimensionSet(dims)
+	ds := types.Newtypes.DimensionSet(dims)
 
 	// Set up canonical view (pending status, medium priority)
-	cv := types.NewCanonicalView(
+	cv := types.Newtypes.CanonicalView(
 		types.CanonicalFilter{Dimension: "status", Value: "pending"},
 		types.CanonicalFilter{Dimension: "priority", Value: "medium"},
 		types.CanonicalFilter{Dimension: "parent", Value: "*"},

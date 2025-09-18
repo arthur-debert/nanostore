@@ -53,12 +53,12 @@ func TestDateTimeFiltering(t *testing.T) {
 
 	// Add documents with different timestamps
 	doc1ID, _ := store.Add("First task", nil)  // 10:00
-	doc2ID, _ := store.Add("Second task", nil) // 10:01  
+	doc2ID, _ := store.Add("Second task", nil) // 10:01
 	doc3ID, _ := store.Add("Third task", nil)  // 10:02
 
 	// Get all documents to check their timestamps
 	allDocs, _ := store.List(nanostore.ListOptions{})
-	
+
 	var doc1, doc2, doc3 nanostore.Document
 	for _, doc := range allDocs {
 		switch doc.UUID {
@@ -93,7 +93,7 @@ func TestDateTimeFiltering(t *testing.T) {
 	t.Run("FilterByCreatedAtString", func(t *testing.T) {
 		// Filter using string representation of time
 		timeStr := doc1.CreatedAt.Format(time.RFC3339Nano)
-		
+
 		docs, err := store.List(nanostore.ListOptions{
 			Filters: map[string]interface{}{
 				"created_at": timeStr,
@@ -191,7 +191,7 @@ func TestDateTimeFiltering(t *testing.T) {
 
 		for _, format := range formats {
 			timeStr := baseTime.Format(format)
-			
+
 			// For date-only format, we need to match the date part
 			if format == "2006-01-02" {
 				// Skip date-only format in this exact match test
@@ -203,7 +203,7 @@ func TestDateTimeFiltering(t *testing.T) {
 					"created_at": timeStr,
 				},
 			})
-			
+
 			// Some formats lose precision, so we might not get exact matches
 			if err != nil {
 				t.Errorf("failed to filter with format %s: %v", format, err)
@@ -240,13 +240,13 @@ func TestDateTimeConsistency(t *testing.T) {
 	}
 
 	docID, _ := store1.Add("Test task", nil)
-	
+
 	// Get the document to check its timestamps
 	docs, _ := store1.List(nanostore.ListOptions{
 		Filters: map[string]interface{}{"uuid": docID},
 	})
 	originalDoc := docs[0]
-	
+
 	_ = store1.Close()
 
 	// Reopen the store

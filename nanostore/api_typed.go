@@ -43,7 +43,7 @@ func MarshalDimensions(v interface{}) (dimensions map[string]interface{}, data m
 		// Check for dimension tag
 		dimTag := field.Tag.Get("dimension")
 		isDimension := false
-		
+
 		if dimTag != "" {
 			isDimension = true
 		} else if field.Tag.Get("values") != "" {
@@ -104,7 +104,7 @@ func UnmarshalDimensions(doc Document, v interface{}) error {
 	}
 
 	typ := val.Type()
-	
+
 	// Extract _data prefixed values to a separate map
 	dataMap := make(map[string]interface{})
 	for key, value := range doc.Dimensions {
@@ -318,4 +318,3 @@ func validateSimpleType(value interface{}, dimensionName string) error {
 		return fmt.Errorf("dimension '%s' must be a simple type (string, number, or bool), got %T", dimensionName, value)
 	}
 }
-
