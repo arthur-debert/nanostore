@@ -1,4 +1,4 @@
-package nanostore
+package types
 
 import (
 	"testing"

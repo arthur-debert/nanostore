@@ -1,51 +1,53 @@
-package nanostore
+package ids
 
 import (
 	"sort"
 	"testing"
 	"time"
+
+	"github.com/arthur-debert/nanostore/types"
 )
 
 func TestIDGenerator(t *testing.T) {
 	// Set up test dimensions
-	dims := []Dimension{
+	dims := []types.Dimension{
 		{
 			Name:     "parent",
-			Type:     Hierarchical,
+			Type:     types.Hierarchical,
 			RefField: "parent_uuid",
-			Meta:     DimensionMetadata{Order: 0},
+			Meta:     types.DimensionMetadata{Order: 0},
 		},
 		{
 			Name:         "status",
-			Type:         Enumerated,
+			Type:         types.Enumerated,
 			Values:       []string{"pending", "active", "done"},
 			Prefixes:     map[string]string{"done": "d", "active": "a"},
 			DefaultValue: "pending",
-			Meta:         DimensionMetadata{Order: 1},
+			Meta:         types.DimensionMetadata{Order: 1},
 		},
 		{
 			Name:         "priority",
-			Type:         Enumerated,
+			Type:         types.Enumerated,
 			Values:       []string{"low", "medium", "high"},
 			Prefixes:     map[string]string{"high": "h", "low": "l"},
 			DefaultValue: "medium",
-			Meta:         DimensionMetadata{Order: 2},
+			Meta:         types.DimensionMetadata{Order: 2},
 		},
 	}
-	ds := NewDimensionSet(dims)
+	ds := types.NewDimensionSet(dims)
 
 	// Set up canonical view (pending status, medium priority)
-	cv := NewCanonicalView(
-		CanonicalFilter{Dimension: "status", Value: "pending"},
-		CanonicalFilter{Dimension: "priority", Value: "medium"},
-		CanonicalFilter{Dimension: "parent", Value: "*"},
+	cv := types.NewCanonicalView(
+		types.CanonicalFilter{Dimension: "status", Value: "pending"},
+		types.CanonicalFilter{Dimension: "priority", Value: "medium"},
+		types.CanonicalFilter{Dimension: "parent", Value: "*"},
 	)
 
 	generator := NewIDGenerator(ds, cv)
 
 	t.Run("GenerateIDs", func(t *testing.T) {
 		baseTime := time.Now()
-		documents := []Document{
+		documents := []types.Document{
 			{
 				UUID:      "11111111-1111-1111-1111-111111111111",
 				Title:     "First",
@@ -130,7 +132,7 @@ func TestIDGenerator(t *testing.T) {
 	t.Run("IDStability", func(t *testing.T) {
 		// Test that IDs remain stable when documents change
 		baseTime := time.Now()
-		documents := []Document{
+		documents := []types.Document{
 			{
 				UUID:      "groceries",
 				Title:     "Groceries",
@@ -211,7 +213,7 @@ func TestIDGenerator(t *testing.T) {
 
 	t.Run("ResolveID", func(t *testing.T) {
 		baseTime := time.Now()
-		documents := []Document{
+		documents := []types.Document{
 			{
 				UUID:      "550e8400-e29b-41d4-a716-446655440001",
 				Title:     "First",
@@ -263,7 +265,7 @@ func TestIDGenerator(t *testing.T) {
 
 	t.Run("GetFullyQualifiedPartition", func(t *testing.T) {
 		baseTime := time.Now()
-		doc := Document{
+		doc := types.Document{
 			UUID:      "test-doc",
 			Title:     "Test",
 			CreatedAt: baseTime,
@@ -274,7 +276,7 @@ func TestIDGenerator(t *testing.T) {
 			},
 		}
 
-		partition := generator.getFullyQualifiedPartition(doc, 5)
+		partition := generator.GetFullyQualifiedPartition(doc, 5)
 
 		// Check position
 		if partition.Position != 5 {

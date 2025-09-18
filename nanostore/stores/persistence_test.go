@@ -1,4 +1,4 @@
-package nanostore_test
+package stores_test
 
 import (
 	"encoding/json"

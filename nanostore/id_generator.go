@@ -225,15 +225,6 @@ func (g *IDGenerator) buildHistoricalPartitionMap(documents []Document, uuidToSi
 	return partitions
 }
 
-// getFullyQualifiedPartition returns a partition with all dimension values and the given position
-func (g *IDGenerator) getFullyQualifiedPartition(doc Document, position int) Partition {
-	// Build partition for this document
-	partition := BuildPartitionForDocument(doc, g.dimensionSet)
-	// Set the position
-	partition.Position = position
-	return partition
-}
-
 // getPartitionWithSimpleParentID builds a partition using parent SimpleID instead of UUID
 func (g *IDGenerator) getPartitionWithSimpleParentID(doc Document, uuidToSimpleID map[string]string) Partition {
 	var values []DimensionValue
