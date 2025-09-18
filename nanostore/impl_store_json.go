@@ -457,7 +457,15 @@ func (s *jsonFileStore) Add(title string, dimensions map[string]interface{}) (st
 		case Hierarchical:
 			// Handle parent reference
 			if val, exists := dimensions[dimConfig.RefField]; exists {
-				doc.Dimensions[dimConfig.RefField] = fmt.Sprintf("%v", val)
+				parentID := fmt.Sprintf("%v", val)
+				// Try to resolve if it's a SimpleID
+				if !isValidUUID(parentID) {
+					if resolvedUUID, err := s.resolveUUIDInternal(parentID); err == nil {
+						parentID = resolvedUUID
+					}
+					// If resolution fails, store the value as-is (might be a new document)
+				}
+				doc.Dimensions[dimConfig.RefField] = parentID
 			}
 		}
 	}
@@ -491,10 +499,7 @@ func (s *jsonFileStore) Update(id string, updates UpdateRequest) error {
 	resolvedID := id
 	if !isValidUUID(id) {
 		// Try to resolve as simple ID
-		// Need to unlock to call ResolveUUID which also needs lock
-		s.mu.Unlock()
-		uuid, err := s.ResolveUUID(id)
-		s.mu.Lock()
+		uuid, err := s.resolveUUIDInternal(id)
 		if err != nil {
 			return fmt.Errorf("failed to resolve ID %s: %w", id, err)
 		}
@@ -602,7 +607,18 @@ func (s *jsonFileStore) Update(id string, updates UpdateRequest) error {
 			} else if dimConfig.Type == Hierarchical {
 				// Store hierarchical dimension value
 				if value != nil {
-					doc.Dimensions[dimConfig.RefField] = fmt.Sprintf("%v", value)
+					parentID := fmt.Sprintf("%v", value)
+					// Try to resolve if it's a SimpleID
+					if !isValidUUID(parentID) {
+						// Need to unlock to call ResolveUUID
+						s.mu.Unlock()
+						if resolvedUUID, err := s.ResolveUUID(parentID); err == nil {
+							parentID = resolvedUUID
+						}
+						s.mu.Lock()
+						// If resolution fails, store the value as-is
+					}
+					doc.Dimensions[dimConfig.RefField] = parentID
 				} else {
 					delete(doc.Dimensions, dimConfig.RefField)
 				}
@@ -623,6 +639,11 @@ func (s *jsonFileStore) ResolveUUID(simpleID string) (string, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
+	return s.resolveUUIDInternal(simpleID)
+}
+
+// resolveUUIDInternal is the internal version that doesn't take locks
+func (s *jsonFileStore) resolveUUIDInternal(simpleID string) (string, error) {
 	// Get all documents
 	allDocs := make([]Document, len(s.data.Documents))
 	copy(allDocs, s.data.Documents)
@@ -640,10 +661,7 @@ func (s *jsonFileStore) Delete(id string, cascade bool) error {
 	resolvedID := id
 	if !isValidUUID(id) {
 		// Try to resolve as simple ID
-		// Need to unlock to call ResolveUUID which also needs lock
-		s.mu.Unlock()
-		uuid, err := s.ResolveUUID(id)
-		s.mu.Lock()
+		uuid, err := s.resolveUUIDInternal(id)
 		if err != nil {
 			return fmt.Errorf("failed to resolve ID %s: %w", id, err)
 		}
@@ -872,7 +890,15 @@ func (s *jsonFileStore) UpdateByDimension(filters map[string]interface{}, update
 					} else if dimConfig.Type == Hierarchical {
 						// Store hierarchical dimension value
 						if value != nil {
-							doc.Dimensions[dimConfig.RefField] = fmt.Sprintf("%v", value)
+							parentID := fmt.Sprintf("%v", value)
+							// Try to resolve if it's a SimpleID
+							if !isValidUUID(parentID) {
+								if resolvedUUID, err := s.resolveUUIDInternal(parentID); err == nil {
+									parentID = resolvedUUID
+								}
+								// If resolution fails, store the value as-is
+							}
+							doc.Dimensions[dimConfig.RefField] = parentID
 						} else {
 							delete(doc.Dimensions, dimConfig.RefField)
 						}
