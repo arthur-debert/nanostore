@@ -266,11 +266,8 @@ func (s *jsonFileStore) List(opts ListOptions) ([]Document, error) {
 
 		// Generate SimpleIDs using the new ID generator
 		// Get all documents for ID generation (not just the filtered ones)
-		allDocs := make([]Document, len(s.data.Documents))
-		copy(allDocs, s.data.Documents)
-
-		// Generate ID mappings
-		idMap := s.idGenerator.GenerateIDs(allDocs)
+		// GenerateIDs now handles copying internally, so we can pass the slice directly
+		idMap := s.idGenerator.GenerateIDs(s.data.Documents)
 
 		// Create reverse mapping (SimpleID -> UUID)
 		uuidToID := make(map[string]string)

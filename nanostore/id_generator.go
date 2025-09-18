@@ -117,15 +117,19 @@ func (g *IDGenerator) assignIDsToDocuments(docsToProcess []Document, idMap map[s
 	positionMaps := make(map[string]map[string]int) // partitionKey -> (UUID -> position)
 
 	for partitionKey, docs := range historicalPartitions {
+		// Make a copy to avoid mutating the original slice
+		docsCopy := make([]Document, len(docs))
+		copy(docsCopy, docs)
+
 		// Sort by creation time to determine position order
-		sort.Slice(docs, func(i, j int) bool {
-			return docs[i].CreatedAt.Before(docs[j].CreatedAt)
+		sort.Slice(docsCopy, func(i, j int) bool {
+			return docsCopy[i].CreatedAt.Before(docsCopy[j].CreatedAt)
 		})
 
 		// Assign positions sequentially
 		posMap := make(map[string]int)
 		nextPos := 1
-		for _, doc := range docs {
+		for _, doc := range docsCopy {
 			// Check if this document currently belongs to this partition
 			currentPartition := g.getPartitionWithSimpleParentID(doc, uuidToSimpleID)
 			if currentPartition.Key() == partitionKey {
