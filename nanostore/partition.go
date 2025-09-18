@@ -29,7 +29,12 @@ func ParseDimensionValue(s string) (DimensionValue, error) {
 	}, nil
 }
 
-// Partition represents a specific partition defined by dimension values
+// Partition represents a specific partition defined by dimension values.
+//
+// Partitions are a core concept in the ID generation system, grouping documents
+// with identical dimension values and assigning sequential positions within each group.
+// For comprehensive documentation on partitions, ID generation, and the relationship
+// between partitions and SimpleIDs, see nanostore/ids/doc.go.
 type Partition struct {
 	// Values is an ordered list of dimension:value pairs
 	// Order matches the dimension order in the configuration

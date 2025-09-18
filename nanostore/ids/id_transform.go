@@ -8,7 +8,14 @@ import (
 	"github.com/arthur-debert/nanostore/types"
 )
 
-// IDTransformer handles transformations between full partition form and short form IDs
+// IDTransformer handles transformations between full partition form and short form IDs.
+//
+// This component is responsible for converting between human-readable short IDs (like "1.dh3")
+// and internal partition representations. It handles prefix resolution, hierarchical path
+// construction, and canonical value integration.
+//
+// For detailed documentation on the transformation algorithms, partition concepts,
+// and usage examples, see doc.go in this package.
 type IDTransformer struct {
 	dimensionSet  *types.DimensionSet
 	canonicalView *types.CanonicalView
