@@ -307,17 +307,44 @@ func (e *Engine) highlightMatchesWithMarkers(text, query string, caseSensitive b
 		searchQuery = strings.ToLower(query)
 	}
 
-	// Find all occurrences and highlight them
-	result := text
 	queryLen := len(query)
+	if queryLen == 0 {
+		return text
+	}
 
-	// Work backwards to maintain indices
-	for i := len(searchText) - queryLen; i >= 0; i-- {
-		if i+queryLen <= len(searchText) && searchText[i:i+queryLen] == searchQuery {
-			// Insert highlight markers
-			result = result[:i] + startMarker + result[i:i+queryLen] + endMarker + result[i+queryLen:]
+	// Find all match positions first
+	var matchPositions []int
+	for i := 0; i <= len(searchText)-queryLen; i++ {
+		if searchText[i:i+queryLen] == searchQuery {
+			matchPositions = append(matchPositions, i)
+			i += queryLen - 1 // Skip overlapping matches
 		}
 	}
 
-	return result
+	if len(matchPositions) == 0 {
+		return text
+	}
+
+	// Build result string efficiently using strings.Builder
+	var builder strings.Builder
+	lastEnd := 0
+
+	for _, start := range matchPositions {
+		end := start + queryLen
+
+		// Add text before match
+		builder.WriteString(text[lastEnd:start])
+
+		// Add highlighted match
+		builder.WriteString(startMarker)
+		builder.WriteString(text[start:end])
+		builder.WriteString(endMarker)
+
+		lastEnd = end
+	}
+
+	// Add remaining text after last match
+	builder.WriteString(text[lastEnd:])
+
+	return builder.String()
 }

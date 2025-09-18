@@ -529,6 +529,47 @@ func TestEngine_Search_MatchPositions(t *testing.T) {
 	}
 }
 
+func TestEngine_Search_HighlightingMultipleMatches(t *testing.T) {
+	provider := NewMockDocumentProvider([]types.Document{
+		{
+			UUID:     "test",
+			SimpleID: "1",
+			Title:    "test word test word test",
+			Body:     "test test test",
+		},
+	})
+	engine := NewEngine(provider)
+
+	results, err := engine.Search(SearchOptions{
+		Query:           "test",
+		EnableHighlight: true,
+		Fields:          []string{"title", "body"},
+	}, nil)
+
+	if err != nil {
+		t.Errorf("Expected no error, got %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("Expected 1 result, got %d", len(results))
+	}
+
+	result := results[0]
+
+	// Check title highlighting (should have 3 highlighted "test" occurrences)
+	titleHighlight := result.Highlights["title"]
+	expectedTitle := "**test** word **test** word **test**"
+	if titleHighlight != expectedTitle {
+		t.Errorf("Title highlight mismatch.\nExpected: %q\nGot:      %q", expectedTitle, titleHighlight)
+	}
+
+	// Check body highlighting (should have 3 highlighted "test" occurrences)
+	bodyHighlight := result.Highlights["body"]
+	expectedBody := "**test** **test** **test**"
+	if bodyHighlight != expectedBody {
+		t.Errorf("Body highlight mismatch.\nExpected: %q\nGot:      %q", expectedBody, bodyHighlight)
+	}
+}
+
 func TestEngine_Search_BackwardCompatibility(t *testing.T) {
 	provider := NewMockDocumentProvider(SampleDocuments())
 	engine := NewEngine(provider)
