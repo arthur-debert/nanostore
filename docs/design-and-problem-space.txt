@@ -1,0 +1,334 @@
+Nanostore: Design and Problem Space
+
+1. What is This Good For - The Problem
+
+    Any application that is not a simple unix tool needs to identify its entities.
+    We have many good to great systems for IDs, from the questionable line count to
+    complex distributed UUID systems.
+
+    However, distributed systems generate IDs that are hard to read and type:
+    dbf15ed6-bcd4-4528-8831-5bf56039d327. This doesn't matter for most applications,
+    as they split the interface part and the data part - users click on things and
+    the application connects the click to the data.
+
+    Shell applications however, have no GUIs, and there is nothing to click. For
+    the vast majority of shell applications, this is fine too, as most tend to be
+    either in the tool/pipe camp or be scripted in larger systems, which can deal
+    with opaque IDs just fine.
+
+    Of all these, there is a narrow class of applications that are shell
+    applications and used interactively. For these, having to type:
+    
+        $ cmd foo dbf15ed6-bcd4-4528-8831-5bf56039d327
+        
+    is no picnic.
+
+    Integer IDs are much better. In fact, gh (the CLI client for GitHub) uses
+    integer IDs for issues and PRs, and it works great. Even if your project has
+    a 20-year history with large numbers of issues:
+    
+        $ gh issue close 55669
+        
+    (the actual latest issue number on Ruby on Rails) is not too bad.
+
+    Among those, however, is a class of applications where you interact heavily
+    and need IDs for everything. Like a task manager or a note-taking app:
+
+        $ todo close 434343   # not much fun
+
+    But even worse is this scenario:
+    
+        $ todo list 
+            ○ 143. Groceries
+            ○ 143.144. Eggs
+            ○ 143.145. Bread
+            ○ 143.158. Milk
+            ○ 149. Pack for Trip
+            ○ 149.150. Camera Gear
+            ○ 149.151. Clothes
+            ○ 149.178. Passport
+            
+        $ todo search "es"
+            ○ 1. Groceries
+            ○ 2. Pack for Trip
+            ○ 2.1. Clothes
+            
+        $ todo complete 2.1 
+        
+    What have you done? Without the search context, this becomes confusing.
+    The same list now shows:
+    
+        ○ 1. Groceries
+          ○ 1.1. Eggs
+          ○ 1.2. Bread
+          ○ 1.3. Milk
+        ○ 2. Pack for Trip
+          ○ 2.1. Camera Gear
+          ○ 2.2. Clothes  <-- Wait, this was 2.1 before
+          ○ 2.3. Passport
+
+    This is why you can't just reorder IDs on output - users need to refer to
+    the same objects consistently, even when viewing filtered results.
+
+    The core problem: Users expect integer IDs (1-based, without gaps) that are
+    semi-stable and partitioned logically (for example by parent task). They
+    want "1", "1.1", "1.2", not "143.158" or UUIDs.
+
+2. The Nanostore Solution
+
+    Nanostore solves this narrow but persistent problem: providing users with
+    ordered, sequential IDs that are partitioned in meaningful ways and can be
+    mapped reliably to stable, unique internal identifiers.
+
+    The key insight is that this ideal ordering assumes a canonical filtering view.
+    In the todo example above, users expect only pending tasks to be shown, but at
+    all levels. If a field in your model affects the ID ordering, it should be a
+    dimension.
+
+    Dimensions partition the ID space into subspaces. Nanostore stores documents
+    with a UUID (stable, unique, opaque). The user-facing ID is generated on the
+    fly: when you query nanostore, it applies the canonical view query first,
+    then walks the result set applying sequential ID numbering correctly partitioned.
+
+    For the todo app, we know we only show pending tasks, grouped by parent task.
+    So the canonical view is "status = pending, ordered by parent_id, created_at".
+    The dimensions are "status" and "parent_id".
+
+    With the canonical view, nanostore can map IDs to UUIDs and vice versa,
+    enabling applications to refer to entities by user-friendly IDs.
+
+    Note that IDs are semi-stable. Unlike UUIDs, they can change when objects
+    with lower or equal ID are deleted, inserted, or have partitioning dimensions
+    edited in ways that affect object visibility or ordering in the canonical view.
+
+    This sounds more complicated than it is. In the todo app: for every parent,
+    if a todo is inserted, deleted, or has its status changed before another todo,
+    that other todo will be affected.
+
+    Far from being a problem, this is the expected behavior. If users have tasks
+    1 and 2 and complete task 1, they expect 2 to become 1. The issue isn't that
+    IDs change, but whether they change in ways that break the user's mental model.
+
+    When searching, users understand that not all tasks are shown, and a list
+    starting with 2 and followed by 5 is perfectly fine.
+
+3. Architecture and Design Decisions
+
+3.1 Storage Backend
+
+    Since the intended use case involves non-concurrent, low-volume interactive
+    applications, nanostore foregoes a formal database and instead uses a JSON
+    file store that performs querying, indexing, ID mapping, and CRUD operations
+    in memory.
+
+    The JSON file approach provides several advantages:
+    - Human-readable data format
+    - Easy backup and restoration
+    - Simple deployment (single file)
+    - No database setup or maintenance
+    - Version control friendly (text-based)
+
+    File locking prevents concurrent write conflicts, with a 3-second timeout
+    and retry mechanism for read operations.
+
+3.2 ID Generation System
+
+    Nanostore uses a two-tier ID system:
+
+    Internal Layer (UUIDs):
+    - Every document has a stable UUID for internal references
+    - UUIDs never change once assigned
+    - Used for parent-child relationships and storage keys
+
+    User-Facing Layer (Generated IDs):
+    - Generated dynamically during queries
+    - Sequential integers within each partition
+    - Include prefixes based on dimension values
+    - Maintain hierarchical relationships (e.g., 1.1, 1.2)
+
+    ID generation algorithm:
+    1. Apply canonical view filters to all documents
+    2. Group documents by partition (combination of dimension values)
+    3. Sort within each partition by creation order
+    4. Assign sequential positions (1, 2, 3...)
+    5. Apply prefixes based on dimension values (e.g., "d1" for done items)
+    6. Construct hierarchical IDs (parent.position format)
+
+3.3 Dimensions and Partitioning
+
+    Dimensions define how the ID space is partitioned:
+
+    Enumerated Dimensions:
+    - Have predefined values (e.g., status: pending, active, done)
+    - Can specify prefixes for certain values (done items get "d" prefix)
+    - Support default values for new documents
+
+    Hierarchical Dimensions:
+    - Create parent-child relationships
+    - Use reference fields to point to parent UUIDs
+    - Enable tree-like structures with automatic ID nesting
+
+    The canonical view determines which documents appear in the default listing
+    and affects ID generation. Non-canonical filters (like search) don't affect
+    IDs but limit which documents are returned.
+
+3.4 Declarative API
+
+    Nanostore provides a declarative API using Go struct tags:
+
+        type TodoItem struct {
+            nanostore.Document
+            Status   string `values:"pending,active,done" prefix:"done=d" default:"pending"`
+            Priority string `values:"low,medium,high" prefix:"high=h" default:"medium"`
+            ParentID string `dimension:"parent_id,ref"`
+            
+            // Non-dimension fields stored as-is
+            Description string
+            DueDate     time.Time
+        }
+
+    This generates type-safe methods for querying and filtering, with automatic
+    configuration derivation from the struct definition.
+
+4. Limitations and Trade-offs
+
+4.1 Scale
+
+    Nanostore loads the entire dataset into memory for each operation. An
+    application with a few thousand items will load, query, modify, and return
+    results in under 20ms on a typical laptop. Scenarios with dozens of items
+    should be very fast.
+
+    This sets an upper bound on scalability. Performance degrades linearly with
+    dataset size, making it unsuitable for applications with tens of thousands
+    of documents or more.
+
+4.2 Concurrency
+
+    Nanostore is not designed for concurrent access. It has file locking to
+    prevent simultaneous writes, but performs no merging or conflict resolution.
+    If two processes read the same data, modify it, and write it back, the last
+    one wins.
+
+    File locking uses a 3-second timeout, and read operations retry up to 3 times
+    before failing. Nanostore is completely ill-suited for any concurrent
+    application.
+
+4.3 Query Capabilities
+
+    Since operations happen in memory on the full dataset, nanostore cannot
+    optimize queries like a traditional database. Every query examines every
+    document, making complex analytical queries on large datasets impractical.
+
+    The system is optimized for simple filters and ordering, not complex joins
+    or aggregations.
+
+4.4 Data Durability
+
+    The JSON file format provides good durability for single-machine applications,
+    but offers no built-in replication, clustering, or distributed consistency
+    guarantees.
+
+    Backup and recovery are simple (copy the JSON file), but there's no protection
+    against hardware failures beyond standard filesystem reliability.
+
+5. When to Use Nanostore
+
+5.1 Ideal Use Cases
+
+    Interactive command-line applications where:
+    - Users need to reference entities by simple, memorable IDs
+    - Data has natural hierarchical or categorical organization
+    - Dataset size is modest (hundreds to low thousands of items)
+    - Single-user or single-process access patterns
+    - Human-readable data storage is beneficial
+
+    Examples:
+    - Personal task managers
+    - Note-taking applications with hierarchy
+    - Project management tools for small teams
+    - Configuration management systems
+    - Personal data organizers
+
+5.2 Poor Fit Scenarios
+
+    - Web applications with concurrent users
+    - High-volume data processing
+    - Real-time systems requiring sub-millisecond response times
+    - Applications requiring complex analytical queries
+    - Multi-tenant systems with strict data isolation requirements
+    - Systems requiring ACID transactions across multiple operations
+
+6. Comparison with Alternatives
+
+6.1 Traditional Databases (SQLite, PostgreSQL)
+
+    Advantages of databases:
+    - Better performance on large datasets
+    - ACID transactions
+    - Complex query capabilities
+    - Mature tooling and administration
+
+    Advantages of nanostore:
+    - Automatic human-friendly ID generation
+    - No schema migration complexity
+    - Single-file deployment
+    - Type-safe declarative API
+    - Built-in hierarchical relationships
+
+6.2 Key-Value Stores (BoltDB, BadgerDB)
+
+    Advantages of key-value stores:
+    - Better performance
+    - Lower memory usage
+    - Structured storage
+
+    Advantages of nanostore:
+    - Higher-level abstractions
+    - Automatic querying and filtering
+    - ID management system
+    - Human-readable storage format
+
+6.3 In-Memory Solutions (sync.Map, caches)
+
+    Advantages of in-memory:
+    - Faster access
+    - No I/O overhead
+
+    Advantages of nanostore:
+    - Persistence across restarts
+    - Structured query capabilities
+    - Type safety
+    - Automatic ID generation
+
+7. Implementation Strategy
+
+    Nanostore works declaratively: you describe the schema (fields and their
+    dimension properties), and nanostore handles dimension partitioning, ID
+    translation, and storage to a JSON file.
+
+    The typical development flow:
+    1. Define your document structure with dimension tags
+    2. Initialize a typed store from your struct definition
+    3. Use generated query methods for type-safe operations
+    4. Let nanostore handle ID mapping transparently
+
+    The system prioritizes developer experience and user experience over raw
+    performance, making it ideal for applications where human interaction is
+    the primary bottleneck rather than computational speed.
+
+Conclusion
+
+    Nanostore addresses a specific but important problem: providing human-friendly
+    IDs for interactive applications while maintaining the benefits of stable
+    internal identifiers. Its design trades scalability and concurrency for
+    simplicity and user experience.
+
+    For applications within its scope - single-user interactive tools with modest
+    data requirements - nanostore provides significant development velocity
+    benefits and excellent user experience. For applications outside this scope,
+    traditional database solutions remain more appropriate.
+
+    The key insight is recognizing when user-friendly IDs matter more than
+    technical sophistication, and when simplicity of deployment and maintenance
+    outweighs advanced database features.

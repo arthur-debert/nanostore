@@ -1,0 +1,540 @@
+Nanostore API Reference
+
+1. Core Store Interface
+
+1.1 Creating a Store
+
+    Basic Store Creation:
+    
+        import "github.com/arthur-debert/nanostore/nanostore"
+        
+        config := nanostore.Config{
+            Dimensions: []nanostore.DimensionConfig{
+                {
+                    Name:         "status",
+                    Type:         nanostore.Enumerated,
+                    Values:       []string{"pending", "active", "done"},
+                    Prefixes:     map[string]string{"done": "d"},
+                    DefaultValue: "pending",
+                },
+                {
+                    Name:     "parent",
+                    Type:     nanostore.Hierarchical,
+                    RefField: "parent_uuid",
+                },
+            },
+        }
+        
+        store, err := nanostore.New("data.json", config)
+        if err != nil {
+            return err
+        }
+        defer store.Close()
+
+    Declarative Store Creation:
+    
+        type TaskItem struct {
+            nanostore.Document
+            Status   string `values:"pending,active,done" prefix:"done=d" default:"pending"`
+            Priority string `values:"low,medium,high" prefix:"high=h" default:"medium"`
+            ParentID string `dimension:"parent_id,ref"`
+            
+            // Non-dimension fields
+            Description string
+            AssignedTo  string
+            DueDate     time.Time
+        }
+        
+        store, err := nanostore.NewFromType[TaskItem]("tasks.json")
+
+1.2 Store Interface Methods
+
+    type Store interface {
+        List(opts ListOptions) ([]Document, error)
+        Add(title string, dimensions map[string]interface{}) (string, error)
+        Update(id string, updates UpdateRequest) error
+        ResolveUUID(simpleID string) (string, error)
+        Delete(id string, cascade bool) error
+        DeleteByDimension(filters map[string]interface{}) (int, error)
+        DeleteWhere(whereClause string, args ...interface{}) (int, error)
+        UpdateByDimension(filters map[string]interface{}, updates UpdateRequest) (int, error)
+        UpdateWhere(whereClause string, updates UpdateRequest, args ...interface{}) (int, error)
+        Close() error
+    }
+
+2. Document Operations
+
+2.1 Adding Documents
+
+    Basic Addition:
+    
+        uuid, err := store.Add("Task Title", map[string]interface{}{
+            "status":      "pending",
+            "priority":    "high",
+            "parent_uuid": parentUUID,
+        })
+
+    With Custom Data:
+    
+        uuid, err := store.Add("Task Title", map[string]interface{}{
+            "status":              "active",
+            "_data.assigned_to":   "alice",
+            "_data.due_date":      time.Now().AddDate(0, 0, 7),
+            "_data.tags":          "urgent,important",
+        })
+
+2.2 Updating Documents
+
+    Basic Update:
+    
+        err := store.Update(id, nanostore.UpdateRequest{
+            Title: &newTitle,
+            Body:  &newBody,
+            Dimensions: map[string]interface{}{
+                "status":   "done",
+                "priority": "low",
+            },
+        })
+
+    Partial Updates:
+    
+        err := store.Update(id, nanostore.UpdateRequest{
+            Dimensions: map[string]interface{}{
+                "status": "active",
+                // Other dimensions remain unchanged
+            },
+        })
+
+    Custom Data Updates:
+    
+        err := store.Update(id, nanostore.UpdateRequest{
+            Dimensions: map[string]interface{}{
+                "_data.assigned_to": "bob",
+                "_data.notes":       "Updated notes",
+            },
+        })
+
+2.3 Deleting Documents
+
+    Simple Delete:
+    
+        err := store.Delete(id, false) // Don't cascade to children
+
+    Cascade Delete:
+    
+        err := store.Delete(id, true) // Delete children too
+
+    Bulk Delete by Dimension:
+    
+        count, err := store.DeleteByDimension(map[string]interface{}{
+            "status":   "done",
+            "activity": "archived",
+        })
+
+2.4 ID Resolution
+
+    Convert User ID to Internal UUID:
+    
+        uuid, err := store.ResolveUUID("1.2") // User-facing ID
+        // Returns internal UUID for storage operations
+
+3. Querying and Filtering
+
+3.1 ListOptions Structure
+
+    type ListOptions struct {
+        Filters        map[string]interface{}
+        FilterBySearch string
+        OrderBy        []OrderClause
+        Limit          *int
+        Offset         *int
+    }
+    
+    type OrderClause struct {
+        Column     string
+        Descending bool
+    }
+
+3.2 Basic Filtering
+
+    Filter by Single Dimension:
+    
+        opts := nanostore.NewListOptions()
+        opts.Filters["status"] = "pending"
+        documents, err := store.List(opts)
+
+    Filter by Multiple Dimensions:
+    
+        opts.Filters["status"] = "active"
+        opts.Filters["priority"] = "high"
+        documents, err := store.List(opts)
+
+    Filter by Multiple Values (IN operation):
+    
+        opts.Filters["status"] = []string{"pending", "active"}
+        documents, err := store.List(opts)
+
+3.3 Hierarchical Filtering
+
+    Filter by Parent:
+    
+        opts.Filters["parent_uuid"] = parentUUID
+        children, err := store.List(opts)
+
+    Filter Root Documents:
+    
+        // Documents with no parent (hierarchical roots)
+        opts.Filters["parent_uuid"] = nil
+        roots, err := store.List(opts)
+
+3.4 Custom Data Filtering
+
+    Filter by Non-Dimension Fields:
+    
+        opts.Filters["_data.assigned_to"] = "alice"
+        opts.Filters["_data.priority_score"] = 10
+        documents, err := store.List(opts)
+
+    Date Range Filtering:
+    
+        startDate := time.Now().AddDate(0, 0, -7)
+        endDate := time.Now()
+        opts.Filters["created_at"] = startDate
+        // Note: Only exact matches supported, not ranges
+
+3.5 Text Search
+
+    Search Title and Body:
+    
+        opts := nanostore.NewListOptions()
+        opts.FilterBySearch = "important meeting"
+        results, err := store.List(opts)
+
+    Combine Search with Filters:
+    
+        opts.FilterBySearch = "urgent"
+        opts.Filters["status"] = "pending"
+        opts.Filters["_data.assigned_to"] = "alice"
+        results, err := store.List(opts)
+
+3.6 Ordering
+
+    Single Column Ordering:
+    
+        opts.OrderBy = []nanostore.OrderClause{
+            {Column: "created_at", Descending: true},
+        }
+
+    Multi-Column Ordering:
+    
+        opts.OrderBy = []nanostore.OrderClause{
+            {Column: "priority", Descending: true},     // High priority first
+            {Column: "created_at", Descending: false},  // Then by creation time
+        }
+
+    Order by Custom Fields:
+    
+        opts.OrderBy = []nanostore.OrderClause{
+            {Column: "_data.due_date", Descending: false},
+            {Column: "title", Descending: false},
+        }
+
+3.7 Pagination
+
+    Basic Pagination:
+    
+        limit := 10
+        offset := 20
+        opts.Limit = &limit
+        opts.Offset = &offset
+        page, err := store.List(opts)
+
+    First N Results:
+    
+        limit := 5
+        opts.Limit = &limit
+        // offset defaults to 0
+        topResults, err := store.List(opts)
+
+4. Declarative API (TypedStore)
+
+4.1 Generated Query Methods
+
+    For a dimension defined as:
+    
+        Status string `values:"pending,active,done" default:"pending"`
+
+    Generated methods:
+    
+        store.Query().Status("pending")           // Exact match
+        store.Query().StatusIn("pending", "active") // Multiple values
+        store.Query().StatusNot("done")           // Exclusion
+        store.Query().StatusExists()              // Has any value
+        store.Query().StatusNotExists()           // Has no value
+
+4.2 Method Chaining
+
+    Complex Queries:
+    
+        results, err := store.Query().
+            Status("pending").
+            Priority("high").
+            ParentIDExists().              // Has a parent
+            Search("urgent").              // Text search
+            OrderBy("created_at").         // Sort by creation time
+            Limit(10).                     // First 10 results
+            Find()                         // Execute query
+
+4.3 Aggregation Methods
+
+    Count Documents:
+    
+        count, err := store.Query().
+            Status("pending").
+            Activity("active").
+            Count()
+
+    Check Existence:
+    
+        hasUrgent, err := store.Query().
+            Priority("high").
+            Status("pending").
+            Exists()
+
+    Get First Match:
+    
+        firstPending, err := store.Query().
+            Status("pending").
+            OrderBy("created_at").
+            First()
+
+4.4 CRUD Operations
+
+    Create with TypedStore:
+    
+        id, err := store.Create("New Task", &TaskItem{
+            Status:      "pending",
+            Priority:    "high",
+            ParentID:    parentID,
+            Description: "Task description",
+            AssignedTo:  "alice",
+        })
+
+    Update with TypedStore:
+    
+        task, err := store.Get(id)
+        if err != nil {
+            return err
+        }
+        
+        task.Status = "done"
+        task.Priority = "low"
+        err = store.Update(task.UUID, &task)
+
+    Get by ID:
+    
+        task, err := store.Get("1.2") // User-facing ID
+        task, err := store.Get(uuid)  // Internal UUID
+
+5. Configuration
+
+5.1 Dimension Configuration
+
+    Enumerated Dimension:
+    
+        nanostore.DimensionConfig{
+            Name:         "status",
+            Type:         nanostore.Enumerated,
+            Values:       []string{"pending", "active", "done"},
+            Prefixes:     map[string]string{"done": "d", "active": "a"},
+            DefaultValue: "pending",
+        }
+
+    Hierarchical Dimension:
+    
+        nanostore.DimensionConfig{
+            Name:     "category",
+            Type:     nanostore.Hierarchical,
+            RefField: "parent_uuid",
+        }
+
+5.2 Struct Tag Reference
+
+    Enumerated Dimension Tags:
+    
+        Status string `values:"pending,done" prefix:"done=d" default:"pending"`
+        //             ^values list        ^prefix map     ^default value
+
+    Hierarchical Dimension Tags:
+    
+        ParentID string `dimension:"parent_id,ref"`
+        //               ^dimension name   ^type indicator
+
+    Multiple Prefixes:
+    
+        Status string `values:"pending,active,done" prefix:"active=a,done=d"`
+
+5.3 Validation
+
+    Configuration Validation:
+    
+        err := nanostore.ValidateConfig(config)
+        if err != nil {
+            // Handle validation errors
+            return fmt.Errorf("invalid config: %w", err)
+        }
+
+    Common Validation Errors:
+    - Empty dimension names
+    - Duplicate dimension names
+    - Invalid default values (not in values list)
+    - Prefix conflicts between dimensions
+    - Missing RefField for hierarchical dimensions
+
+6. Error Handling
+
+6.1 Common Errors
+
+    Document Not Found:
+    
+        doc, err := store.Get("nonexistent")
+        if errors.Is(err, nanostore.ErrNotFound) {
+            // Handle missing document
+        }
+
+    Invalid ID Format:
+    
+        uuid, err := store.ResolveUUID("invalid-id")
+        if err != nil {
+            // Handle malformed ID
+        }
+
+    Validation Errors:
+    
+        err := store.Update(id, nanostore.UpdateRequest{
+            Dimensions: map[string]interface{}{
+                "status": "invalid_status", // Not in values list
+            },
+        })
+        // Returns validation error
+
+6.2 File System Errors
+
+    Permission Errors:
+    
+        store, err := nanostore.New("/read-only/path/data.json", config)
+        if err != nil {
+            // Handle permission or path errors
+        }
+
+    Lock Timeout:
+    
+        err := store.Add("title", dimensions)
+        if errors.Is(err, nanostore.ErrLockTimeout) {
+            // Another process has exclusive access
+            // Retry or fail gracefully
+        }
+
+7. Best Practices
+
+7.1 Resource Management
+
+    Always Close Stores:
+    
+        store, err := nanostore.New(path, config)
+        if err != nil {
+            return err
+        }
+        defer store.Close() // Ensures proper cleanup
+
+7.2 Error Handling
+
+    Check All Errors:
+    
+        id, err := store.Add(title, dimensions)
+        if err != nil {
+            return fmt.Errorf("failed to add document: %w", err)
+        }
+
+7.3 Type Safety
+
+    Use Declarative API:
+    
+        // Good: Type-safe operations
+        store, err := nanostore.NewFromType[TaskItem](path)
+        results, err := store.Query().Status("pending").Find()
+        
+        // Avoid: String-based operations when types are available
+        opts.Filters["status"] = "pending" // No compile-time checking
+
+7.4 Performance
+
+    Batch Related Operations:
+    
+        // Good: Single query for multiple documents
+        documents, err := store.Query().
+            Status("pending").
+            Priority("high").
+            Find()
+        
+        // Avoid: Multiple individual queries
+        for _, id := range ids {
+            doc, err := store.Get(id) // Inefficient
+        }
+
+    Use Appropriate Filters:
+    
+        // Good: Specific filters reduce result set
+        results, err := store.Query().
+            Status("pending").
+            Activity("active").
+            ParentID(parentID).
+            Find()
+        
+        // Avoid: Over-fetching then filtering in code
+        all, err := store.Query().Find() // Gets everything
+        // ... filter in Go code
+
+8. Examples
+
+8.1 Todo Application
+
+    Complete todo management example showing hierarchical tasks, status
+    transitions, and search functionality. See docs/in-depth-guide.txt
+    for detailed implementation.
+
+8.2 Note Taking
+
+    Hierarchical note organization with categories and tags:
+    
+        type Note struct {
+            nanostore.Document
+            Category string `values:"personal,work,ideas" default:"personal"`
+            Status   string `values:"draft,published,archived" default:"draft"`
+            ParentID string `dimension:"parent_id,ref"`
+            
+            Tags      string
+            Content   string
+            Author    string
+            CreatedBy string
+        }
+
+8.3 Project Management
+
+    Task tracking with priorities and assignments:
+    
+        type ProjectTask struct {
+            nanostore.Document
+            Status     string `values:"todo,progress,review,done" prefix:"done=d"`
+            Priority   string `values:"low,medium,high,critical" prefix:"critical=!,high=h"`
+            ProjectID  string `dimension:"project_id,ref"`
+            
+            AssignedTo  string
+            DueDate     time.Time
+            Estimate    int
+            Complexity  string
+        }
+
+This reference covers the complete nanostore API surface. For implementation
+details and advanced usage patterns, see the technical architecture documentation
+and in-depth usage guide.

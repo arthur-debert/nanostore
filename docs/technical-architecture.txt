@@ -1,0 +1,329 @@
+Nanostore Technical Architecture
+
+1. System Overview
+
+    Nanostore is structured as a modular Go library with clear separation between
+    data types, ID generation, storage, and API layers. The architecture prioritizes
+    simplicity and maintainability over performance optimization.
+
+    Core Components:
+    - Types package: Core data structures and interfaces
+    - IDs package: ID generation and transformation logic
+    - Stores package: Storage backend implementations
+    - API package: High-level declarative interfaces
+
+    Data flow: Client → API → IDs → Stores → JSON file
+
+2. Package Architecture
+
+2.1 Types Package (github.com/arthur-debert/nanostore/types)
+
+    Contains all fundamental data structures with no external dependencies:
+
+    Core Types:
+    - Document: Primary entity with UUID, generated ID, title, body, dimensions
+    - Config: System configuration with dimension definitions
+    - Store: Interface defining storage operations
+    - ListOptions/UpdateRequest: Query and modification structures
+
+    Dimension System:
+    - DimensionConfig: Configuration for a single dimension
+    - Dimension: Runtime representation with metadata
+    - DimensionSet: Ordered collection of dimensions
+    - DimensionType: Enumerated vs Hierarchical classification
+
+    Partitioning Types:
+    - Partition: Specific dimension value combination with position
+    - DimensionValue: Single dimension:value pair
+    - CanonicalView: Defines canonical filtering for ID generation
+
+    The types package serves as the foundation layer that all other packages
+    depend on, ensuring clean dependency graphs and reusability.
+
+2.2 IDs Package (github.com/arthur-debert/nanostore/ids)
+
+    Handles all ID generation and transformation logic:
+
+    IDGenerator:
+    - Generates sequential IDs for document collections
+    - Maintains partition-aware numbering
+    - Handles hierarchical relationships
+    - Supports stable ID assignment across operations
+
+    IDTransformer:
+    - Converts between full partition representations and short-form IDs
+    - Applies prefix rules based on dimension values
+    - Handles canonical value omission for cleaner IDs
+    - Supports bi-directional ID parsing and generation
+
+    ID Generation Algorithm:
+    1. Filter documents by canonical view
+    2. Group by partition key (dimension value combinations)
+    3. Sort within partitions by creation time
+    4. Assign sequential positions starting from 1
+    5. Apply dimension-based prefixes
+    6. Generate hierarchical IDs for parent-child relationships
+
+2.3 Stores Package (github.com/arthur-debert/nanostore/stores)
+
+    Storage backend implementations:
+
+    JSONFileStore:
+    - In-memory operations with JSON persistence
+    - File locking for concurrent access protection
+    - Atomic writes using temporary files
+    - Metadata tracking (version, timestamps)
+
+    Store Operations:
+    - CRUD operations with automatic ID resolution
+    - Filtering and search capabilities
+    - Hierarchical deletion with cascade options
+    - Bulk operations (not yet implemented)
+
+    File Format:
+    {
+      "documents": [
+        {
+          "uuid": "stable-internal-id",
+          "title": "Document Title",
+          "body": "Optional content",
+          "dimensions": {
+            "status": "pending",
+            "parent_uuid": "parent-id",
+            "_data.custom_field": "value"
+          },
+          "created_at": "2023-01-01T12:00:00Z",
+          "updated_at": "2023-01-01T12:00:00Z"
+        }
+      ],
+      "metadata": {
+        "version": "1.0",
+        "created_at": "2023-01-01T12:00:00Z",
+        "updated_at": "2023-01-01T12:00:00Z"
+      }
+    }
+
+2.4 API Package (github.com/arthur-debert/nanostore/api)
+
+    High-level declarative interfaces:
+
+    TypedStore[T]:
+    - Generated from struct definitions with tags
+    - Type-safe query methods based on dimension definitions
+    - Automatic configuration derivation
+    - Method chaining for complex queries
+
+    Declarative Tags:
+    - values: "val1,val2,val3" (enumerated dimension values)
+    - prefix: "val=p" (ID prefixes for specific values)
+    - default: "val" (default value for new documents)
+    - dimension: "name,ref" (hierarchical dimension with reference field)
+
+    Query Builder:
+    - Generated methods for each dimension (Status(), Priority(), etc.)
+    - Logical operators (In(), Not(), Exists(), etc.)
+    - Ordering and pagination (OrderBy(), Limit(), Offset())
+    - Text search (Search()) and aggregation (Count(), First())
+
+3. Data Model and Storage
+
+3.1 Document Structure
+
+    Every document has:
+    - UUID: Stable internal identifier (never changes)
+    - SimpleID: Generated user-facing ID (changes based on context)
+    - Title/Body: Core content fields
+    - Dimensions: Map of dimension values and custom data
+    - Timestamps: Creation and modification times
+
+    The dimensions map serves dual purposes:
+    - Direct dimension values: {"status": "pending", "priority": "high"}
+    - Custom data with _data prefix: {"_data.custom_field": "value"}
+
+    This allows storing arbitrary data while maintaining clean dimension semantics.
+
+3.2 ID Generation Logic
+
+    Two-phase process:
+
+    Phase 1 - Document Grouping:
+    - Apply canonical view filters
+    - Build partition map (dimension combinations → document lists)
+    - Handle historical positioning for stable numbering
+
+    Phase 2 - ID Assignment:
+    - Sort documents within each partition by creation time
+    - Assign sequential positions (1, 2, 3...)
+    - Apply dimension-based prefixes
+    - Construct hierarchical IDs using parent.child format
+
+    Hierarchical ID Construction:
+    - Root documents: "1", "2", "h3" (with prefix)
+    - Child documents: "1.1", "1.2", "h3.1"
+    - Grandchildren: "1.1.1", "1.1.2"
+
+    Prefix Application:
+    - Based on dimension values and prefix configuration
+    - Applied at each hierarchical level
+    - Examples: "d1" (done), "h2" (high priority), "ah1.1" (archived high priority child)
+
+3.3 Canonical View and Filtering
+
+    The canonical view defines:
+    - Which documents appear in default listings
+    - How IDs are generated and numbered
+    - Default values for each dimension
+
+    Canonical filters typically include:
+    - Status filters (show only active/pending items)
+    - Activity filters (exclude archived/deleted items)
+    - Wildcard filters for hierarchical dimensions
+
+    Non-canonical filters (search, custom field filters) don't affect ID
+    generation but limit query results.
+
+4. Concurrency and File Operations
+
+4.1 File Locking Strategy
+
+    Uses flock-based file locking:
+    - Separate lock file (.json.lock) to avoid conflicts with main file
+    - 3-second timeout with exponential backoff
+    - Up to 3 retry attempts for lock acquisition
+    - Automatic cleanup on process termination
+
+    Lock scopes:
+    - Read operations: Shared lock for file loading
+    - Write operations: Exclusive lock for save operations
+    - Query operations: Read-only, no locking needed (in-memory)
+
+4.2 Atomic Write Operations
+
+    Write process:
+    1. Acquire exclusive file lock
+    2. Update in-memory data structure
+    3. Serialize to JSON with formatting
+    4. Write to temporary file (.json.tmp)
+    5. Atomically rename temporary file to target
+    6. Release file lock
+    7. Clean up temporary files on failure
+
+    This ensures consistency even if the process crashes during write operations.
+
+4.3 Memory Management
+
+    Trade-offs:
+    - Entire dataset loaded into memory for each process
+    - Enables fast filtering and sorting operations
+    - Limits scalability to datasets that fit comfortably in RAM
+    - Simplified consistency model (snapshot isolation)
+
+5. Performance Characteristics
+
+5.1 Time Complexity
+
+    Operations scale with dataset size:
+    - Load: O(n) - parse entire JSON file
+    - Query: O(n) - filter all documents
+    - ID Generation: O(n log n) - sort within partitions
+    - Save: O(n) - serialize entire dataset
+
+    Where n = total number of documents in the store.
+
+5.2 Space Complexity
+
+    Memory usage:
+    - Base overhead: ~200 bytes per document
+    - Content overhead: Proportional to title/body/dimension data
+    - Working memory: 2-3x dataset size during operations
+    - JSON serialization: Additional temporary allocation
+
+5.3 I/O Patterns
+
+    - Read-heavy workloads perform well (in-memory operations)
+    - Write operations require full dataset serialization
+    - File size grows linearly with document count
+    - JSON parsing/generation dominates I/O time for large datasets
+
+6. Error Handling and Recovery
+
+6.1 File System Errors
+
+    - Read failures: Retry with exponential backoff
+    - Write failures: Preserve original file, clean up temporaries
+    - Lock timeouts: Return specific error for application handling
+    - Permission errors: Fail fast with descriptive messages
+
+6.2 Data Integrity
+
+    - JSON validation on load
+    - Schema evolution through version metadata
+    - Graceful handling of missing or malformed fields
+    - UUID validation for internal references
+
+6.3 Recovery Mechanisms
+
+    - Automatic backup during writes (temporary file approach)
+    - Version metadata for compatibility checking
+    - Graceful degradation for unknown dimension types
+    - Partial recovery from corrupted JSON (when possible)
+
+7. Extension Points
+
+7.1 Storage Backends
+
+    The Store interface allows alternative implementations:
+    - SQLite backend (for larger datasets)
+    - In-memory backend (for testing)
+    - Networked backend (for distributed scenarios)
+    - Encrypted backend (for sensitive data)
+
+7.2 ID Generation Strategies
+
+    The IDGenerator interface supports:
+    - Alternative numbering schemes
+    - Custom prefix logic
+    - Different partition strategies
+    - Pluggable canonical view implementations
+
+7.3 Serialization Formats
+
+    The storage layer can be extended for:
+    - Binary formats (MessagePack, Protocol Buffers)
+    - Compressed storage (gzip, zstd)
+    - Encrypted at rest
+    - Streaming serialization for large datasets
+
+8. Testing Strategy
+
+8.1 Unit Testing
+
+    - Type package: Pure functions, no dependencies
+    - IDs package: Deterministic ID generation algorithms
+    - Stores package: File system mocking and temporary directories
+    - API package: Generated method validation
+
+8.2 Integration Testing
+
+    - End-to-end workflows with real files
+    - Concurrent access simulation
+    - Large dataset performance testing
+    - Error injection and recovery testing
+
+8.3 Property-Based Testing
+
+    - ID stability across operations
+    - Hierarchical relationship preservation
+    - Canonical view consistency
+    - Round-trip serialization integrity
+
+Conclusion
+
+    Nanostore's architecture prioritizes simplicity and correctness over
+    performance optimization. The modular design allows for future extensions
+    while maintaining a clean separation of concerns.
+
+    The system makes explicit trade-offs: sacrificing scalability and concurrency
+    for developer experience and deployment simplicity. Within its intended scope,
+    this architecture provides reliable, maintainable solutions for interactive
+    applications requiring human-friendly ID management.
