@@ -77,11 +77,11 @@ func TestIDGeneration(t *testing.T) {
 
 		// Check the IDs
 		expectedIDs := map[string]string{
-			id1: "t1",
-			id2: "t2",
-			id3: "t3",
-			id4: "d1",
-			id5: "d2",
+			id1: "1",  // First in todo partition (canonical)
+			id2: "2",  // Second in todo partition
+			id3: "3",  // Third in todo partition
+			id4: "d1", // First in done partition
+			id5: "d2", // Second in done partition
 		}
 
 		for uuid, expectedID := range expectedIDs {
@@ -95,7 +95,7 @@ func TestIDGeneration(t *testing.T) {
 
 	t.Run("IDResolveUUID", func(t *testing.T) {
 		// Test resolving simple IDs back to UUIDs
-		testCases := []string{"t1", "t2", "t3", "d1", "d2"}
+		testCases := []string{"1", "2", "3", "d1", "d2"}
 
 		for _, simpleID := range testCases {
 			uuid, err := store.ResolveUUID(simpleID)
@@ -277,9 +277,13 @@ func TestIDGenerationWithMultipleDimensions(t *testing.T) {
 		}
 
 		// We should have different prefixes for different combinations
+		// With partition-based IDs:
+		// - Canonical (bug+low) gets no prefix: "1", "2"
+		// - Only priority differs: "h1" (high priority)
+		// - Both differ: "fh1" (feature+high)
 		expectedPatterns := map[string]int{
-			"bl": 2, // bug + low
-			"bh": 1, // bug + high
+			"": 2,   // bug + low (canonical)
+			"h": 1,  // bug + high
 			"fh": 1, // feature + high
 		}
 

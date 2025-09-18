@@ -17,12 +17,14 @@ import (
 
 // jsonFileStore implements the Store and TestStore interfaces using a JSON file backend
 type jsonFileStore struct {
-	filePath     string
-	config       Config
-	dimensionSet *DimensionSet
-	mu           sync.RWMutex // In-process synchronization
-	fileLock     *flock.Flock // Cross-process file locking
-	data         *storeData
+	filePath      string
+	config        Config
+	dimensionSet  *DimensionSet
+	canonicalView *CanonicalView
+	idGenerator   *IDGenerator
+	mu            sync.RWMutex // In-process synchronization
+	fileLock      *flock.Flock // Cross-process file locking
+	data          *storeData
 	// timeFunc is used to get the current time, defaults to time.Now
 	// Can be overridden for testing
 	timeFunc func() time.Time
@@ -48,12 +50,35 @@ func newJSONFileStore(filePath string, config Config) (*jsonFileStore, error) {
 	lockPath := filePath + ".lock"
 	fileLock := flock.New(lockPath)
 
+	// Create canonical view from config
+	canonicalView := NewCanonicalView()
+	// Default canonical view based on dimension defaults
+	var filters []CanonicalFilter
+	for _, dim := range config.GetDimensionSet().Enumerated() {
+		if dim.DefaultValue != "" {
+			filters = append(filters, CanonicalFilter{
+				Dimension: dim.Name,
+				Value:     dim.DefaultValue,
+			})
+		}
+	}
+	// Hierarchical dimensions default to "*" (any value)
+	for _, dim := range config.GetDimensionSet().Hierarchical() {
+		filters = append(filters, CanonicalFilter{
+				Dimension: dim.Name,
+				Value:     "*",
+			})
+	}
+	canonicalView = NewCanonicalView(filters...)
+
 	store := &jsonFileStore{
-		filePath:     filePath,
-		config:       config,
-		dimensionSet: config.GetDimensionSet(),
-		fileLock:     fileLock,
-		timeFunc:     time.Now, // Default to time.Now
+		filePath:      filePath,
+		config:        config,
+		dimensionSet:  config.GetDimensionSet(),
+		canonicalView: canonicalView,
+		idGenerator:   NewIDGenerator(config.GetDimensionSet(), canonicalView),
+		fileLock:      fileLock,
+		timeFunc:      time.Now, // Default to time.Now
 		data: &storeData{
 			Documents: []Document{},
 			Metadata: storeMetadata{
@@ -236,17 +261,15 @@ func (s *jsonFileStore) List(opts ListOptions) ([]Document, error) {
 		s.sortDocuments(result, opts.OrderBy)
 	}
 
-	// Generate SimpleIDs for the filtered and ordered results
-	// We need to generate IDs based on the canonical view, then map them
-	canonicalDocs, err := s.getCanonicalView()
-	if err != nil {
-		return nil, fmt.Errorf("failed to generate canonical view: %w", err)
-	}
-
-	// Generate ID mappings from canonical view
-	idMap := s.generateIDMappings(canonicalDocs)
-
-	// Create reverse mapping (UUID -> SimpleID)
+	// Generate SimpleIDs using the new ID generator
+	// Get all documents for ID generation (not just the filtered ones)
+	allDocs := make([]Document, len(s.data.Documents))
+	copy(allDocs, s.data.Documents)
+	
+	// Generate ID mappings
+	idMap := s.idGenerator.GenerateIDs(allDocs)
+	
+	// Create reverse mapping (SimpleID -> UUID)
 	uuidToID := make(map[string]string)
 	for simpleID, uuid := range idMap {
 		uuidToID[uuid] = simpleID
@@ -587,21 +610,12 @@ func (s *jsonFileStore) ResolveUUID(simpleID string) (string, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	// Generate the canonical view
-	docs, err := s.getCanonicalView()
-	if err != nil {
-		return "", fmt.Errorf("failed to generate canonical view: %w", err)
-	}
-
-	// Generate ID mappings
-	idMap := s.generateIDMappings(docs)
-
-	// Look up the UUID for the simple ID
-	if uuid, exists := idMap[simpleID]; exists {
-		return uuid, nil
-	}
-
-	return "", fmt.Errorf("simple ID not found: %s", simpleID)
+	// Get all documents
+	allDocs := make([]Document, len(s.data.Documents))
+	copy(allDocs, s.data.Documents)
+	
+	// Use the ID generator to resolve the ID
+	return s.idGenerator.ResolveID(simpleID, allDocs)
 }
 
 // Delete removes a document
@@ -749,164 +763,8 @@ func contains(slice []string, str string) bool {
 	return false
 }
 
-// getCanonicalView returns documents sorted in the canonical order for ID assignment
-func (s *jsonFileStore) getCanonicalView() ([]Document, error) {
-	// The canonical view is defined as:
-	// 1. All documents
-	// 2. Filtered by default filters (if any)
-	// 3. Ordered by enumerated dimensions, then created_at
 
-	opts := ListOptions{
-		Filters: make(map[string]interface{}),
-		OrderBy: []OrderClause{},
-	}
 
-	// Add ordering by enumerated dimensions first
-	for _, dim := range s.dimensionSet.Enumerated() {
-		opts.OrderBy = append(opts.OrderBy, OrderClause{
-			Column:     dim.Name,
-			Descending: false,
-		})
-	}
-
-	// Then order by created_at for stability
-	opts.OrderBy = append(opts.OrderBy, OrderClause{
-		Column:     "created_at",
-		Descending: false,
-	})
-
-	// Get all documents in canonical order
-	result := make([]Document, 0, len(s.data.Documents))
-
-	for _, doc := range s.data.Documents {
-		// Make a copy to avoid mutations
-		docCopy := doc
-		result = append(result, docCopy)
-	}
-
-	// Apply ordering
-	s.sortDocuments(result, opts.OrderBy)
-
-	return result, nil
-}
-
-// generateIDMappings creates a map of simple IDs to UUIDs based on the canonical view
-func (s *jsonFileStore) generateIDMappings(docs []Document) map[string]string {
-	idMap := make(map[string]string)
-
-	// Track counters for each dimension combination
-	type dimensionKey string
-	counters := make(map[dimensionKey]int)
-
-	// Track hierarchical relationships for nested IDs
-	parentIDs := make(map[string]string)  // UUID -> SimpleID
-	childCounters := make(map[string]int) // ParentUUID -> counter for children
-
-	// Find hierarchical dimension if any
-	var hierDim *DimensionConfig
-	hierDims := s.dimensionSet.Hierarchical()
-	if len(hierDims) > 0 {
-		hierDim = &DimensionConfig{
-			Name:         hierDims[0].Name,
-			Type:         hierDims[0].Type,
-			Values:       hierDims[0].Values,
-			Prefixes:     hierDims[0].Prefixes,
-			DefaultValue: hierDims[0].DefaultValue,
-			RefField:     hierDims[0].RefField,
-		}
-	}
-
-	// First pass: assign IDs to root documents
-	for _, doc := range docs {
-		// Skip if this has a parent - we'll do it in second pass
-		if hierDim != nil {
-			if parentUUID, hasParent := doc.Dimensions[hierDim.RefField]; hasParent && parentUUID != nil && parentUUID != "" {
-				continue
-			}
-		}
-
-		// Build dimension key from enumerated dimensions
-		var keyParts []string
-		var idParts []string
-
-		// Add prefixes from enumerated dimensions
-		for _, dim := range s.dimensionSet.Enumerated() {
-			if val, exists := doc.Dimensions[dim.Name]; exists {
-				strVal := fmt.Sprintf("%v", val)
-				keyParts = append(keyParts, dim.Name+":"+strVal)
-
-				// Add prefix if configured
-				if dim.Prefixes != nil {
-					if prefix, hasPrefix := dim.Prefixes[strVal]; hasPrefix && prefix != "" {
-						idParts = append(idParts, prefix)
-					}
-				}
-			}
-		}
-
-		// Create dimension key
-		dimKey := dimensionKey(strings.Join(keyParts, "|"))
-
-		// Get or initialize counter
-		counter := counters[dimKey] + 1
-		counters[dimKey] = counter
-
-		// Build the simple ID
-		simpleID := s.buildSimpleID(idParts, counter)
-
-		// Store the mapping
-		idMap[simpleID] = doc.UUID
-		parentIDs[doc.UUID] = simpleID
-	}
-
-	// Second pass: assign IDs to children (may need multiple passes for deep hierarchies)
-	maxDepth := 10 // Prevent infinite loops
-	for depth := 0; depth < maxDepth; depth++ {
-		foundAny := false
-		for _, doc := range docs {
-			// Skip if already has ID
-			if _, hasID := parentIDs[doc.UUID]; hasID {
-				continue
-			}
-
-			// Check if this has a parent
-			if hierDim != nil {
-				if parentUUID, hasParent := doc.Dimensions[hierDim.RefField]; hasParent && parentUUID != nil && parentUUID != "" {
-					parentUUIDStr := fmt.Sprintf("%v", parentUUID)
-					if parentID, exists := parentIDs[parentUUIDStr]; exists {
-						// Parent has an ID, we can assign child ID
-						childCounter := childCounters[parentUUIDStr] + 1
-						childCounters[parentUUIDStr] = childCounter
-
-						simpleID := fmt.Sprintf("%s.%d", parentID, childCounter)
-
-						// Store the mapping
-						idMap[simpleID] = doc.UUID
-						parentIDs[doc.UUID] = simpleID
-						foundAny = true
-					}
-				}
-			}
-		}
-
-		// If we didn't find any new children, we're done
-		if !foundAny {
-			break
-		}
-	}
-
-	return idMap
-}
-
-// buildSimpleID constructs a simple ID from parts and counter
-func (s *jsonFileStore) buildSimpleID(prefixParts []string, counter int) string {
-	if len(prefixParts) > 0 {
-		// Join prefixes and add counter
-		return strings.Join(prefixParts, "") + fmt.Sprintf("%d", counter)
-	}
-	// No prefixes - just use counter
-	return fmt.Sprintf("%d", counter)
-}
 
 // valueToString converts any value to a string for comparison
 // Special handling for time.Time values to use RFC3339Nano format
