@@ -20,7 +20,7 @@ func main() {
 	defer app.Close()
 	defer os.Remove(testFile) // Clean up after test
 
-	fmt.Println("=== Nanostore Todo Application - Complete Validation ===\n")
+	fmt.Println("=== Nanostore Todo Application - Complete Validation ===")
 
 	stepNum := 1
 
