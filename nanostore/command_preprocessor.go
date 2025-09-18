@@ -82,6 +82,37 @@ func (cp *commandPreprocessor) resolveIDsInStruct(v interface{}) error {
 			if err := cp.resolveIDsInStruct(field.Addr().Interface()); err != nil {
 				return err
 			}
+		} else if field.Kind() == reflect.Ptr && !field.IsNil() {
+			// Handle pointer fields
+			if field.Elem().Kind() == reflect.Struct {
+				// Recursively process pointed-to struct
+				if err := cp.resolveIDsInStruct(field.Interface()); err != nil {
+					return err
+				}
+			} else if field.Elem().Kind() == reflect.String && cp.isIDField(fieldType) {
+				// Handle *string ID fields
+				if err := cp.resolveIDField(field.Elem()); err != nil {
+					var resErr *IDResolutionError
+					if errors.As(err, &resErr) {
+						continue
+					}
+					return fmt.Errorf("failed to resolve pointer ID in field %s: %w", fieldType.Name, err)
+				}
+			}
+		} else if field.Kind() == reflect.Slice {
+			// Handle slice fields
+			for i := 0; i < field.Len(); i++ {
+				elem := field.Index(i)
+				if elem.Kind() == reflect.Struct {
+					if err := cp.resolveIDsInStruct(elem.Addr().Interface()); err != nil {
+						return err
+					}
+				} else if elem.Kind() == reflect.Ptr && !elem.IsNil() && elem.Elem().Kind() == reflect.Struct {
+					if err := cp.resolveIDsInStruct(elem.Interface()); err != nil {
+						return err
+					}
+				}
+			}
 		}
 	}
 
