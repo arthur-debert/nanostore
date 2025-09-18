@@ -7,7 +7,7 @@ A document store library that generates human-friendly, hierarchical IDs for int
 - **Human-Friendly IDs**: Generates sequential IDs like `1`, `1.1`, `h2.3` instead of UUIDs
 - **Hierarchical Structure**: Built-in parent-child relationships with automatic ID nesting
 - **Dynamic Prefixes**: IDs change based on status (e.g., `1` becomes `d1` when completed)
-- **Declarative API**: Define your data model with struct tags, get type-safe operations
+- **Type-Safe API**: Define your data model with struct tags, get compile-time safety and automatic configuration
 - **JSON Storage**: Human-readable persistence with file locking for concurrent access
 - **Zero Dependencies**: Simple deployment with single JSON file storage
 
@@ -38,60 +38,14 @@ $ todo list
 
 ## Quick Start
 
-### Basic Usage
+### Type-Safe API with Struct Tags
 
 ```go
 import "github.com/arthur-debert/nanostore/nanostore"
 
-// Define configuration
-config := nanostore.Config{
-    Dimensions: []nanostore.DimensionConfig{
-        {
-            Name:         "status",
-            Type:         nanostore.Enumerated,
-            Values:       []string{"pending", "active", "done"},
-            Prefixes:     map[string]string{"done": "d"},
-            DefaultValue: "pending",
-        },
-        {
-            Name:     "parent",
-            Type:     nanostore.Hierarchical,
-            RefField: "parent_uuid",
-        },
-    },
-}
-
-// Create store
-store, err := nanostore.New("tasks.json", config)
-if err != nil {
-    log.Fatal(err)
-}
-defer store.Close()
-
-// Add documents
-groceryID, err := store.Add("Groceries", map[string]interface{}{})
-milkID, err := store.Add("Milk", map[string]interface{}{
-    "parent_uuid": groceryID,
-})
-
-// Query documents
-opts := nanostore.NewListOptions()
-opts.Filters["status"] = "pending"
-tasks, err := store.List(opts)
-
-for _, task := range tasks {
-    fmt.Printf("%s. %s\n", task.SimpleID, task.Title)
-}
-// Output:
-// 1. Groceries  
-// 1.1. Milk
-```
-
-### Declarative API
-
-```go
+// Define your data model with struct tags
 type TodoItem struct {
-    nanostore.Document
+    nanostore.Document  // Required embedding
     
     Status   string `values:"pending,active,done" prefix:"done=d" default:"pending"`
     Priority string `values:"low,medium,high" prefix:"high=h" default:"medium"`
@@ -103,7 +57,7 @@ type TodoItem struct {
     Description string
 }
 
-// Create typed store
+// Create typed store - configuration generated automatically from struct tags
 store, err := nanostore.NewFromType[TodoItem]("todos.json")
 if err != nil {
     log.Fatal(err)
@@ -117,7 +71,7 @@ id, err := store.Create("Buy groceries", &TodoItem{
     Description: "Weekly shopping",
 })
 
-// Type-safe queries
+// Type-safe queries with fluent interface
 urgentTasks, err := store.Query().
     Priority("high").
     Status("pending").
@@ -127,7 +81,11 @@ urgentTasks, err := store.Query().
 // Update with type safety  
 task, err := store.Get(id)
 task.Status = "done"
-err = store.Update(task.UUID, &task)
+err = store.Update(id, task)
+
+// Output:
+fmt.Printf("%s. %s (assigned to %s)\n", task.SimpleID, task.Title, task.AssignedTo)
+// h1. Buy groceries (assigned to alice)
 ```
 
 ## Core Concepts
@@ -180,8 +138,7 @@ go get github.com/arthur-debert/nanostore/nanostore
 
 - **[Problem & Design](docs/design-and-problem-space.txt)**: Why nanostore exists and how it works
 - **[Technical Architecture](docs/technical-architecture.txt)**: Implementation details and performance characteristics  
-- **[API Reference](docs/api-reference.txt)**: Complete API documentation with examples
-- **[In-Depth Guide](docs/in-depth-guide.txt)**: Comprehensive tutorial building a todo application
+- **[In-Depth Guide](docs/in-depth-guide.txt)**: Complete tutorial building a hierarchical todo application with the type-safe API
 
 ## Architecture
 
@@ -190,11 +147,13 @@ Nanostore is organized as modular packages:
 ```
 github.com/arthur-debert/nanostore/
 ├── types/       # Core data structures and interfaces
-├── ids/         # ID generation and transformation  
-├── stores/      # Storage backend implementations
-├── api/         # Declarative API with struct tags
-└── nanostore/   # Main package with convenience functions
+├── search/      # Search and filtering functionality  
+├── nanostore/   # Main package with TypedStore API
+│   └── api/     # Type-safe declarative API implementation
+└── docs/        # Comprehensive documentation and guides
 ```
+
+The main entry point is the `TypedStore[T]` API in the `nanostore` package, which provides type-safe operations with automatic configuration generation from struct tags.
 
 ## Performance & Limitations
 
