@@ -487,11 +487,25 @@ func (s *jsonFileStore) Update(id string, updates UpdateRequest) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	// Find the document by UUID (for now, we'll implement smart ID resolution later)
+	// Resolve ID to UUID if it's a simple ID
+	resolvedID := id
+	if !isValidUUID(id) {
+		// Try to resolve as simple ID
+		// Need to unlock to call ResolveUUID which also needs lock
+		s.mu.Unlock()
+		uuid, err := s.ResolveUUID(id)
+		s.mu.Lock()
+		if err != nil {
+			return fmt.Errorf("failed to resolve ID %s: %w", id, err)
+		}
+		resolvedID = uuid
+	}
+
+	// Find the document by UUID
 	var found bool
 	var docIndex int
 	for i, doc := range s.data.Documents {
-		if doc.UUID == id {
+		if doc.UUID == resolvedID {
 			found = true
 			docIndex = i
 			break
