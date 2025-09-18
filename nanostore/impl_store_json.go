@@ -487,11 +487,25 @@ func (s *jsonFileStore) Update(id string, updates UpdateRequest) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	// Find the document by UUID (for now, we'll implement smart ID resolution later)
+	// Resolve ID to UUID if it's a simple ID
+	resolvedID := id
+	if !isValidUUID(id) {
+		// Try to resolve as simple ID
+		// Need to unlock to call ResolveUUID which also needs lock
+		s.mu.Unlock()
+		uuid, err := s.ResolveUUID(id)
+		s.mu.Lock()
+		if err != nil {
+			return fmt.Errorf("failed to resolve ID %s: %w", id, err)
+		}
+		resolvedID = uuid
+	}
+
+	// Find the document by UUID
 	var found bool
 	var docIndex int
 	for i, doc := range s.data.Documents {
-		if doc.UUID == id {
+		if doc.UUID == resolvedID {
 			found = true
 			docIndex = i
 			break
@@ -622,7 +636,21 @@ func (s *jsonFileStore) Delete(id string, cascade bool) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	return s.deleteInternal(id, cascade)
+	// Resolve ID to UUID if it's a simple ID
+	resolvedID := id
+	if !isValidUUID(id) {
+		// Try to resolve as simple ID
+		// Need to unlock to call ResolveUUID which also needs lock
+		s.mu.Unlock()
+		uuid, err := s.ResolveUUID(id)
+		s.mu.Lock()
+		if err != nil {
+			return fmt.Errorf("failed to resolve ID %s: %w", id, err)
+		}
+		resolvedID = uuid
+	}
+
+	return s.deleteInternal(resolvedID, cascade)
 }
 
 // deleteInternal is the internal delete method that doesn't lock
@@ -714,8 +742,30 @@ func (s *jsonFileStore) DeleteByDimension(filters map[string]interface{}) (int, 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	// TODO: Implement bulk deletion by dimensions
-	return 0, errors.New("not implemented")
+	// Find all documents matching the filters
+	toDelete := []int{}
+	for i, doc := range s.data.Documents {
+		if s.matchesFilters(doc, filters) {
+			toDelete = append(toDelete, i)
+		}
+	}
+
+	// Delete in reverse order to preserve indices
+	deletedCount := 0
+	for i := len(toDelete) - 1; i >= 0; i-- {
+		idx := toDelete[i]
+		s.data.Documents = append(s.data.Documents[:idx], s.data.Documents[idx+1:]...)
+		deletedCount++
+	}
+
+	// Save changes if any documents were deleted
+	if deletedCount > 0 {
+		if err := s.saveWithLock(); err != nil {
+			return 0, fmt.Errorf("failed to save after deletion: %w", err)
+		}
+	}
+
+	return deletedCount, nil
 }
 
 // DeleteWhere removes documents matching a custom WHERE clause
@@ -729,8 +779,119 @@ func (s *jsonFileStore) UpdateByDimension(filters map[string]interface{}, update
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	// TODO: Implement bulk update by dimensions
-	return 0, errors.New("not implemented")
+	// Validate update dimensions if provided
+	if updates.Dimensions != nil {
+		for name, value := range updates.Dimensions {
+			if value != nil {
+				if err := validateSimpleType(value, name); err != nil {
+					return 0, err
+				}
+			}
+		}
+	}
+
+	// Find and update all matching documents
+	updatedCount := 0
+	now := s.timeFunc()
+
+	for i := range s.data.Documents {
+		if s.matchesFilters(s.data.Documents[i], filters) {
+			doc := &s.data.Documents[i]
+			doc.UpdatedAt = now
+
+			// Update title if provided
+			if updates.Title != nil {
+				doc.Title = *updates.Title
+			}
+
+			// Update body if provided
+			if updates.Body != nil {
+				doc.Body = *updates.Body
+			}
+
+			// Update dimensions if provided
+			if updates.Dimensions != nil {
+				// First handle _data prefixed values (no validation needed)
+				for dimName, value := range updates.Dimensions {
+					if strings.HasPrefix(dimName, "_data.") {
+						if value != nil {
+							doc.Dimensions[dimName] = value
+						} else {
+							delete(doc.Dimensions, dimName)
+						}
+					}
+				}
+
+				// Then validate and process dimension updates
+				for dimName, value := range updates.Dimensions {
+					// Skip _data prefixed fields (already handled)
+					if strings.HasPrefix(dimName, "_data.") {
+						continue
+					}
+
+					// Find dimension config
+					dim, found := s.dimensionSet.Get(dimName)
+					var dimConfig *DimensionConfig
+					if found {
+						dimConfig = &DimensionConfig{
+							Name:         dim.Name,
+							Type:         dim.Type,
+							Values:       dim.Values,
+							Prefixes:     dim.Prefixes,
+							DefaultValue: dim.DefaultValue,
+							RefField:     dim.RefField,
+						}
+					} else {
+						// Try by RefField for hierarchical dimensions
+						for _, dc := range s.dimensionSet.Hierarchical() {
+							if dc.RefField == dimName {
+								dimConfig = &DimensionConfig{
+									Name:         dc.Name,
+									Type:         dc.Type,
+									Values:       dc.Values,
+									Prefixes:     dc.Prefixes,
+									DefaultValue: dc.DefaultValue,
+									RefField:     dc.RefField,
+								}
+								break
+							}
+						}
+					}
+
+					if dimConfig == nil {
+						return 0, fmt.Errorf("unknown dimension: %s", dimName)
+					}
+
+					// Validate enumerated dimension values
+					if dimConfig.Type == Enumerated && value != nil {
+						strVal := fmt.Sprintf("%v", value)
+						if !contains(dimConfig.Values, strVal) {
+							return 0, fmt.Errorf("invalid value %q for dimension %q", strVal, dimName)
+						}
+						doc.Dimensions[dimName] = strVal
+					} else if dimConfig.Type == Hierarchical {
+						// Store hierarchical dimension value
+						if value != nil {
+							doc.Dimensions[dimConfig.RefField] = fmt.Sprintf("%v", value)
+						} else {
+							delete(doc.Dimensions, dimConfig.RefField)
+						}
+					}
+				}
+			}
+
+			updatedCount++
+		}
+	}
+
+	// Save changes if any documents were updated
+	if updatedCount > 0 {
+		if err := s.saveWithLock(); err != nil {
+			return 0, fmt.Errorf("failed to save after update: %w", err)
+		}
+	}
+
+	return updatedCount, nil
 }
 
 // UpdateWhere updates documents matching a custom WHERE clause
