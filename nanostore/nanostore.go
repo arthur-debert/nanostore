@@ -105,6 +105,10 @@ type DimensionConfig struct {
 type Config struct {
 	// Dimensions defines the ID partitioning dimensions
 	Dimensions []DimensionConfig
+
+	// dimensionSet is the new internal representation
+	// Will be populated from Dimensions during initialization
+	dimensionSet *DimensionSet
 }
 
 // GetEnumeratedDimensions returns all enumerated dimensions from the config
@@ -137,6 +141,14 @@ func (c Config) GetDimension(name string) (*DimensionConfig, bool) {
 		}
 	}
 	return nil, false
+}
+
+// GetDimensionSet returns the dimension set, initializing it if needed
+func (c *Config) GetDimensionSet() *DimensionSet {
+	if c.dimensionSet == nil {
+		c.dimensionSet = dimensionSetFromConfig(*c)
+	}
+	return c.dimensionSet
 }
 
 // Store defines the public interface for the document store
