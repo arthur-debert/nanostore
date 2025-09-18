@@ -121,7 +121,11 @@ func (cv *CanonicalView) ExtractFromPartition(partition Partition) []DimensionVa
 	for _, dv := range partition.Values {
 		// Only extract if there's a filter for this dimension AND the value matches
 		if filterValue, hasFilter := cv.GetFilterValue(dv.Dimension); hasFilter {
-			if filterValue == dv.Value || filterValue == "*" {
+			// Skip wildcard filters (typically used for hierarchical dimensions)
+			if filterValue == "*" {
+				continue
+			}
+			if filterValue == dv.Value {
 				canonical = append(canonical, dv)
 			}
 		}
