@@ -17,11 +17,12 @@ import (
 
 // jsonFileStore implements the Store and TestStore interfaces using a JSON file backend
 type jsonFileStore struct {
-	filePath string
-	config   Config
-	mu       sync.RWMutex // In-process synchronization
-	fileLock *flock.Flock // Cross-process file locking
-	data     *storeData
+	filePath     string
+	config       Config
+	dimensionSet *DimensionSet
+	mu           sync.RWMutex // In-process synchronization
+	fileLock     *flock.Flock // Cross-process file locking
+	data         *storeData
 	// timeFunc is used to get the current time, defaults to time.Now
 	// Can be overridden for testing
 	timeFunc func() time.Time
@@ -48,10 +49,11 @@ func newJSONFileStore(filePath string, config Config) (*jsonFileStore, error) {
 	fileLock := flock.New(lockPath)
 
 	store := &jsonFileStore{
-		filePath: filePath,
-		config:   config,
-		fileLock: fileLock,
-		timeFunc: time.Now, // Default to time.Now
+		filePath:     filePath,
+		config:       config,
+		dimensionSet: config.GetDimensionSet(),
+		fileLock:     fileLock,
+		timeFunc:     time.Now, // Default to time.Now
 		data: &storeData{
 			Documents: []Document{},
 			Metadata: storeMetadata{
@@ -313,8 +315,8 @@ func (s *jsonFileStore) matchesFilters(doc Document, filters map[string]interfac
 					// Document doesn't have this dimension or data field
 					// Check if it's a hierarchical dimension ref field
 					found := false
-					for _, dim := range s.config.Dimensions {
-						if dim.Type == Hierarchical && dim.RefField == filterKey {
+					for _, dim := range s.dimensionSet.Hierarchical() {
+						if dim.RefField == filterKey {
 							// It's a hierarchical ref field
 							if parentValue, ok := doc.Dimensions[dim.RefField]; ok {
 								docValue = parentValue
@@ -415,7 +417,7 @@ func (s *jsonFileStore) Add(title string, dimensions map[string]interface{}) (st
 	}
 
 	// Apply dimension values
-	for _, dimConfig := range s.config.Dimensions {
+	for _, dimConfig := range s.dimensionSet.All() {
 		switch dimConfig.Type {
 		case Enumerated:
 			// Check if value was provided
@@ -522,11 +524,31 @@ func (s *jsonFileStore) Update(id string, updates UpdateRequest) error {
 			}
 
 			// Find dimension config
+			dim, found := s.dimensionSet.Get(dimName)
 			var dimConfig *DimensionConfig
-			for _, dc := range s.config.Dimensions {
-				if dc.Name == dimName || dc.RefField == dimName {
-					dimConfig = &dc
-					break
+			if found {
+				dimConfig = &DimensionConfig{
+					Name:         dim.Name,
+					Type:         dim.Type,
+					Values:       dim.Values,
+					Prefixes:     dim.Prefixes,
+					DefaultValue: dim.DefaultValue,
+					RefField:     dim.RefField,
+				}
+			} else {
+				// Try by RefField for hierarchical dimensions
+				for _, dc := range s.dimensionSet.Hierarchical() {
+					if dc.RefField == dimName {
+						dimConfig = &DimensionConfig{
+							Name:         dc.Name,
+							Type:         dc.Type,
+							Values:       dc.Values,
+							Prefixes:     dc.Prefixes,
+							DefaultValue: dc.DefaultValue,
+							RefField:     dc.RefField,
+						}
+						break
+					}
 				}
 			}
 
@@ -610,15 +632,16 @@ func (s *jsonFileStore) deleteInternal(id string, cascade bool) error {
 	// Check for children if cascade is false
 	if !cascade {
 		// Find hierarchical dimension
-		var hierDim *DimensionConfig
-		for _, dim := range s.config.Dimensions {
-			if dim.Type == Hierarchical {
-				hierDim = &dim
-				break
+		hierDims := s.dimensionSet.Hierarchical()
+		if len(hierDims) > 0 {
+			hierDim := &DimensionConfig{
+				Name:         hierDims[0].Name,
+				Type:         hierDims[0].Type,
+				Values:       hierDims[0].Values,
+				Prefixes:     hierDims[0].Prefixes,
+				DefaultValue: hierDims[0].DefaultValue,
+				RefField:     hierDims[0].RefField,
 			}
-		}
-
-		if hierDim != nil {
 			// Check if any document has this document as parent
 			for _, doc := range s.data.Documents {
 				if parentID, exists := doc.Dimensions[hierDim.RefField]; exists {
@@ -633,15 +656,16 @@ func (s *jsonFileStore) deleteInternal(id string, cascade bool) error {
 	// If cascade is true, delete all children
 	if cascade {
 		// Find hierarchical dimension
-		var hierDim *DimensionConfig
-		for _, dim := range s.config.Dimensions {
-			if dim.Type == Hierarchical {
-				hierDim = &dim
-				break
+		hierDims := s.dimensionSet.Hierarchical()
+		if len(hierDims) > 0 {
+			hierDim := &DimensionConfig{
+				Name:         hierDims[0].Name,
+				Type:         hierDims[0].Type,
+				Values:       hierDims[0].Values,
+				Prefixes:     hierDims[0].Prefixes,
+				DefaultValue: hierDims[0].DefaultValue,
+				RefField:     hierDims[0].RefField,
 			}
-		}
-
-		if hierDim != nil {
 			// Collect child IDs to delete
 			var childIDs []string
 			for _, doc := range s.data.Documents {
@@ -738,13 +762,11 @@ func (s *jsonFileStore) getCanonicalView() ([]Document, error) {
 	}
 
 	// Add ordering by enumerated dimensions first
-	for _, dim := range s.config.Dimensions {
-		if dim.Type == Enumerated {
-			opts.OrderBy = append(opts.OrderBy, OrderClause{
-				Column:     dim.Name,
-				Descending: false,
-			})
-		}
+	for _, dim := range s.dimensionSet.Enumerated() {
+		opts.OrderBy = append(opts.OrderBy, OrderClause{
+			Column:     dim.Name,
+			Descending: false,
+		})
 	}
 
 	// Then order by created_at for stability
@@ -782,10 +804,15 @@ func (s *jsonFileStore) generateIDMappings(docs []Document) map[string]string {
 
 	// Find hierarchical dimension if any
 	var hierDim *DimensionConfig
-	for _, dim := range s.config.Dimensions {
-		if dim.Type == Hierarchical {
-			hierDim = &dim
-			break
+	hierDims := s.dimensionSet.Hierarchical()
+	if len(hierDims) > 0 {
+		hierDim = &DimensionConfig{
+			Name:         hierDims[0].Name,
+			Type:         hierDims[0].Type,
+			Values:       hierDims[0].Values,
+			Prefixes:     hierDims[0].Prefixes,
+			DefaultValue: hierDims[0].DefaultValue,
+			RefField:     hierDims[0].RefField,
 		}
 	}
 
@@ -803,17 +830,15 @@ func (s *jsonFileStore) generateIDMappings(docs []Document) map[string]string {
 		var idParts []string
 
 		// Add prefixes from enumerated dimensions
-		for _, dim := range s.config.Dimensions {
-			if dim.Type == Enumerated {
-				if val, exists := doc.Dimensions[dim.Name]; exists {
-					strVal := fmt.Sprintf("%v", val)
-					keyParts = append(keyParts, dim.Name+":"+strVal)
+		for _, dim := range s.dimensionSet.Enumerated() {
+			if val, exists := doc.Dimensions[dim.Name]; exists {
+				strVal := fmt.Sprintf("%v", val)
+				keyParts = append(keyParts, dim.Name+":"+strVal)
 
-					// Add prefix if configured
-					if dim.Prefixes != nil {
-						if prefix, hasPrefix := dim.Prefixes[strVal]; hasPrefix && prefix != "" {
-							idParts = append(idParts, prefix)
-						}
+				// Add prefix if configured
+				if dim.Prefixes != nil {
+					if prefix, hasPrefix := dim.Prefixes[strVal]; hasPrefix && prefix != "" {
+						idParts = append(idParts, prefix)
 					}
 				}
 			}
