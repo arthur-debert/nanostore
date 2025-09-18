@@ -24,7 +24,7 @@ func NewIDGenerator(dimensionSet *DimensionSet, canonicalView *CanonicalView) *I
 // GenerateIDs generates SimpleIDs for a list of documents
 // The documents should be in the order they were retrieved from the store
 func (g *IDGenerator) GenerateIDs(documents []Document) map[string]string {
-	idMap := make(map[string]string)      // SimpleID -> UUID
+	idMap := make(map[string]string)          // SimpleID -> UUID
 	uuidToSimpleID := make(map[string]string) // UUID -> SimpleID
 
 	// We need a multi-pass approach to handle hierarchical IDs
@@ -39,7 +39,7 @@ func (g *IDGenerator) GenerateIDs(documents []Document) map[string]string {
 		// Find documents whose parents have IDs
 		var toProcess []Document
 		var stillRemaining []Document
-		
+
 		for _, doc := range remaining {
 			if g.canAssignID(doc, uuidToSimpleID) {
 				toProcess = append(toProcess, doc)
@@ -60,7 +60,7 @@ func (g *IDGenerator) GenerateIDs(documents []Document) map[string]string {
 func (g *IDGenerator) filterRootDocuments(documents []Document) []Document {
 	var roots []Document
 	hierDims := g.dimensionSet.Hierarchical()
-	
+
 	for _, doc := range documents {
 		isRoot := true
 		for _, dim := range hierDims {
@@ -80,7 +80,7 @@ func (g *IDGenerator) filterRootDocuments(documents []Document) []Document {
 func (g *IDGenerator) filterNonRootDocuments(documents []Document) []Document {
 	var nonRoots []Document
 	hierDims := g.dimensionSet.Hierarchical()
-	
+
 	for _, doc := range documents {
 		for _, dim := range hierDims {
 			if parentUUID, exists := doc.Dimensions[dim.RefField]; exists && parentUUID != nil && parentUUID != "" {
@@ -109,19 +109,19 @@ func (g *IDGenerator) canAssignID(doc Document, uuidToSimpleID map[string]string
 func (g *IDGenerator) assignIDsToDocuments(docsToProcess []Document, idMap map[string]string, uuidToSimpleID map[string]string, allDocuments []Document) {
 	// For stable positions, we need to consider ALL documents that have ever been in each partition
 	// This simulates having a position counter per partition that increments but never decreases
-	
+
 	// Build a map of all documents by partition (including historical membership)
 	historicalPartitions := g.buildHistoricalPartitionMap(allDocuments, uuidToSimpleID)
-	
+
 	// Assign positions based on creation order within historical partitions
 	positionMaps := make(map[string]map[string]int) // partitionKey -> (UUID -> position)
-	
+
 	for partitionKey, docs := range historicalPartitions {
 		// Sort by creation time to determine position order
 		sort.Slice(docs, func(i, j int) bool {
 			return docs[i].CreatedAt.Before(docs[j].CreatedAt)
 		})
-		
+
 		// Assign positions sequentially
 		posMap := make(map[string]int)
 		nextPos := 1
@@ -135,13 +135,13 @@ func (g *IDGenerator) assignIDsToDocuments(docsToProcess []Document, idMap map[s
 		}
 		positionMaps[partitionKey] = posMap
 	}
-	
+
 	// Now assign IDs to documents we're processing
 	for _, doc := range docsToProcess {
 		// Get partition for this document
 		partition := g.getPartitionWithSimpleParentID(doc, uuidToSimpleID)
 		partitionKey := partition.Key()
-		
+
 		// Get the position
 		position := positionMaps[partitionKey][doc.UUID]
 		if position == 0 {
@@ -154,10 +154,10 @@ func (g *IDGenerator) assignIDsToDocuments(docsToProcess []Document, idMap map[s
 				}
 			}
 		}
-		
+
 		// Create fully qualified partition with position
 		partition.Position = position
-		
+
 		// Generate short form ID
 		simpleID := g.transformer.ToShortForm(partition)
 		idMap[simpleID] = doc.UUID
@@ -170,7 +170,7 @@ func (g *IDGenerator) assignIDsToDocuments(docsToProcess []Document, idMap map[s
 func (g *IDGenerator) buildHistoricalPartitionMap(documents []Document, uuidToSimpleID map[string]string) map[string][]Document {
 	// For each partition key, track all documents that would belong to it
 	partitions := make(map[string][]Document)
-	
+
 	// We need to consider all possible partition keys based on dimension combinations
 	// For simplicity, we'll just track documents by their current partition
 	for _, doc := range documents {
@@ -178,7 +178,7 @@ func (g *IDGenerator) buildHistoricalPartitionMap(documents []Document, uuidToSi
 		partitionKey := partition.Key()
 		partitions[partitionKey] = append(partitions[partitionKey], doc)
 	}
-	
+
 	// Also need to consider "historical" partitions for documents that might have moved
 	// For the test case, we need to track that bread was originally in the same partition as milk/eggs
 	for _, doc := range documents {
@@ -193,7 +193,7 @@ func (g *IDGenerator) buildHistoricalPartitionMap(documents []Document, uuidToSi
 				}
 			}
 		}
-		
+
 		// If it's a child document, also add it to the canonical partition
 		// This ensures stable numbering when documents move between partitions
 		if parentSimpleID != "" {
@@ -206,7 +206,7 @@ func (g *IDGenerator) buildHistoricalPartitionMap(documents []Document, uuidToSi
 				},
 			}
 			canonicalKey := canonicalPartition.Key()
-			
+
 			// Check if this document should be counted in the canonical partition
 			// It should be counted if it ever was or could be in this partition
 			found := false
@@ -221,7 +221,7 @@ func (g *IDGenerator) buildHistoricalPartitionMap(documents []Document, uuidToSi
 			}
 		}
 	}
-	
+
 	return partitions
 }
 
@@ -309,7 +309,7 @@ func isValidUUID(s string) bool {
 	if len(s) != 36 {
 		return false
 	}
-	
+
 	for i, c := range s {
 		if i == 8 || i == 13 || i == 18 || i == 23 {
 			if c != '-' {
@@ -317,11 +317,11 @@ func isValidUUID(s string) bool {
 			}
 		} else {
 			// Check if it's a hex character
-			if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
+			if (c < '0' || c > '9') && (c < 'a' || c > 'f') && (c < 'A' || c > 'F') {
 				return false
 			}
 		}
 	}
-	
+
 	return true
 }

@@ -51,7 +51,6 @@ func newJSONFileStore(filePath string, config Config) (*jsonFileStore, error) {
 	fileLock := flock.New(lockPath)
 
 	// Create canonical view from config
-	canonicalView := NewCanonicalView()
 	// Default canonical view based on dimension defaults
 	var filters []CanonicalFilter
 	for _, dim := range config.GetDimensionSet().Enumerated() {
@@ -65,11 +64,11 @@ func newJSONFileStore(filePath string, config Config) (*jsonFileStore, error) {
 	// Hierarchical dimensions default to "*" (any value)
 	for _, dim := range config.GetDimensionSet().Hierarchical() {
 		filters = append(filters, CanonicalFilter{
-				Dimension: dim.Name,
-				Value:     "*",
-			})
+			Dimension: dim.Name,
+			Value:     "*",
+		})
 	}
-	canonicalView = NewCanonicalView(filters...)
+	canonicalView := NewCanonicalView(filters...)
 
 	store := &jsonFileStore{
 		filePath:      filePath,
@@ -265,10 +264,10 @@ func (s *jsonFileStore) List(opts ListOptions) ([]Document, error) {
 	// Get all documents for ID generation (not just the filtered ones)
 	allDocs := make([]Document, len(s.data.Documents))
 	copy(allDocs, s.data.Documents)
-	
+
 	// Generate ID mappings
 	idMap := s.idGenerator.GenerateIDs(allDocs)
-	
+
 	// Create reverse mapping (SimpleID -> UUID)
 	uuidToID := make(map[string]string)
 	for simpleID, uuid := range idMap {
@@ -613,7 +612,7 @@ func (s *jsonFileStore) ResolveUUID(simpleID string) (string, error) {
 	// Get all documents
 	allDocs := make([]Document, len(s.data.Documents))
 	copy(allDocs, s.data.Documents)
-	
+
 	// Use the ID generator to resolve the ID
 	return s.idGenerator.ResolveID(simpleID, allDocs)
 }
@@ -762,9 +761,6 @@ func contains(slice []string, str string) bool {
 	}
 	return false
 }
-
-
-
 
 // valueToString converts any value to a string for comparison
 // Special handling for time.Time values to use RFC3339Nano format

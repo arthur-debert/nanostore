@@ -162,10 +162,7 @@ func (t *IDTransformer) FromShortForm(shortForm string) (Partition, error) {
 		}
 
 		if !found {
-			values = append(values, DimensionValue{
-				Dimension: filter.Dimension,
-				Value:     filter.Value,
-			})
+			values = append(values, DimensionValue(filter))
 		}
 	}
 
