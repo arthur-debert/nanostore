@@ -8,7 +8,6 @@ import (
 	"os"
 	"sort"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/gofrs/flock"
@@ -23,7 +22,7 @@ type jsonFileStore struct {
 	canonicalView *CanonicalView
 	idGenerator   *IDGenerator
 	preprocessor  *commandPreprocessor
-	mu            sync.RWMutex // In-process synchronization
+	lockManager   *lockManager
 	fileLock      *flock.Flock // Cross-process file locking
 	data          *storeData
 	// timeFunc is used to get the current time, defaults to time.Now
@@ -77,6 +76,7 @@ func newJSONFileStore(filePath string, config Config) (*jsonFileStore, error) {
 		dimensionSet:  config.GetDimensionSet(),
 		canonicalView: canonicalView,
 		idGenerator:   NewIDGenerator(config.GetDimensionSet(), canonicalView),
+		lockManager:   newLockManager(),
 		fileLock:      fileLock,
 		timeFunc:      time.Now, // Default to time.Now
 		data: &storeData{
@@ -103,9 +103,10 @@ func newJSONFileStore(filePath string, config Config) (*jsonFileStore, error) {
 // SetTimeFunc sets a custom time function for testing
 // This allows tests to provide deterministic timestamps
 func (s *jsonFileStore) SetTimeFunc(fn func() time.Time) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.timeFunc = fn
+	_ = s.lockManager.execute(writeOperation, func() error {
+		s.timeFunc = fn
+		return nil
+	})
 }
 
 // Constants for file locking
@@ -234,74 +235,80 @@ func (s *jsonFileStore) save() error {
 
 // List returns documents based on the provided options
 func (s *jsonFileStore) List(opts ListOptions) ([]Document, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+	var result []Document
+	err := s.lockManager.execute(readOperation, func() error {
+		// Start with all documents
+		result = make([]Document, 0, len(s.data.Documents))
 
-	// Start with all documents
-	result := make([]Document, 0, len(s.data.Documents))
+		// Apply filters
+		for _, doc := range s.data.Documents {
+			// Check dimension filters
+			if !s.matchesFilters(doc, opts.Filters) {
+				continue
+			}
 
-	// Apply filters
-	for _, doc := range s.data.Documents {
-		// Check dimension filters
-		if !s.matchesFilters(doc, opts.Filters) {
-			continue
+			// Check text search filter
+			if opts.FilterBySearch != "" && !s.matchesSearch(doc, opts.FilterBySearch) {
+				continue
+			}
+
+			// Make a copy to avoid mutations
+			docCopy := doc
+			// Set SimpleID to UUID for now (will be replaced with proper ID generation)
+			docCopy.SimpleID = doc.UUID
+			result = append(result, docCopy)
 		}
 
-		// Check text search filter
-		if opts.FilterBySearch != "" && !s.matchesSearch(doc, opts.FilterBySearch) {
-			continue
+		// Apply ordering
+		if len(opts.OrderBy) > 0 {
+			s.sortDocuments(result, opts.OrderBy)
 		}
 
-		// Make a copy to avoid mutations
-		docCopy := doc
-		// Set SimpleID to UUID for now (will be replaced with proper ID generation)
-		docCopy.SimpleID = doc.UUID
-		result = append(result, docCopy)
-	}
+		// Generate SimpleIDs using the new ID generator
+		// Get all documents for ID generation (not just the filtered ones)
+		allDocs := make([]Document, len(s.data.Documents))
+		copy(allDocs, s.data.Documents)
 
-	// Apply ordering
-	if len(opts.OrderBy) > 0 {
-		s.sortDocuments(result, opts.OrderBy)
-	}
+		// Generate ID mappings
+		idMap := s.idGenerator.GenerateIDs(allDocs)
 
-	// Generate SimpleIDs using the new ID generator
-	// Get all documents for ID generation (not just the filtered ones)
-	allDocs := make([]Document, len(s.data.Documents))
-	copy(allDocs, s.data.Documents)
-
-	// Generate ID mappings
-	idMap := s.idGenerator.GenerateIDs(allDocs)
-
-	// Create reverse mapping (SimpleID -> UUID)
-	uuidToID := make(map[string]string)
-	for simpleID, uuid := range idMap {
-		uuidToID[uuid] = simpleID
-	}
-
-	// Assign SimpleIDs to results
-	for i := range result {
-		if simpleID, exists := uuidToID[result[i].UUID]; exists {
-			result[i].SimpleID = simpleID
-		} else {
-			// Fallback to UUID if not found (shouldn't happen)
-			result[i].SimpleID = result[i].UUID
+		// Create reverse mapping (SimpleID -> UUID)
+		uuidToID := make(map[string]string)
+		for simpleID, uuid := range idMap {
+			uuidToID[uuid] = simpleID
 		}
-	}
 
-	// Apply pagination
-	if opts.Offset != nil && *opts.Offset > 0 {
-		if *opts.Offset >= len(result) {
-			return []Document{}, nil
+		// Assign SimpleIDs to results
+		for i := range result {
+			if simpleID, exists := uuidToID[result[i].UUID]; exists {
+				result[i].SimpleID = simpleID
+			} else {
+				// Fallback to UUID if not found (shouldn't happen)
+				result[i].SimpleID = result[i].UUID
+			}
 		}
-		result = result[*opts.Offset:]
-	}
 
-	if opts.Limit != nil && *opts.Limit > 0 {
-		if *opts.Limit < len(result) {
-			result = result[:*opts.Limit]
+		// Apply pagination
+		if opts.Offset != nil && *opts.Offset > 0 {
+			if *opts.Offset >= len(result) {
+				result = []Document{}
+			} else {
+				result = result[*opts.Offset:]
+			}
 		}
-	}
 
+		if opts.Limit != nil && *opts.Limit > 0 {
+			if *opts.Limit < len(result) {
+				result = result[:*opts.Limit]
+			}
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		return nil, err
+	}
 	return result, nil
 }
 
@@ -427,73 +434,78 @@ func (s *jsonFileStore) Add(title string, dimensions map[string]interface{}) (st
 		return "", fmt.Errorf("preprocessing failed: %w", err)
 	}
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	result, err := s.lockManager.executeWithResult(writeOperation, func() (interface{}, error) {
 
-	// Generate UUID
-	docUUID := uuid.New().String()
+		// Generate UUID
+		docUUID := uuid.New().String()
 
-	// Create document
-	now := s.timeFunc()
-	doc := Document{
-		UUID:       docUUID,
-		Title:      cmd.Title,
-		Body:       "", // Empty body by default
-		CreatedAt:  now,
-		UpdatedAt:  now,
-		Dimensions: make(map[string]interface{}),
-	}
-
-	// Validate all provided dimensions are simple types
-	for name, value := range cmd.Dimensions {
-		if err := validateSimpleType(value, name); err != nil {
-			return "", err
+		// Create document
+		now := s.timeFunc()
+		doc := Document{
+			UUID:       docUUID,
+			Title:      cmd.Title,
+			Body:       "", // Empty body by default
+			CreatedAt:  now,
+			UpdatedAt:  now,
+			Dimensions: make(map[string]interface{}),
 		}
-	}
 
-	// Apply dimension values
-	for _, dimConfig := range s.dimensionSet.All() {
-		switch dimConfig.Type {
-		case Enumerated:
-			// Check if value was provided
-			if val, exists := cmd.Dimensions[dimConfig.Name]; exists {
-				// Validate the value
-				strVal := fmt.Sprintf("%v", val)
-				if !contains(dimConfig.Values, strVal) {
-					return "", fmt.Errorf("invalid value %q for dimension %q", strVal, dimConfig.Name)
+		// Validate all provided dimensions are simple types
+		for name, value := range cmd.Dimensions {
+			if err := validateSimpleType(value, name); err != nil {
+				return "", err
+			}
+		}
+
+		// Apply dimension values
+		for _, dimConfig := range s.dimensionSet.All() {
+			switch dimConfig.Type {
+			case Enumerated:
+				// Check if value was provided
+				if val, exists := cmd.Dimensions[dimConfig.Name]; exists {
+					// Validate the value
+					strVal := fmt.Sprintf("%v", val)
+					if !contains(dimConfig.Values, strVal) {
+						return "", fmt.Errorf("invalid value %q for dimension %q", strVal, dimConfig.Name)
+					}
+					doc.Dimensions[dimConfig.Name] = strVal
+				} else if dimConfig.DefaultValue != "" {
+					// Use default value
+					doc.Dimensions[dimConfig.Name] = dimConfig.DefaultValue
 				}
-				doc.Dimensions[dimConfig.Name] = strVal
-			} else if dimConfig.DefaultValue != "" {
-				// Use default value
-				doc.Dimensions[dimConfig.Name] = dimConfig.DefaultValue
-			}
-		case Hierarchical:
-			// Handle parent reference
-			// ID resolution already handled by preprocessor
-			if val, exists := cmd.Dimensions[dimConfig.RefField]; exists {
-				doc.Dimensions[dimConfig.RefField] = fmt.Sprintf("%v", val)
+			case Hierarchical:
+				// Handle parent reference
+				// ID resolution already handled by preprocessor
+				if val, exists := cmd.Dimensions[dimConfig.RefField]; exists {
+					doc.Dimensions[dimConfig.RefField] = fmt.Sprintf("%v", val)
+				}
 			}
 		}
-	}
 
-	// Also store any _data prefixed values directly
-	for key, value := range cmd.Dimensions {
-		if strings.HasPrefix(key, "_data.") {
-			doc.Dimensions[key] = value
+		// Also store any _data prefixed values directly
+		for key, value := range cmd.Dimensions {
+			if strings.HasPrefix(key, "_data.") {
+				doc.Dimensions[key] = value
+			}
 		}
+
+		// Add to store
+		s.data.Documents = append(s.data.Documents, doc)
+
+		// Save to file
+		if err := s.saveWithLock(); err != nil {
+			// Remove the document on save failure
+			s.data.Documents = s.data.Documents[:len(s.data.Documents)-1]
+			return "", fmt.Errorf("failed to save: %w", err)
+		}
+
+		return docUUID, nil
+	})
+
+	if err != nil {
+		return "", err
 	}
-
-	// Add to store
-	s.data.Documents = append(s.data.Documents, doc)
-
-	// Save to file
-	if err := s.saveWithLock(); err != nil {
-		// Remove the document on save failure
-		s.data.Documents = s.data.Documents[:len(s.data.Documents)-1]
-		return "", fmt.Errorf("failed to save: %w", err)
-	}
-
-	return docUUID, nil
+	return result.(string), nil
 }
 
 // Update modifies an existing document
@@ -507,133 +519,135 @@ func (s *jsonFileStore) Update(id string, updates UpdateRequest) error {
 		return fmt.Errorf("preprocessing failed: %w", err)
 	}
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	// Find the document by UUID
-	var found bool
-	var docIndex int
-	for i, doc := range s.data.Documents {
-		if doc.UUID == cmd.ID {
-			found = true
-			docIndex = i
-			break
-		}
-	}
-
-	if !found {
-		return fmt.Errorf("document not found: %s", id)
-	}
-
-	// Apply updates
-	doc := &s.data.Documents[docIndex]
-	doc.UpdatedAt = s.timeFunc()
-
-	// Update title if provided
-	if cmd.Request.Title != nil {
-		doc.Title = *cmd.Request.Title
-	}
-
-	// Update body if provided
-	if cmd.Request.Body != nil {
-		doc.Body = *cmd.Request.Body
-	}
-
-	// Update dimensions if provided
-	if cmd.Request.Dimensions != nil {
-		// Validate all dimensions are simple types
-		for name, value := range cmd.Request.Dimensions {
-			if value != nil {
-				if err := validateSimpleType(value, name); err != nil {
-					return err
-				}
+	return s.lockManager.execute(writeOperation, func() error {
+		// Find the document by UUID
+		var found bool
+		var docIndex int
+		for i, doc := range s.data.Documents {
+			if doc.UUID == cmd.ID {
+				found = true
+				docIndex = i
+				break
 			}
 		}
 
-		// First handle _data prefixed values (no validation needed)
-		for dimName, value := range cmd.Request.Dimensions {
-			if strings.HasPrefix(dimName, "_data.") {
+		if !found {
+			return fmt.Errorf("document not found: %s", id)
+		}
+
+		// Apply updates
+		doc := &s.data.Documents[docIndex]
+		doc.UpdatedAt = s.timeFunc()
+
+		// Update title if provided
+		if cmd.Request.Title != nil {
+			doc.Title = *cmd.Request.Title
+		}
+
+		// Update body if provided
+		if cmd.Request.Body != nil {
+			doc.Body = *cmd.Request.Body
+		}
+
+		// Update dimensions if provided
+		if cmd.Request.Dimensions != nil {
+			// Validate all dimensions are simple types
+			for name, value := range cmd.Request.Dimensions {
 				if value != nil {
-					doc.Dimensions[dimName] = value
-				} else {
-					delete(doc.Dimensions, dimName)
-				}
-			}
-		}
-
-		// Then validate and process dimension updates
-		for dimName, value := range cmd.Request.Dimensions {
-			// Skip _data prefixed fields (already handled)
-			if strings.HasPrefix(dimName, "_data.") {
-				continue
-			}
-
-			// Find dimension config
-			dim, found := s.dimensionSet.Get(dimName)
-			var dimConfig *DimensionConfig
-			if found {
-				dimConfig = &DimensionConfig{
-					Name:         dim.Name,
-					Type:         dim.Type,
-					Values:       dim.Values,
-					Prefixes:     dim.Prefixes,
-					DefaultValue: dim.DefaultValue,
-					RefField:     dim.RefField,
-				}
-			} else {
-				// Try by RefField for hierarchical dimensions
-				for _, dc := range s.dimensionSet.Hierarchical() {
-					if dc.RefField == dimName {
-						dimConfig = &DimensionConfig{
-							Name:         dc.Name,
-							Type:         dc.Type,
-							Values:       dc.Values,
-							Prefixes:     dc.Prefixes,
-							DefaultValue: dc.DefaultValue,
-							RefField:     dc.RefField,
-						}
-						break
+					if err := validateSimpleType(value, name); err != nil {
+						return err
 					}
 				}
 			}
 
-			if dimConfig == nil {
-				return fmt.Errorf("unknown dimension: %s", dimName)
+			// First handle _data prefixed values (no validation needed)
+			for dimName, value := range cmd.Request.Dimensions {
+				if strings.HasPrefix(dimName, "_data.") {
+					if value != nil {
+						doc.Dimensions[dimName] = value
+					} else {
+						delete(doc.Dimensions, dimName)
+					}
+				}
 			}
 
-			// Validate enumerated dimension values
-			if dimConfig.Type == Enumerated && value != nil {
-				strVal := fmt.Sprintf("%v", value)
-				if !contains(dimConfig.Values, strVal) {
-					return fmt.Errorf("invalid value %q for dimension %q", strVal, dimName)
+			// Then validate and process dimension updates
+			for dimName, value := range cmd.Request.Dimensions {
+				// Skip _data prefixed fields (already handled)
+				if strings.HasPrefix(dimName, "_data.") {
+					continue
 				}
-				doc.Dimensions[dimName] = strVal
-			} else if dimConfig.Type == Hierarchical {
-				// Store hierarchical dimension value
-				// ID resolution already handled by preprocessor
-				if value != nil {
-					doc.Dimensions[dimConfig.RefField] = fmt.Sprintf("%v", value)
+
+				// Find dimension config
+				dim, found := s.dimensionSet.Get(dimName)
+				var dimConfig *DimensionConfig
+				if found {
+					dimConfig = &DimensionConfig{
+						Name:         dim.Name,
+						Type:         dim.Type,
+						Values:       dim.Values,
+						Prefixes:     dim.Prefixes,
+						DefaultValue: dim.DefaultValue,
+						RefField:     dim.RefField,
+					}
 				} else {
-					delete(doc.Dimensions, dimConfig.RefField)
+					// Try by RefField for hierarchical dimensions
+					for _, dc := range s.dimensionSet.Hierarchical() {
+						if dc.RefField == dimName {
+							dimConfig = &DimensionConfig{
+								Name:         dc.Name,
+								Type:         dc.Type,
+								Values:       dc.Values,
+								Prefixes:     dc.Prefixes,
+								DefaultValue: dc.DefaultValue,
+								RefField:     dc.RefField,
+							}
+							break
+						}
+					}
+				}
+
+				if dimConfig == nil {
+					return fmt.Errorf("unknown dimension: %s", dimName)
+				}
+
+				// Validate enumerated dimension values
+				if dimConfig.Type == Enumerated && value != nil {
+					strVal := fmt.Sprintf("%v", value)
+					if !contains(dimConfig.Values, strVal) {
+						return fmt.Errorf("invalid value %q for dimension %q", strVal, dimName)
+					}
+					doc.Dimensions[dimName] = strVal
+				} else if dimConfig.Type == Hierarchical {
+					// Store hierarchical dimension value
+					// ID resolution already handled by preprocessor
+					if value != nil {
+						doc.Dimensions[dimConfig.RefField] = fmt.Sprintf("%v", value)
+					} else {
+						delete(doc.Dimensions, dimConfig.RefField)
+					}
 				}
 			}
 		}
-	}
 
-	// Save to file
-	if err := s.saveWithLock(); err != nil {
-		return fmt.Errorf("failed to save: %w", err)
-	}
+		// Save to file
+		if err := s.saveWithLock(); err != nil {
+			return fmt.Errorf("failed to save: %w", err)
+		}
 
-	return nil
+		return nil
+	})
 }
 
 // ResolveUUID converts a simple ID to a UUID
 func (s *jsonFileStore) ResolveUUID(simpleID string) (string, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	return s.resolveUUIDInternal(simpleID)
+	result, err := s.lockManager.executeWithResult(readOperation, func() (interface{}, error) {
+		return s.resolveUUIDInternal(simpleID)
+	})
+	if err != nil {
+		return "", err
+	}
+	return result.(string), nil
 }
 
 // resolveUUIDInternal is the internal version that doesn't take locks
@@ -657,10 +671,9 @@ func (s *jsonFileStore) Delete(id string, cascade bool) error {
 		return fmt.Errorf("preprocessing failed: %w", err)
 	}
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	return s.deleteInternal(cmd.ID, cmd.Cascade)
+	return s.lockManager.execute(writeOperation, func() error {
+		return s.deleteInternal(cmd.ID, cmd.Cascade)
+	})
 }
 
 // deleteInternal is the internal delete method that doesn't lock
@@ -749,33 +762,37 @@ func (s *jsonFileStore) deleteInternal(id string, cascade bool) error {
 
 // DeleteByDimension removes documents matching dimension filters
 func (s *jsonFileStore) DeleteByDimension(filters map[string]interface{}) (int, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	// Find all documents matching the filters
-	toDelete := []int{}
-	for i, doc := range s.data.Documents {
-		if s.matchesFilters(doc, filters) {
-			toDelete = append(toDelete, i)
+	result, err := s.lockManager.executeWithResult(writeOperation, func() (interface{}, error) {
+		// Find all documents matching the filters
+		toDelete := []int{}
+		for i, doc := range s.data.Documents {
+			if s.matchesFilters(doc, filters) {
+				toDelete = append(toDelete, i)
+			}
 		}
-	}
 
-	// Delete in reverse order to preserve indices
-	deletedCount := 0
-	for i := len(toDelete) - 1; i >= 0; i-- {
-		idx := toDelete[i]
-		s.data.Documents = append(s.data.Documents[:idx], s.data.Documents[idx+1:]...)
-		deletedCount++
-	}
-
-	// Save changes if any documents were deleted
-	if deletedCount > 0 {
-		if err := s.saveWithLock(); err != nil {
-			return 0, fmt.Errorf("failed to save after deletion: %w", err)
+		// Delete in reverse order to preserve indices
+		deletedCount := 0
+		for i := len(toDelete) - 1; i >= 0; i-- {
+			idx := toDelete[i]
+			s.data.Documents = append(s.data.Documents[:idx], s.data.Documents[idx+1:]...)
+			deletedCount++
 		}
-	}
 
-	return deletedCount, nil
+		// Save changes if any documents were deleted
+		if deletedCount > 0 {
+			if err := s.saveWithLock(); err != nil {
+				return 0, fmt.Errorf("failed to save after deletion: %w", err)
+			}
+		}
+
+		return deletedCount, nil
+	})
+
+	if err != nil {
+		return 0, err
+	}
+	return result.(int), nil
 }
 
 // DeleteWhere removes documents matching a custom WHERE clause
@@ -786,130 +803,135 @@ func (s *jsonFileStore) DeleteWhere(whereClause string, args ...interface{}) (in
 
 // UpdateByDimension updates documents matching dimension filters
 func (s *jsonFileStore) UpdateByDimension(filters map[string]interface{}, updates UpdateRequest) (int, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	result, err := s.lockManager.executeWithResult(writeOperation, func() (interface{}, error) {
 
-	// Validate update dimensions if provided
-	if updates.Dimensions != nil {
-		for name, value := range updates.Dimensions {
-			if value != nil {
-				if err := validateSimpleType(value, name); err != nil {
-					return 0, err
+		// Validate update dimensions if provided
+		if updates.Dimensions != nil {
+			for name, value := range updates.Dimensions {
+				if value != nil {
+					if err := validateSimpleType(value, name); err != nil {
+						return 0, err
+					}
 				}
 			}
 		}
-	}
 
-	// Find and update all matching documents
-	updatedCount := 0
-	now := s.timeFunc()
+		// Find and update all matching documents
+		updatedCount := 0
+		now := s.timeFunc()
 
-	for i := range s.data.Documents {
-		if s.matchesFilters(s.data.Documents[i], filters) {
-			doc := &s.data.Documents[i]
-			doc.UpdatedAt = now
+		for i := range s.data.Documents {
+			if s.matchesFilters(s.data.Documents[i], filters) {
+				doc := &s.data.Documents[i]
+				doc.UpdatedAt = now
 
-			// Update title if provided
-			if updates.Title != nil {
-				doc.Title = *updates.Title
-			}
-
-			// Update body if provided
-			if updates.Body != nil {
-				doc.Body = *updates.Body
-			}
-
-			// Update dimensions if provided
-			if updates.Dimensions != nil {
-				// First handle _data prefixed values (no validation needed)
-				for dimName, value := range updates.Dimensions {
-					if strings.HasPrefix(dimName, "_data.") {
-						if value != nil {
-							doc.Dimensions[dimName] = value
-						} else {
-							delete(doc.Dimensions, dimName)
-						}
-					}
+				// Update title if provided
+				if updates.Title != nil {
+					doc.Title = *updates.Title
 				}
 
-				// Then validate and process dimension updates
-				for dimName, value := range updates.Dimensions {
-					// Skip _data prefixed fields (already handled)
-					if strings.HasPrefix(dimName, "_data.") {
-						continue
-					}
+				// Update body if provided
+				if updates.Body != nil {
+					doc.Body = *updates.Body
+				}
 
-					// Find dimension config
-					dim, found := s.dimensionSet.Get(dimName)
-					var dimConfig *DimensionConfig
-					if found {
-						dimConfig = &DimensionConfig{
-							Name:         dim.Name,
-							Type:         dim.Type,
-							Values:       dim.Values,
-							Prefixes:     dim.Prefixes,
-							DefaultValue: dim.DefaultValue,
-							RefField:     dim.RefField,
-						}
-					} else {
-						// Try by RefField for hierarchical dimensions
-						for _, dc := range s.dimensionSet.Hierarchical() {
-							if dc.RefField == dimName {
-								dimConfig = &DimensionConfig{
-									Name:         dc.Name,
-									Type:         dc.Type,
-									Values:       dc.Values,
-									Prefixes:     dc.Prefixes,
-									DefaultValue: dc.DefaultValue,
-									RefField:     dc.RefField,
-								}
-								break
+				// Update dimensions if provided
+				if updates.Dimensions != nil {
+					// First handle _data prefixed values (no validation needed)
+					for dimName, value := range updates.Dimensions {
+						if strings.HasPrefix(dimName, "_data.") {
+							if value != nil {
+								doc.Dimensions[dimName] = value
+							} else {
+								delete(doc.Dimensions, dimName)
 							}
 						}
 					}
 
-					if dimConfig == nil {
-						return 0, fmt.Errorf("unknown dimension: %s", dimName)
-					}
-
-					// Validate enumerated dimension values
-					if dimConfig.Type == Enumerated && value != nil {
-						strVal := fmt.Sprintf("%v", value)
-						if !contains(dimConfig.Values, strVal) {
-							return 0, fmt.Errorf("invalid value %q for dimension %q", strVal, dimName)
+					// Then validate and process dimension updates
+					for dimName, value := range updates.Dimensions {
+						// Skip _data prefixed fields (already handled)
+						if strings.HasPrefix(dimName, "_data.") {
+							continue
 						}
-						doc.Dimensions[dimName] = strVal
-					} else if dimConfig.Type == Hierarchical {
-						// Store hierarchical dimension value
-						if value != nil {
-							parentID := fmt.Sprintf("%v", value)
-							// Try to resolve if it's a SimpleID
-							if !isValidUUID(parentID) {
-								if resolvedUUID, err := s.resolveUUIDInternal(parentID); err == nil {
-									parentID = resolvedUUID
-								}
-								// If resolution fails, store the value as-is
+
+						// Find dimension config
+						dim, found := s.dimensionSet.Get(dimName)
+						var dimConfig *DimensionConfig
+						if found {
+							dimConfig = &DimensionConfig{
+								Name:         dim.Name,
+								Type:         dim.Type,
+								Values:       dim.Values,
+								Prefixes:     dim.Prefixes,
+								DefaultValue: dim.DefaultValue,
+								RefField:     dim.RefField,
 							}
-							doc.Dimensions[dimConfig.RefField] = parentID
 						} else {
-							delete(doc.Dimensions, dimConfig.RefField)
+							// Try by RefField for hierarchical dimensions
+							for _, dc := range s.dimensionSet.Hierarchical() {
+								if dc.RefField == dimName {
+									dimConfig = &DimensionConfig{
+										Name:         dc.Name,
+										Type:         dc.Type,
+										Values:       dc.Values,
+										Prefixes:     dc.Prefixes,
+										DefaultValue: dc.DefaultValue,
+										RefField:     dc.RefField,
+									}
+									break
+								}
+							}
+						}
+
+						if dimConfig == nil {
+							return 0, fmt.Errorf("unknown dimension: %s", dimName)
+						}
+
+						// Validate enumerated dimension values
+						if dimConfig.Type == Enumerated && value != nil {
+							strVal := fmt.Sprintf("%v", value)
+							if !contains(dimConfig.Values, strVal) {
+								return 0, fmt.Errorf("invalid value %q for dimension %q", strVal, dimName)
+							}
+							doc.Dimensions[dimName] = strVal
+						} else if dimConfig.Type == Hierarchical {
+							// Store hierarchical dimension value
+							if value != nil {
+								parentID := fmt.Sprintf("%v", value)
+								// Try to resolve if it's a SimpleID
+								if !isValidUUID(parentID) {
+									if resolvedUUID, err := s.resolveUUIDInternal(parentID); err == nil {
+										parentID = resolvedUUID
+									}
+									// If resolution fails, store the value as-is
+								}
+								doc.Dimensions[dimConfig.RefField] = parentID
+							} else {
+								delete(doc.Dimensions, dimConfig.RefField)
+							}
 						}
 					}
 				}
+
+				updatedCount++
 			}
-
-			updatedCount++
 		}
-	}
 
-	// Save changes if any documents were updated
-	if updatedCount > 0 {
-		if err := s.saveWithLock(); err != nil {
-			return 0, fmt.Errorf("failed to save after update: %w", err)
+		// Save changes if any documents were updated
+		if updatedCount > 0 {
+			if err := s.saveWithLock(); err != nil {
+				return 0, fmt.Errorf("failed to save after update: %w", err)
+			}
 		}
-	}
 
-	return updatedCount, nil
+		return updatedCount, nil
+	})
+
+	if err != nil {
+		return 0, err
+	}
+	return result.(int), nil
 }
 
 // UpdateWhere updates documents matching a custom WHERE clause
@@ -920,15 +942,14 @@ func (s *jsonFileStore) UpdateWhere(whereClause string, updates UpdateRequest, a
 
 // Close releases any resources
 func (s *jsonFileStore) Close() error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	return s.lockManager.execute(writeOperation, func() error {
+		// Don't need to save - data is saved on each operation
+		// Just ensure the lock file is cleaned up
+		lockPath := s.filePath + ".lock"
+		_ = os.Remove(lockPath)
 
-	// Don't need to save - data is saved on each operation
-	// Just ensure the lock file is cleaned up
-	lockPath := s.filePath + ".lock"
-	_ = os.Remove(lockPath)
-
-	return nil
+		return nil
+	})
 }
 
 // contains checks if a slice contains a string
