@@ -22,6 +22,7 @@ type jsonFileStore struct {
 	dimensionSet  *DimensionSet
 	canonicalView *CanonicalView
 	idGenerator   *IDGenerator
+	preprocessor  *commandPreprocessor
 	mu            sync.RWMutex // In-process synchronization
 	fileLock      *flock.Flock // Cross-process file locking
 	data          *storeData
@@ -87,6 +88,9 @@ func newJSONFileStore(filePath string, config Config) (*jsonFileStore, error) {
 			},
 		},
 	}
+
+	// Initialize preprocessor
+	store.preprocessor = newCommandPreprocessor(store)
 
 	// Try to load existing data with lock
 	if err := store.loadWithLock(); err != nil {
@@ -414,6 +418,15 @@ func (s *jsonFileStore) matchesSearch(doc Document, searchText string) bool {
 
 // Add creates a new document
 func (s *jsonFileStore) Add(title string, dimensions map[string]interface{}) (string, error) {
+	// Preprocess command to resolve IDs in dimensions
+	cmd := &AddCommand{
+		Title:      title,
+		Dimensions: dimensions,
+	}
+	if err := s.preprocessor.preprocessCommand(cmd); err != nil {
+		return "", fmt.Errorf("preprocessing failed: %w", err)
+	}
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -424,7 +437,7 @@ func (s *jsonFileStore) Add(title string, dimensions map[string]interface{}) (st
 	now := s.timeFunc()
 	doc := Document{
 		UUID:       docUUID,
-		Title:      title,
+		Title:      cmd.Title,
 		Body:       "", // Empty body by default
 		CreatedAt:  now,
 		UpdatedAt:  now,
@@ -432,7 +445,7 @@ func (s *jsonFileStore) Add(title string, dimensions map[string]interface{}) (st
 	}
 
 	// Validate all provided dimensions are simple types
-	for name, value := range dimensions {
+	for name, value := range cmd.Dimensions {
 		if err := validateSimpleType(value, name); err != nil {
 			return "", err
 		}
@@ -443,7 +456,7 @@ func (s *jsonFileStore) Add(title string, dimensions map[string]interface{}) (st
 		switch dimConfig.Type {
 		case Enumerated:
 			// Check if value was provided
-			if val, exists := dimensions[dimConfig.Name]; exists {
+			if val, exists := cmd.Dimensions[dimConfig.Name]; exists {
 				// Validate the value
 				strVal := fmt.Sprintf("%v", val)
 				if !contains(dimConfig.Values, strVal) {
@@ -456,22 +469,15 @@ func (s *jsonFileStore) Add(title string, dimensions map[string]interface{}) (st
 			}
 		case Hierarchical:
 			// Handle parent reference
-			if val, exists := dimensions[dimConfig.RefField]; exists {
-				parentID := fmt.Sprintf("%v", val)
-				// Try to resolve if it's a SimpleID
-				if !isValidUUID(parentID) {
-					if resolvedUUID, err := s.resolveUUIDInternal(parentID); err == nil {
-						parentID = resolvedUUID
-					}
-					// If resolution fails, store the value as-is (might be a new document)
-				}
-				doc.Dimensions[dimConfig.RefField] = parentID
+			// ID resolution already handled by preprocessor
+			if val, exists := cmd.Dimensions[dimConfig.RefField]; exists {
+				doc.Dimensions[dimConfig.RefField] = fmt.Sprintf("%v", val)
 			}
 		}
 	}
 
 	// Also store any _data prefixed values directly
-	for key, value := range dimensions {
+	for key, value := range cmd.Dimensions {
 		if strings.HasPrefix(key, "_data.") {
 			doc.Dimensions[key] = value
 		}
@@ -492,25 +498,23 @@ func (s *jsonFileStore) Add(title string, dimensions map[string]interface{}) (st
 
 // Update modifies an existing document
 func (s *jsonFileStore) Update(id string, updates UpdateRequest) error {
+	// Preprocess command to resolve IDs
+	cmd := &UpdateCommand{
+		ID:      id,
+		Request: updates,
+	}
+	if err := s.preprocessor.preprocessCommand(cmd); err != nil {
+		return fmt.Errorf("preprocessing failed: %w", err)
+	}
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
-
-	// Resolve ID to UUID if it's a simple ID
-	resolvedID := id
-	if !isValidUUID(id) {
-		// Try to resolve as simple ID
-		uuid, err := s.resolveUUIDInternal(id)
-		if err != nil {
-			return fmt.Errorf("failed to resolve ID %s: %w", id, err)
-		}
-		resolvedID = uuid
-	}
 
 	// Find the document by UUID
 	var found bool
 	var docIndex int
 	for i, doc := range s.data.Documents {
-		if doc.UUID == resolvedID {
+		if doc.UUID == cmd.ID {
 			found = true
 			docIndex = i
 			break
@@ -526,19 +530,19 @@ func (s *jsonFileStore) Update(id string, updates UpdateRequest) error {
 	doc.UpdatedAt = s.timeFunc()
 
 	// Update title if provided
-	if updates.Title != nil {
-		doc.Title = *updates.Title
+	if cmd.Request.Title != nil {
+		doc.Title = *cmd.Request.Title
 	}
 
 	// Update body if provided
-	if updates.Body != nil {
-		doc.Body = *updates.Body
+	if cmd.Request.Body != nil {
+		doc.Body = *cmd.Request.Body
 	}
 
 	// Update dimensions if provided
-	if updates.Dimensions != nil {
+	if cmd.Request.Dimensions != nil {
 		// Validate all dimensions are simple types
-		for name, value := range updates.Dimensions {
+		for name, value := range cmd.Request.Dimensions {
 			if value != nil {
 				if err := validateSimpleType(value, name); err != nil {
 					return err
@@ -547,7 +551,7 @@ func (s *jsonFileStore) Update(id string, updates UpdateRequest) error {
 		}
 
 		// First handle _data prefixed values (no validation needed)
-		for dimName, value := range updates.Dimensions {
+		for dimName, value := range cmd.Request.Dimensions {
 			if strings.HasPrefix(dimName, "_data.") {
 				if value != nil {
 					doc.Dimensions[dimName] = value
@@ -558,7 +562,7 @@ func (s *jsonFileStore) Update(id string, updates UpdateRequest) error {
 		}
 
 		// Then validate and process dimension updates
-		for dimName, value := range updates.Dimensions {
+		for dimName, value := range cmd.Request.Dimensions {
 			// Skip _data prefixed fields (already handled)
 			if strings.HasPrefix(dimName, "_data.") {
 				continue
@@ -606,19 +610,9 @@ func (s *jsonFileStore) Update(id string, updates UpdateRequest) error {
 				doc.Dimensions[dimName] = strVal
 			} else if dimConfig.Type == Hierarchical {
 				// Store hierarchical dimension value
+				// ID resolution already handled by preprocessor
 				if value != nil {
-					parentID := fmt.Sprintf("%v", value)
-					// Try to resolve if it's a SimpleID
-					if !isValidUUID(parentID) {
-						// Need to unlock to call ResolveUUID
-						s.mu.Unlock()
-						if resolvedUUID, err := s.ResolveUUID(parentID); err == nil {
-							parentID = resolvedUUID
-						}
-						s.mu.Lock()
-						// If resolution fails, store the value as-is
-					}
-					doc.Dimensions[dimConfig.RefField] = parentID
+					doc.Dimensions[dimConfig.RefField] = fmt.Sprintf("%v", value)
 				} else {
 					delete(doc.Dimensions, dimConfig.RefField)
 				}
@@ -654,21 +648,19 @@ func (s *jsonFileStore) resolveUUIDInternal(simpleID string) (string, error) {
 
 // Delete removes a document
 func (s *jsonFileStore) Delete(id string, cascade bool) error {
+	// Preprocess command to resolve IDs
+	cmd := &DeleteCommand{
+		ID:      id,
+		Cascade: cascade,
+	}
+	if err := s.preprocessor.preprocessCommand(cmd); err != nil {
+		return fmt.Errorf("preprocessing failed: %w", err)
+	}
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	// Resolve ID to UUID if it's a simple ID
-	resolvedID := id
-	if !isValidUUID(id) {
-		// Try to resolve as simple ID
-		uuid, err := s.resolveUUIDInternal(id)
-		if err != nil {
-			return fmt.Errorf("failed to resolve ID %s: %w", id, err)
-		}
-		resolvedID = uuid
-	}
-
-	return s.deleteInternal(resolvedID, cascade)
+	return s.deleteInternal(cmd.ID, cmd.Cascade)
 }
 
 // deleteInternal is the internal delete method that doesn't lock
