@@ -77,16 +77,7 @@ func (e *Engine) searchDocument(doc types.Document, query string, options Search
 	// Determine which fields to search
 	fieldsToSearch := options.Fields
 	if len(fieldsToSearch) == 0 {
-		fieldsToSearch = []string{"title", "body"}
-		// Add all dimension keys that don't start with "_data."
-		for key := range doc.Dimensions {
-			if !strings.HasPrefix(key, "_data.") {
-				fieldsToSearch = append(fieldsToSearch, key)
-			} else {
-				// Add _data fields with their prefix
-				fieldsToSearch = append(fieldsToSearch, key)
-			}
-		}
+		fieldsToSearch = e.getAllSearchableFields(doc)
 	}
 
 	// Search each field
@@ -137,29 +128,10 @@ func (e *Engine) searchDocument(doc types.Document, query string, options Search
 
 // searchFieldDetailed searches within a specific field and returns detailed match information
 func (e *Engine) searchFieldDetailed(doc types.Document, fieldName, query string, options SearchOptions, startMarker, endMarker string) *FieldMatch {
-	var fieldValue string
-	var baseMatchType MatchType
-
-	// Get field value
-	switch fieldName {
-	case "title":
-		fieldValue = doc.Title
-		baseMatchType = MatchPartialTitle
-	case "body":
-		fieldValue = doc.Body
-		baseMatchType = MatchPartialBody
-	default:
-		// Check if it's a dimension or custom data field
-		if value, exists := doc.Dimensions[fieldName]; exists {
-			fieldValue = fmt.Sprintf("%v", value)
-			if strings.HasPrefix(fieldName, "_data.") {
-				baseMatchType = MatchCustomData
-			} else {
-				baseMatchType = MatchDimension
-			}
-		} else {
-			return nil // Field not found
-		}
+	// Get field value and match type using centralized logic
+	fieldValue, baseMatchType, exists := e.getFieldInfo(doc, fieldName)
+	if !exists {
+		return nil // Field not found
 	}
 
 	// Find all match positions
@@ -347,4 +319,36 @@ func (e *Engine) highlightMatchesWithMarkers(text, query string, caseSensitive b
 	builder.WriteString(text[lastEnd:])
 
 	return builder.String()
+}
+
+// getAllSearchableFields returns all fields that can be searched in a document
+func (e *Engine) getAllSearchableFields(doc types.Document) []string {
+	fields := []string{"title", "body"}
+
+	// Add all dimension fields
+	for key := range doc.Dimensions {
+		fields = append(fields, key)
+	}
+
+	return fields
+}
+
+// getFieldInfo extracts field value and determines match type for a given field
+func (e *Engine) getFieldInfo(doc types.Document, fieldName string) (string, MatchType, bool) {
+	switch fieldName {
+	case "title":
+		return doc.Title, MatchPartialTitle, true
+	case "body":
+		return doc.Body, MatchPartialBody, true
+	default:
+		// Check if it's a dimension or custom data field
+		if value, exists := doc.Dimensions[fieldName]; exists {
+			fieldValue := fmt.Sprintf("%v", value)
+			if strings.HasPrefix(fieldName, "_data.") {
+				return fieldValue, MatchCustomData, true
+			}
+			return fieldValue, MatchDimension, true
+		}
+		return "", "", false
+	}
 }

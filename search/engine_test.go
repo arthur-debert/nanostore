@@ -570,6 +570,97 @@ func TestEngine_Search_HighlightingMultipleMatches(t *testing.T) {
 	}
 }
 
+func TestEngine_Search_FieldTypeDetection(t *testing.T) {
+	provider := NewMockDocumentProvider([]types.Document{
+		{
+			UUID:     "test",
+			SimpleID: "1",
+			Title:    "Test Title",
+			Body:     "Test Body",
+			Dimensions: map[string]interface{}{
+				"status":            "active",
+				"_data.custom_note": "important note",
+			},
+		},
+	})
+	engine := NewEngine(provider)
+
+	// Test that all field types are correctly detected and searched
+	results, err := engine.Search(SearchOptions{
+		Query:               "test", // Should match title and body
+		IncludeMatchDetails: true,
+	}, nil)
+
+	if err != nil {
+		t.Errorf("Expected no error, got %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("Expected 1 result, got %d", len(results))
+	}
+
+	result := results[0]
+	if len(result.FieldMatches) < 2 {
+		t.Fatalf("Expected at least 2 field matches (title, body), got %d", len(result.FieldMatches))
+	}
+
+	// Verify correct match types are assigned
+	matchTypeFound := make(map[MatchType]bool)
+	fieldNameFound := make(map[string]bool)
+
+	for _, fieldMatch := range result.FieldMatches {
+		fieldNameFound[fieldMatch.FieldName] = true
+		for _, match := range fieldMatch.Matches {
+			matchTypeFound[match.MatchType] = true
+		}
+	}
+
+	// Should find title and body fields
+	if !fieldNameFound["title"] {
+		t.Error("Expected to find title field")
+	}
+	if !fieldNameFound["body"] {
+		t.Error("Expected to find body field")
+	}
+
+	// Should have correct match types
+	if !matchTypeFound[MatchPartialTitle] {
+		t.Error("Expected MatchPartialTitle type")
+	}
+	if !matchTypeFound[MatchPartialBody] {
+		t.Error("Expected MatchPartialBody type")
+	}
+
+	// Test custom data field search specifically
+	customResults, err := engine.Search(SearchOptions{
+		Query:               "important",
+		Fields:              []string{"_data.custom_note"},
+		IncludeMatchDetails: true,
+	}, nil)
+
+	if err != nil {
+		t.Errorf("Expected no error, got %v", err)
+	}
+	if len(customResults) != 1 {
+		t.Fatalf("Expected 1 result for custom data search, got %d", len(customResults))
+	}
+
+	customResult := customResults[0]
+	if len(customResult.FieldMatches) != 1 {
+		t.Fatalf("Expected 1 field match for custom data, got %d", len(customResult.FieldMatches))
+	}
+
+	customFieldMatch := customResult.FieldMatches[0]
+	if customFieldMatch.FieldName != "_data.custom_note" {
+		t.Errorf("Expected field name '_data.custom_note', got %q", customFieldMatch.FieldName)
+	}
+
+	for _, match := range customFieldMatch.Matches {
+		if match.MatchType != MatchCustomData {
+			t.Errorf("Expected MatchCustomData type for _data field, got %s", match.MatchType)
+		}
+	}
+}
+
 func TestEngine_Search_BackwardCompatibility(t *testing.T) {
 	provider := NewMockDocumentProvider(SampleDocuments())
 	engine := NewEngine(provider)
