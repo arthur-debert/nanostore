@@ -3,327 +3,319 @@ package nanostore
 import (
 	"fmt"
 	"reflect"
+	"strconv"
 	"strings"
+	"time"
 )
 
-// DocumentTyped provides typed access to dimensions through struct tags
-type DocumentTyped interface {
-	// MarshalDimensions converts struct fields to dimensions map
-	MarshalDimensions() (map[string]interface{}, error)
-	// UnmarshalDimensions populates struct fields from dimensions map
-	UnmarshalDimensions(dimensions map[string]interface{}) error
-}
-
-// dimensionTag represents parsed dimension tag information
-type dimensionTag struct {
-	name         string
-	defaultValue string
-	isRef        bool // true for hierarchical reference fields
-}
-
-// parseDimensionTag parses a dimension tag like "status,default=pending" or "parent_id,ref"
-func parseDimensionTag(tag string) (dimensionTag, error) {
-	if tag == "" || tag == "-" {
-		return dimensionTag{}, fmt.Errorf("empty dimension tag")
+// MarshalDimensions converts a struct with dimension tags into dimensions and data maps
+func MarshalDimensions(v interface{}) (dimensions map[string]interface{}, data map[string]interface{}, err error) {
+	val := reflect.ValueOf(v)
+	if val.Kind() == reflect.Ptr {
+		val = val.Elem()
 	}
 
-	parts := strings.Split(tag, ",")
-	dt := dimensionTag{name: parts[0]}
+	if val.Kind() != reflect.Struct {
+		return nil, nil, fmt.Errorf("expected struct, got %s", val.Kind())
+	}
 
-	for i := 1; i < len(parts); i++ {
-		part := strings.TrimSpace(parts[i])
-		if strings.HasPrefix(part, "default=") {
-			dt.defaultValue = strings.TrimPrefix(part, "default=")
-		} else if part == "ref" {
-			dt.isRef = true
+	typ := val.Type()
+	dimensions = make(map[string]interface{})
+	data = make(map[string]interface{})
+
+	for i := 0; i < typ.NumField(); i++ {
+		field := typ.Field(i)
+		fieldVal := val.Field(i)
+
+		// Skip unexported fields
+		if !fieldVal.CanInterface() {
+			continue
 		}
-	}
-
-	return dt, nil
-}
-
-// MarshalDimensions converts a struct with dimension tags to a dimensions map
-func MarshalDimensions(v interface{}) (map[string]interface{}, error) {
-	rv := reflect.ValueOf(v)
-	if rv.Kind() == reflect.Ptr {
-		rv = rv.Elem()
-	}
-
-	if rv.Kind() != reflect.Struct {
-		return nil, fmt.Errorf("MarshalDimensions: expected struct, got %s", rv.Kind())
-	}
-
-	rt := rv.Type()
-	dimensions := make(map[string]interface{})
-
-	for i := 0; i < rt.NumField(); i++ {
-		field := rt.Field(i)
-		fieldValue := rv.Field(i)
 
 		// Skip embedded Document field
-		if field.Type == reflect.TypeOf(Document{}) {
+		if field.Anonymous && field.Type == reflect.TypeOf(Document{}) {
 			continue
 		}
 
-		tagStr, ok := field.Tag.Lookup("dimension")
-		if !ok || tagStr == "-" {
-			continue
+		// Get the value
+		value := fieldVal.Interface()
+
+		// Check for dimension tag
+		dimTag := field.Tag.Get("dimension")
+		isDimension := false
+		
+		if dimTag != "" {
+			isDimension = true
+		} else if field.Tag.Get("values") != "" {
+			// Also check for values tag (declarative API style)
+			dimTag = strings.ToLower(field.Name)
+			isDimension = true
 		}
 
-		tag, err := parseDimensionTag(tagStr)
-		if err != nil {
-			return nil, fmt.Errorf("invalid dimension tag on field %s: %w", field.Name, err)
-		}
+		if isDimension {
+			// Handle dimension:"name,options" format
+			parts := strings.Split(dimTag, ",")
+			dimName := parts[0]
 
-		// Get the actual value
-		value := fieldValue.Interface()
-
-		// Skip zero values (empty strings, nil, false for bool, 0 for numbers)
-		if isZeroValue(fieldValue) {
-			// For bools, we want to include false values explicitly
-			if fieldValue.Kind() != reflect.Bool {
+			// Skip if dimension name is "-"
+			if dimName == "-" {
 				continue
 			}
-		}
 
-		dimensions[tag.name] = value
+			// Skip zero values for dimensions (except false for bools)
+			if isZeroValue(fieldVal) && fieldVal.Kind() != reflect.Bool {
+				continue
+			}
+
+			// Validate that the dimension value is a simple type
+			if err = validateSimpleType(value, dimName); err != nil {
+				return nil, nil, err
+			}
+
+			// For values tag style, use lowercase field name as dimension name
+			if field.Tag.Get("values") != "" && dimTag == strings.ToLower(field.Name) {
+				dimName = strings.ToLower(field.Name)
+			}
+
+			dimensions[dimName] = value
+		} else {
+			// Non-dimension field - store in data map
+			// Skip zero values to avoid storing empty data
+			if !isZeroValue(fieldVal) {
+				// Store all non-dimension fields in data map
+				data[field.Name] = value
+			}
+		}
 	}
 
-	return dimensions, nil
+	return dimensions, data, nil
 }
 
-// UnmarshalDimensions populates a struct from document dimensions
+// UnmarshalDimensions populates a struct from a Document, mapping dimensions to tagged fields
 func UnmarshalDimensions(doc Document, v interface{}) error {
-	rv := reflect.ValueOf(v)
-	if rv.Kind() != reflect.Ptr || rv.IsNil() {
-		return fmt.Errorf("UnmarshalDimensions: expected non-nil pointer to struct")
+	val := reflect.ValueOf(v)
+	if val.Kind() != reflect.Ptr {
+		return fmt.Errorf("expected pointer to struct, got %s", val.Kind())
 	}
 
-	rv = rv.Elem()
-	if rv.Kind() != reflect.Struct {
-		return fmt.Errorf("UnmarshalDimensions: expected pointer to struct")
+	val = val.Elem()
+	if val.Kind() != reflect.Struct {
+		return fmt.Errorf("expected pointer to struct, got pointer to %s", val.Kind())
 	}
 
-	rt := rv.Type()
+	typ := val.Type()
+	
+	// Extract _data prefixed values to a separate map
+	dataMap := make(map[string]interface{})
+	for key, value := range doc.Dimensions {
+		if strings.HasPrefix(key, "_data.") {
+			fieldName := strings.TrimPrefix(key, "_data.")
+			dataMap[fieldName] = value
+		}
+	}
 
-	// First, handle embedded Document field
-	for i := 0; i < rt.NumField(); i++ {
-		field := rt.Field(i)
-		if field.Type == reflect.TypeOf(Document{}) {
-			rv.Field(i).Set(reflect.ValueOf(doc))
+	// First, populate the embedded Document fields if present
+	for i := 0; i < typ.NumField(); i++ {
+		field := typ.Field(i)
+		if field.Anonymous && field.Type == reflect.TypeOf(Document{}) {
+			val.Field(i).Set(reflect.ValueOf(doc))
 			break
 		}
 	}
 
-	// Then handle dimension fields
-	for i := 0; i < rt.NumField(); i++ {
-		field := rt.Field(i)
-		fieldValue := rv.Field(i)
+	// Then populate dimension fields
+	for i := 0; i < typ.NumField(); i++ {
+		field := typ.Field(i)
+		fieldVal := val.Field(i)
 
-		if field.Type == reflect.TypeOf(Document{}) {
+		// Skip unexported fields
+		if !fieldVal.CanSet() {
 			continue
 		}
 
-		tagStr, ok := field.Tag.Lookup("dimension")
-		if !ok || tagStr == "-" {
+		// Skip embedded Document field
+		if field.Anonymous && field.Type == reflect.TypeOf(Document{}) {
 			continue
 		}
 
-		tag, err := parseDimensionTag(tagStr)
-		if err != nil {
-			return fmt.Errorf("invalid dimension tag on field %s: %w", field.Name, err)
+		// Check for dimension tag
+		dimTag := field.Tag.Get("dimension")
+		var dimName string
+		var defaultValue string
+		isDimension := false
+
+		if dimTag != "" {
+			isDimension = true
+		} else if field.Tag.Get("values") != "" {
+			// Check for values tag (declarative API style)
+			dimName = strings.ToLower(field.Name)
+			defaultValue = field.Tag.Get("default")
+			isDimension = true
 		}
 
-		// Get dimension value
-		dimValue, exists := doc.Dimensions[tag.name]
-		if !exists {
-			// Use default value if specified
-			if tag.defaultValue != "" {
-				if err := setFieldValue(fieldValue, tag.defaultValue, field.Type); err != nil {
-					return fmt.Errorf("failed to set default value for field %s: %w", field.Name, err)
+		if isDimension && dimTag != "" {
+			// Parse dimension tag
+			parts := strings.Split(dimTag, ",")
+			dimName = parts[0]
+
+			// Skip if dimension name is "-"
+			if dimName == "-" {
+				continue
+			}
+
+			// Look for default option
+			for _, part := range parts[1:] {
+				if strings.HasPrefix(part, "default=") {
+					defaultValue = strings.TrimPrefix(part, "default=")
+					break
 				}
 			}
-			continue
 		}
 
-		// Set the field value
-		if err := setFieldValue(fieldValue, dimValue, field.Type); err != nil {
-			return fmt.Errorf("failed to set value for field %s: %w", field.Name, err)
+		if isDimension {
+			// Get value from dimensions map
+			dimValue, exists := doc.Dimensions[dimName]
+			if !exists && defaultValue != "" {
+				// Use default value
+				if err := setFieldValue(fieldVal, defaultValue); err != nil {
+					return fmt.Errorf("failed to set default for field %s: %w", field.Name, err)
+				}
+				continue
+			}
+
+			if exists {
+				// Set the field value
+				if err := setFieldFromInterface(fieldVal, dimValue); err != nil {
+					return fmt.Errorf("failed to set field %s: %w", field.Name, err)
+				}
+			}
+		} else {
+			// Non-dimension field - check our extracted data map
+			if dataValue, exists := dataMap[field.Name]; exists {
+				if err := setFieldFromInterface(fieldVal, dataValue); err != nil {
+					return fmt.Errorf("failed to set data field %s: %w", field.Name, err)
+				}
+			}
 		}
 	}
 
 	return nil
 }
 
-// setFieldValue sets a reflect.Value from an interface{} value with type conversion
-func setFieldValue(field reflect.Value, value interface{}, fieldType reflect.Type) error {
-	if !field.CanSet() {
-		return fmt.Errorf("field cannot be set")
-	}
+// Helper functions
 
-	// Handle string conversions (most common case)
-	if fieldType.Kind() == reflect.String {
-		switch v := value.(type) {
-		case string:
-			field.SetString(v)
-			return nil
-		default:
-			// Try to convert to string
-			field.SetString(fmt.Sprintf("%v", v))
-			return nil
-		}
-	}
-
-	// Handle direct assignment for matching types
-	valueType := reflect.TypeOf(value)
-	if valueType.AssignableTo(fieldType) {
-		field.Set(reflect.ValueOf(value))
-		return nil
-	}
-
-	// Handle numeric conversions
-	switch fieldType.Kind() {
-	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		switch v := value.(type) {
-		case int64:
-			field.SetInt(v)
-		case float64:
-			field.SetInt(int64(v))
-		case string:
-			// Try to parse string as int
-			var i int64
-			_, err := fmt.Sscanf(v, "%d", &i)
-			if err != nil {
-				return fmt.Errorf("cannot convert %q to int", v)
-			}
-			field.SetInt(i)
-		default:
-			return fmt.Errorf("cannot convert %T to %s", value, fieldType)
-		}
-		return nil
-
-	case reflect.Float32, reflect.Float64:
-		switch v := value.(type) {
-		case float64:
-			field.SetFloat(v)
-		case int64:
-			field.SetFloat(float64(v))
-		case string:
-			// Try to parse string as float
-			var f float64
-			_, err := fmt.Sscanf(v, "%f", &f)
-			if err != nil {
-				return fmt.Errorf("cannot convert %q to float", v)
-			}
-			field.SetFloat(f)
-		default:
-			return fmt.Errorf("cannot convert %T to %s", value, fieldType)
-		}
-		return nil
-
-	case reflect.Bool:
-		switch v := value.(type) {
-		case bool:
-			field.SetBool(v)
-		case string:
-			// Handle common string representations
-			switch strings.ToLower(v) {
-			case "true", "yes", "1", "on":
-				field.SetBool(true)
-			case "false", "no", "0", "off":
-				field.SetBool(false)
-			default:
-				return fmt.Errorf("cannot convert %q to bool", v)
-			}
-		default:
-			return fmt.Errorf("cannot convert %T to bool", value)
-		}
-		return nil
-	}
-
-	return fmt.Errorf("unsupported field type: %s", fieldType)
-}
-
-// isZeroValue checks if a reflect.Value is the zero value for its type
+// isZeroValue checks if a reflect.Value is a zero value
 func isZeroValue(v reflect.Value) bool {
-	if !v.IsValid() {
-		return true
-	}
 	switch v.Kind() {
-	case reflect.String:
-		return v.String() == ""
+	case reflect.Bool:
+		return false // Never skip bool values
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 		return v.Int() == 0
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		return v.Uint() == 0
 	case reflect.Float32, reflect.Float64:
 		return v.Float() == 0
-	case reflect.Bool:
-		return !v.Bool()
-	case reflect.Ptr, reflect.Interface, reflect.Slice, reflect.Map:
+	case reflect.String:
+		return v.String() == ""
+	case reflect.Interface, reflect.Ptr, reflect.Slice, reflect.Map:
 		return v.IsNil()
+	default:
+		return false
 	}
-	return false
 }
 
-// Typed store operations - these are standalone functions that work with the Store interface
-
-// AddTyped creates a new document from a typed struct
-func AddTyped(s Store, title string, v interface{}) (string, error) {
-	dimensions, err := MarshalDimensions(v)
-	if err != nil {
-		return "", fmt.Errorf("failed to marshal dimensions: %w", err)
-	}
-	return s.Add(title, dimensions)
-}
-
-// UpdateTyped updates a document using a typed struct
-func UpdateTyped(s Store, id string, v interface{}) error {
-	dimensions, err := MarshalDimensions(v)
-	if err != nil {
-		return fmt.Errorf("failed to marshal dimensions: %w", err)
-	}
-
-	// Extract title and body if they exist in the struct
-	rv := reflect.ValueOf(v)
-	if rv.Kind() == reflect.Ptr {
-		rv = rv.Elem()
-	}
-
-	var title, body *string
-	if titleField := rv.FieldByName("Title"); titleField.IsValid() && titleField.Kind() == reflect.String {
-		t := titleField.String()
-		if t != "" {
-			title = &t
+// setFieldValue sets a field value from a string
+func setFieldValue(field reflect.Value, value string) error {
+	switch field.Kind() {
+	case reflect.String:
+		field.SetString(value)
+	case reflect.Bool:
+		b, err := strconv.ParseBool(value)
+		if err != nil {
+			return err
 		}
-	}
-	if bodyField := rv.FieldByName("Body"); bodyField.IsValid() && bodyField.Kind() == reflect.String {
-		b := bodyField.String()
-		if b != "" {
-			body = &b
+		field.SetBool(b)
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		i, err := strconv.ParseInt(value, 10, 64)
+		if err != nil {
+			return err
 		}
+		field.SetInt(i)
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		u, err := strconv.ParseUint(value, 10, 64)
+		if err != nil {
+			return err
+		}
+		field.SetUint(u)
+	case reflect.Float32, reflect.Float64:
+		f, err := strconv.ParseFloat(value, 64)
+		if err != nil {
+			return err
+		}
+		field.SetFloat(f)
+	default:
+		return fmt.Errorf("unsupported field type: %s", field.Kind())
 	}
-
-	return s.Update(id, UpdateRequest{
-		Title:      title,
-		Body:       body,
-		Dimensions: dimensions,
-	})
+	return nil
 }
 
-// ListTyped returns typed documents
-func ListTyped[T any](s Store, opts ListOptions) ([]T, error) {
-	docs, err := s.List(opts)
-	if err != nil {
-		return nil, err
+// setFieldFromInterface sets a field value from an interface{}
+func setFieldFromInterface(field reflect.Value, value interface{}) error {
+	if value == nil {
+		return nil
 	}
 
-	results := make([]T, len(docs))
-	for i, doc := range docs {
-		var item T
-		if err := UnmarshalDimensions(doc, &item); err != nil {
-			return nil, fmt.Errorf("failed to unmarshal document %d: %w", i, err)
-		}
-		results[i] = item
+	// Try direct assignment first
+	valReflect := reflect.ValueOf(value)
+	if valReflect.Type().AssignableTo(field.Type()) {
+		field.Set(valReflect)
+		return nil
 	}
 
-	return results, nil
+	// Check if the value is a complex type that we can't convert
+	switch valReflect.Kind() {
+	case reflect.Map, reflect.Slice, reflect.Array, reflect.Struct:
+		// Don't silently convert complex types to strings
+		return fmt.Errorf("cannot convert %T to %s", value, field.Type())
+	}
+
+	// Otherwise convert through string for simple types
+	strVal := fmt.Sprintf("%v", value)
+	return setFieldValue(field, strVal)
 }
+
+// validateSimpleType ensures a dimension value is a simple type (string, number, bool)
+func validateSimpleType(value interface{}, dimensionName string) error {
+	if value == nil {
+		return nil
+	}
+
+	// Check the type using reflection
+	v := reflect.ValueOf(value)
+	switch v.Kind() {
+	case reflect.String, reflect.Bool,
+		reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64,
+		reflect.Float32, reflect.Float64:
+		return nil
+	case reflect.Slice, reflect.Array:
+		return fmt.Errorf("dimension '%s' cannot be an array/slice type, got %T", dimensionName, value)
+	case reflect.Map:
+		return fmt.Errorf("dimension '%s' cannot be a map type, got %T", dimensionName, value)
+	case reflect.Struct:
+		// Allow time.Time as it's commonly used
+		if _, ok := value.(time.Time); ok {
+			return nil
+		}
+		return fmt.Errorf("dimension '%s' cannot be a struct type, got %T", dimensionName, value)
+	case reflect.Ptr, reflect.Interface:
+		// Dereference and check the underlying type
+		if v.IsNil() {
+			return nil
+		}
+		return validateSimpleType(v.Elem().Interface(), dimensionName)
+	default:
+		return fmt.Errorf("dimension '%s' must be a simple type (string, number, or bool), got %T", dimensionName, value)
+	}
+}
+

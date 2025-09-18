@@ -9,13 +9,13 @@ import "time"
 
 // Document represents a document in the store with its generated ID
 type Document struct {
-	UUID         string                 // Stable internal identifier
-	UserFacingID string                 // Generated ID like "1", "c2", "1.2.c3"
-	Title        string                 // Document title
-	Body         string                 // Optional document body
-	Dimensions   map[string]interface{} // All dimension values for this document
-	CreatedAt    time.Time              // Creation timestamp
-	UpdatedAt    time.Time              // Last update timestamp
+	UUID       string                 // Stable internal identifier
+	SimpleID   string                 // Generated ID like "1", "c2", "1.2.c3"
+	Title      string                 // Document title
+	Body       string                 // Optional document body
+	Dimensions map[string]interface{} // All dimension values and data (data prefixed with "_data.")
+	CreatedAt  time.Time              // Creation timestamp
+	UpdatedAt  time.Time              // Last update timestamp
 }
 
 // ListOptions configures how documents are listed
@@ -26,6 +26,7 @@ type ListOptions struct {
 	Filters map[string]interface{}
 
 	// FilterBySearch performs a text search on title and body
+	// Empty string returns all documents (no filtering)
 	FilterBySearch string
 
 	// OrderBy specifies the order of results
@@ -33,11 +34,13 @@ type ListOptions struct {
 	OrderBy []OrderClause
 
 	// Limit specifies the maximum number of results to return
-	// nil means no limit
+	// nil or negative values mean no limit
+	// 0 returns no results
 	Limit *int
 
 	// Offset specifies the number of results to skip
-	// nil means no offset
+	// nil or negative values mean no offset (start from beginning)
+	// Values greater than result count return empty results
 	Offset *int
 }
 
@@ -153,8 +156,8 @@ type Store interface {
 	// Update modifies an existing document
 	Update(id string, updates UpdateRequest) error
 
-	// ResolveUUID converts a user-facing ID (e.g., "1.2.c3") to a UUID
-	ResolveUUID(userFacingID string) (string, error)
+	// ResolveUUID converts a simple ID (e.g., "1.2.c3") to a UUID
+	ResolveUUID(simpleID string) (string, error)
 
 	// Delete removes a document and optionally its children
 	// If cascade is true, all child documents are also deleted
@@ -192,11 +195,11 @@ type Store interface {
 }
 
 // New creates a new Store instance with the specified dimension configuration
-// Use ":memory:" for an in-memory database (useful for testing)
-func New(dbPath string, config Config) (Store, error) {
+// The store uses a JSON file backend with file locking for concurrent access
+func New(filePath string, config Config) (Store, error) {
 	// First validate the configuration
 	if err := ValidateConfig(config); err != nil {
 		return nil, err
 	}
-	return newConfigurableStore(dbPath, config)
+	return newJSONFileStore(filePath, config)
 }

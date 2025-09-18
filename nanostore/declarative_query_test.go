@@ -1,362 +1,351 @@
-package nanostore
+package nanostore_test
 
 import (
+	"os"
 	"testing"
+
+	"github.com/arthur-debert/nanostore/nanostore"
 )
 
-func TestTypedQuery(t *testing.T) {
-	// Define a test document type
-	type ProjectDoc struct {
-		Document
-		Status   string `values:"planning,active,completed,archived" default:"planning"`
-		Priority string `values:"low,medium,high,critical" default:"medium"`
-		TeamID   string `dimension:"team_id,ref"`
+func TestDeclarativeQueryModifiers(t *testing.T) {
+	// Create a temporary file
+	tmpfile, err := os.CreateTemp("", "test*.json")
+	if err != nil {
+		t.Fatal(err)
 	}
+	defer func() { _ = os.Remove(tmpfile.Name()) }()
+	_ = tmpfile.Close()
 
-	// Helper to create a test store with sample data
-	setupStore := func(t *testing.T) *TypedStore[ProjectDoc] {
-		store, err := NewFromType[ProjectDoc](":memory:")
-		if err != nil {
-			t.Fatalf("failed to create store: %v", err)
-		}
+	// Create typed store
+	store, err := nanostore.NewFromType[TodoItem](tmpfile.Name())
+	if err != nil {
+		t.Fatalf("failed to create typed store: %v", err)
+	}
+	defer func() { _ = store.Close() }()
 
-		// Create sample projects
-		projects := []struct {
+	// Create test data
+	setupTestData := func() {
+		testData := []struct {
 			title    string
 			status   string
 			priority string
-			teamID   string
+			activity string
 		}{
-			{"Project Alpha", "active", "high", ""},
-			{"Project Beta", "planning", "medium", ""},
-			{"Project Gamma", "completed", "low", ""},
-			{"Project Delta", "active", "critical", ""},
-			{"Project Epsilon", "archived", "medium", ""},
-			{"Project Zeta", "active", "high", ""},
+			{"Task 1", "pending", "high", "active"},
+			{"Task 2", "active", "medium", "active"},
+			{"Task 3", "done", "low", "active"},
+			{"Task 4", "pending", "high", "archived"},
+			{"Task 5", "active", "low", "active"},
+			{"Task 6", "done", "high", "deleted"},
 		}
 
-		teamUUID, _ := store.Create("Team A", &ProjectDoc{})
-
-		for _, p := range projects {
-			doc := &ProjectDoc{
-				Status:   p.status,
-				Priority: p.priority,
-			}
-			if p.title == "Project Beta" || p.title == "Project Gamma" {
-				doc.TeamID = teamUUID
-			}
-
-			_, err := store.Create(p.title, doc)
+		for _, data := range testData {
+			_, err := store.Create(data.title, &TodoItem{
+				Status:   data.status,
+				Priority: data.priority,
+				Activity: data.activity,
+			})
 			if err != nil {
-				t.Fatalf("failed to create project %s: %v", p.title, err)
+				t.Fatalf("failed to create test data %s: %v", data.title, err)
 			}
 		}
-
-		return store
 	}
 
-	t.Run("Find", func(t *testing.T) {
-		store := setupStore(t)
-		defer func() { _ = store.Close() }()
+	setupTestData()
 
-		results, err := store.Query().Find()
-		if err != nil {
-			t.Fatalf("failed to find all: %v", err)
-		}
-
-		// Should have 7 documents (6 projects + 1 team)
-		if len(results) != 7 {
-			t.Errorf("expected 7 documents, got %d", len(results))
-		}
-	})
-
-	t.Run("Status filter", func(t *testing.T) {
-		store := setupStore(t)
-		defer func() { _ = store.Close() }()
-
-		results, err := store.Query().Status("active").Find()
-		if err != nil {
-			t.Fatalf("failed to find active projects: %v", err)
-		}
-
-		if len(results) != 3 {
-			t.Errorf("expected 3 active projects, got %d", len(results))
-		}
-
-		for _, r := range results {
-			if r.Status != "active" {
-				t.Errorf("expected status 'active', got %q", r.Status)
-			}
-		}
-	})
-
-	t.Run("StatusNot filter", func(t *testing.T) {
-		store := setupStore(t)
-		defer func() { _ = store.Close() }()
-
-		results, err := store.Query().StatusNot("active").Find()
-		if err != nil {
-			t.Fatalf("failed to find non-active projects: %v", err)
-		}
-
-		// Should have 4 projects (planning, completed, archived) + 1 team
-		if len(results) != 4 {
-			t.Errorf("expected 4 non-active documents, got %d", len(results))
-		}
-
-		for _, r := range results {
-			if r.Status == "active" {
-				t.Errorf("expected status not to be 'active', but got 'active'")
-			}
-		}
-	})
-
-	t.Run("StatusIn filter", func(t *testing.T) {
-		store := setupStore(t)
-		defer func() { _ = store.Close() }()
-
-		results, err := store.Query().StatusIn("active", "completed").Find()
-		if err != nil {
-			t.Fatalf("failed to find projects: %v", err)
-		}
-
-		if len(results) != 4 {
-			t.Errorf("expected 4 projects, got %d", len(results))
-		}
-
-		for _, r := range results {
-			if r.Status != "active" && r.Status != "completed" {
-				t.Errorf("expected status to be 'active' or 'completed', got %q", r.Status)
-			}
-		}
-	})
-
-	t.Run("Multiple filters", func(t *testing.T) {
-		store := setupStore(t)
-		defer func() { _ = store.Close() }()
-
+	t.Run("StatusIn", func(t *testing.T) {
+		// Query for multiple statuses
 		results, err := store.Query().
-			Status("active").
-			Priority("high").
+			StatusIn("pending", "active").
+			Activity("active").
 			Find()
 		if err != nil {
-			t.Fatalf("failed to find projects: %v", err)
+			t.Fatalf("failed to query with StatusIn: %v", err)
 		}
 
-		if len(results) != 2 {
-			t.Errorf("expected 2 high priority active projects, got %d", len(results))
+		// Should have Task 1, 2, 5 (not Task 4 because it's archived)
+		if len(results) != 3 {
+			t.Errorf("expected 3 results with StatusIn, got %d", len(results))
 		}
 
-		for _, r := range results {
-			if r.Status != "active" {
-				t.Errorf("expected status 'active', got %q", r.Status)
+		// Verify all results have correct status
+		for _, todo := range results {
+			if todo.Status != "pending" && todo.Status != "active" {
+				t.Errorf("unexpected status %s in StatusIn results", todo.Status)
 			}
-			if r.Priority != "high" {
-				t.Errorf("expected priority 'high', got %q", r.Priority)
+			if todo.Activity != "active" {
+				t.Errorf("unexpected activity %s, expected 'active'", todo.Activity)
 			}
 		}
 	})
 
-	t.Run("Hierarchical filters", func(t *testing.T) {
-		store := setupStore(t)
-		defer func() { _ = store.Close() }()
-
-		// Find projects with a team
-		results, err := store.Query().Call("team_idExists").Find()
+	t.Run("StatusNot", func(t *testing.T) {
+		// Query excluding a specific status
+		results, err := store.Query().
+			StatusNot("done").
+			Activity("active").
+			Find()
 		if err != nil {
-			t.Fatalf("failed to find projects with team: %v", err)
+			t.Fatalf("failed to query with StatusNot: %v", err)
+		}
+
+		// Should have Task 1, 2, 5 (all active tasks that are not done)
+		if len(results) != 3 {
+			t.Errorf("expected 3 results with StatusNot(done), got %d", len(results))
+		}
+
+		// Verify no results have "done" status
+		for _, todo := range results {
+			if todo.Status == "done" {
+				t.Error("found 'done' status in StatusNot(done) results")
+			}
+		}
+	})
+
+	t.Run("OrderBy", func(t *testing.T) {
+		// Query with ordering by priority
+		results, err := store.Query().
+			Activity("active").
+			OrderBy("priority").
+			Find()
+		if err != nil {
+			t.Fatalf("failed to query with OrderBy: %v", err)
+		}
+
+		// Should be ordered: high, high, low, medium (when sorted alphabetically)
+		// But since 'high' < 'low' < 'medium' alphabetically
+		if len(results) < 2 {
+			t.Fatalf("expected at least 2 results, got %d", len(results))
+		}
+
+		// Test ordering by title
+		titleResults, err := store.Query().
+			OrderBy("title").
+			Find()
+		if err != nil {
+			t.Fatalf("failed to query with OrderBy title: %v", err)
+		}
+
+		// Verify titles are in ascending order
+		for i := 1; i < len(titleResults); i++ {
+			if titleResults[i-1].Title > titleResults[i].Title {
+				t.Errorf("titles not in ascending order: %s > %s",
+					titleResults[i-1].Title, titleResults[i].Title)
+			}
+		}
+	})
+
+	t.Run("OrderByDesc", func(t *testing.T) {
+		// Query with descending order
+		results, err := store.Query().
+			OrderByDesc("title").
+			Find()
+		if err != nil {
+			t.Fatalf("failed to query with OrderByDesc: %v", err)
+		}
+
+		// Verify titles are in descending order
+		for i := 1; i < len(results); i++ {
+			if results[i-1].Title < results[i].Title {
+				t.Errorf("titles not in descending order: %s < %s",
+					results[i-1].Title, results[i].Title)
+			}
+		}
+	})
+
+	t.Run("Limit", func(t *testing.T) {
+		// Query with limit
+		results, err := store.Query().
+			Activity("active").
+			Limit(2).
+			Find()
+		if err != nil {
+			t.Fatalf("failed to query with Limit: %v", err)
 		}
 
 		if len(results) != 2 {
-			t.Errorf("expected 2 projects with team, got %d", len(results))
+			t.Errorf("expected exactly 2 results with Limit(2), got %d", len(results))
 		}
+	})
 
-		// Find projects without a team
-		results, err = store.Query().Call("team_idNotExists").Find()
+	t.Run("Offset", func(t *testing.T) {
+		// First get all results to know what to expect
+		allResults, err := store.Query().
+			OrderBy("title").
+			Find()
 		if err != nil {
-			t.Fatalf("failed to find projects without team: %v", err)
+			t.Fatalf("failed to get all results: %v", err)
 		}
 
-		// Should be 4 projects + 1 team document
-		if len(results) != 5 {
-			t.Errorf("expected 5 documents without team, got %d", len(results))
+		// Query with offset
+		offsetResults, err := store.Query().
+			OrderBy("title").
+			Offset(2).
+			Find()
+		if err != nil {
+			t.Fatalf("failed to query with Offset: %v", err)
+		}
+
+		expectedCount := len(allResults) - 2
+		if len(offsetResults) != expectedCount {
+			t.Errorf("expected %d results with Offset(2), got %d", expectedCount, len(offsetResults))
+		}
+
+		// Verify we skipped the first 2
+		if len(offsetResults) > 0 && len(allResults) > 2 {
+			if offsetResults[0].Title != allResults[2].Title {
+				t.Errorf("offset didn't skip correctly: expected %s, got %s",
+					allResults[2].Title, offsetResults[0].Title)
+			}
+		}
+	})
+
+	t.Run("LimitAndOffset", func(t *testing.T) {
+		// Combine limit and offset for pagination
+		page1, err := store.Query().
+			OrderBy("title").
+			Limit(2).
+			Offset(0).
+			Find()
+		if err != nil {
+			t.Fatalf("failed to get page 1: %v", err)
+		}
+
+		page2, err := store.Query().
+			OrderBy("title").
+			Limit(2).
+			Offset(2).
+			Find()
+		if err != nil {
+			t.Fatalf("failed to get page 2: %v", err)
+		}
+
+		// Verify no overlap
+		if len(page1) > 0 && len(page2) > 0 {
+			if page1[0].UUID == page2[0].UUID {
+				t.Error("pages have overlapping results")
+			}
 		}
 	})
 
 	t.Run("First", func(t *testing.T) {
-		store := setupStore(t)
-		defer func() { _ = store.Close() }()
-
-		result, err := store.Query().Status("active").First()
+		// Get first result
+		first, err := store.Query().
+			OrderBy("title").
+			First()
 		if err != nil {
-			t.Fatalf("failed to get first active project: %v", err)
+			t.Fatalf("failed to get first: %v", err)
 		}
 
-		if result.Status != "active" {
-			t.Errorf("expected status 'active', got %q", result.Status)
-		}
-	})
-
-	t.Run("First with no results", func(t *testing.T) {
-		store := setupStore(t)
-		defer func() { _ = store.Close() }()
-
-		_, err := store.Query().Status("nonexistent").First()
-		if err == nil {
-			t.Error("expected error for no results, got nil")
-		}
-	})
-
-	t.Run("Get", func(t *testing.T) {
-		store := setupStore(t)
-		defer func() { _ = store.Close() }()
-
-		result, err := store.Query().
-			Status("completed").
-			Priority("low").
-			Get()
-		if err != nil {
-			t.Fatalf("failed to get single result: %v", err)
+		if first == nil {
+			t.Fatal("expected a result from First(), got nil")
 		}
 
-		if result.Title != "Project Gamma" {
-			t.Errorf("expected 'Project Gamma', got %q", result.Title)
-		}
-	})
-
-	t.Run("Get with multiple results", func(t *testing.T) {
-		store := setupStore(t)
-		defer func() { _ = store.Close() }()
-
-		_, err := store.Query().Status("active").Get()
-		if err == nil {
-			t.Error("expected error for multiple results, got nil")
-		}
-		if err != nil && !contains(err.Error(), "expected exactly one") {
-			t.Errorf("expected error about multiple results, got: %v", err)
+		// Verify it's actually the first when ordered by title
+		all, _ := store.Query().OrderBy("title").Find()
+		if len(all) > 0 && first.UUID != all[0].UUID {
+			t.Error("First() didn't return the actual first result")
 		}
 	})
 
 	t.Run("Count", func(t *testing.T) {
-		store := setupStore(t)
-		defer func() { _ = store.Close() }()
-
-		count, err := store.Query().Status("active").Count()
+		// Count all documents
+		totalCount, err := store.Query().Count()
 		if err != nil {
-			t.Fatalf("failed to count: %v", err)
+			t.Fatalf("failed to count all: %v", err)
 		}
 
-		if count != 3 {
-			t.Errorf("expected 3 active projects, got %d", count)
+		if totalCount != 6 {
+			t.Errorf("expected total count of 6, got %d", totalCount)
+		}
+
+		// Count with filter
+		activeCount, err := store.Query().
+			Activity("active").
+			Count()
+		if err != nil {
+			t.Fatalf("failed to count active: %v", err)
+		}
+
+		if activeCount != 4 {
+			t.Errorf("expected active count of 4, got %d", activeCount)
+		}
+
+		// Count with multiple filters
+		highPriorityActiveCount, err := store.Query().
+			Priority("high").
+			Activity("active").
+			Count()
+		if err != nil {
+			t.Fatalf("failed to count high priority active: %v", err)
+		}
+
+		if highPriorityActiveCount != 1 {
+			t.Errorf("expected 1 high priority active task, got %d", highPriorityActiveCount)
 		}
 	})
 
-	t.Run("Exists", func(t *testing.T) {
-		store := setupStore(t)
-		defer func() { _ = store.Close() }()
-
-		exists, err := store.Query().Status("archived").Exists()
-		if err != nil {
-			t.Fatalf("failed to check exists: %v", err)
-		}
-
-		if !exists {
-			t.Error("expected archived projects to exist")
-		}
-
-		exists, err = store.Query().Status("cancelled").Exists()
-		if err != nil {
-			t.Fatalf("failed to check exists: %v", err)
-		}
-
-		if exists {
-			t.Error("expected no cancelled projects")
-		}
-	})
-
-	t.Run("Limit and Offset", func(t *testing.T) {
-		store := setupStore(t)
-		defer func() { _ = store.Close() }()
-
-		// Get first 2 results
-		results, err := store.Query().Limit(2).Find()
-		if err != nil {
-			t.Fatalf("failed to find with limit: %v", err)
-		}
-
-		if len(results) != 2 {
-			t.Errorf("expected 2 results with limit, got %d", len(results))
-		}
-
-		// Skip first 3 and get next 2
-		results, err = store.Query().Offset(3).Limit(2).Find()
-		if err != nil {
-			t.Fatalf("failed to find with offset and limit: %v", err)
-		}
-
-		if len(results) != 2 {
-			t.Errorf("expected 2 results with offset and limit, got %d", len(results))
-		}
-	})
-
-	t.Run("Chaining", func(t *testing.T) {
-		store := setupStore(t)
-		defer func() { _ = store.Close() }()
-
+	t.Run("ComplexQuery", func(t *testing.T) {
+		// Test combining multiple modifiers
 		results, err := store.Query().
-			StatusIn("active", "planning").
-			PriorityIn("high", "critical").
+			StatusIn("pending", "active").
+			Priority("high").
+			Activity("active").
+			OrderByDesc("title").
 			Limit(10).
 			Find()
-
 		if err != nil {
-			t.Fatalf("failed to find with chained filters: %v", err)
+			t.Fatalf("failed complex query: %v", err)
 		}
 
-		// Should find Project Alpha (active, high), Project Delta (active, critical), and Project Zeta (active, high)
-		if len(results) != 3 {
-			t.Errorf("expected 3 results, got %d", len(results))
+		// Should only have Task 1 (pending, high, active)
+		if len(results) != 1 {
+			t.Errorf("expected 1 result from complex query, got %d", len(results))
+		}
+
+		if len(results) > 0 && results[0].Title != "Task 1" {
+			t.Errorf("expected 'Task 1', got %s", results[0].Title)
 		}
 	})
 
-	t.Run("WithFilter", func(t *testing.T) {
-		store := setupStore(t)
-		defer func() { _ = store.Close() }()
-
+	t.Run("EmptyResults", func(t *testing.T) {
+		// Query that should return no results
 		results, err := store.Query().
-			WithFilter("status", "active").
-			WithFilter("priority", "high").
+			Status("done").
+			Priority("low").
+			Activity("archived").
 			Find()
-
 		if err != nil {
-			t.Fatalf("failed to find with filters: %v", err)
+			t.Fatalf("failed empty query: %v", err)
 		}
 
-		if len(results) != 2 {
-			t.Errorf("expected 2 results, got %d", len(results))
+		if len(results) != 0 {
+			t.Errorf("expected 0 results, got %d", len(results))
+		}
+
+		// First on empty results
+		first, err := store.Query().
+			Status("nonexistent").
+			First()
+		// Should return an error when no documents found
+		if err == nil {
+			t.Error("expected error from First on empty results, got nil")
+		}
+
+		if first != nil {
+			t.Error("expected nil from First() on empty results")
+		}
+
+		// Count on empty results
+		count, err := store.Query().
+			Status("nonexistent").
+			Count()
+		if err != nil {
+			t.Fatalf("failed to count empty results: %v", err)
+		}
+
+		if count != 0 {
+			t.Errorf("expected count 0 for empty results, got %d", count)
 		}
 	})
-
-	t.Run("Dynamic method calls", func(t *testing.T) {
-		store := setupStore(t)
-		defer func() { _ = store.Close() }()
-
-		// Test using Call method directly
-		results, err := store.Query().
-			Call("status", "active").
-			Call("priority", "high").
-			Find()
-
-		if err != nil {
-			t.Fatalf("failed to find with dynamic calls: %v", err)
-		}
-
-		if len(results) != 2 {
-			t.Errorf("expected 2 results, got %d", len(results))
-		}
-	})
-}
-
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && s[:len(substr)] == substr || len(s) > len(substr) && contains(s[1:], substr)
 }

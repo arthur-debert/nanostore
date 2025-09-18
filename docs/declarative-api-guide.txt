@@ -20,6 +20,8 @@ Table of Contents
 
     Nanostore's Declarative API lets you define your data model using Go struct tags, automatically generating a type-safe interface for managing hierarchical documents. The core value proposition is automatic ID ordering - nanostore generates human-readable, stable IDs that preserve hierarchical relationships and ordering.
 
+    This implementation uses JSON file storage with built-in file locking for concurrent access, making it ideal for applications that need human-readable data persistence and easy backup/restore capabilities.
+
     Throughout this guide, we show both shell commands (from a hypothetical 'too' todo manager CLI) and the corresponding nanostore API calls that power them. This demonstrates how nanostore's automatic ID generation makes building user-friendly interfaces intuitive.
 
     In this guide, we'll build a complete Todo management application that supports:
@@ -49,6 +51,8 @@ Table of Contents
         package main
 
         import (
+            "time"
+            
             "github.com/arthur-debert/nanostore/nanostore"
         )
 
@@ -66,12 +70,29 @@ Table of Contents
             
             // Parent reference for hierarchical structure
             ParentID string `dimension:"parent_id,ref"`
+            
+            // Non-dimension fields are automatically preserved and can be filtered/ordered
+            Description string
+            DueDate     time.Time
+            Tags        string
+            AssignedTo  string
+            CreatedBy   string
         }
+
+    Dimension vs Non-Dimension Fields:
+    
+    - **Dimension fields** (with struct tags) affect ID generation and are used for partitioning
+    - **Non-dimension fields** (without tags) are preserved as regular data and support transparent filtering/ordering
+    - Both types can be used in queries, but only dimensions affect the generated IDs
+    
+    For example:
+    - Changing Status from "pending" to "done" changes the ID from "1" to "d1" (due to prefix)
+    - Changing Description doesn't affect the ID but the data is preserved and searchable
 
     Now let's create our store and start building todos:
 
         // Initialize the store from our type definition
-        store, err := nanostore.NewFromType[TodoItem](":memory:")
+        store, err := nanostore.NewFromType[TodoItem]("todos.json")
         if err != nil {
             log.Fatal(err)
         }
@@ -288,6 +309,35 @@ Output:
         Limit(10).
         Find()
 
+    Filtering by Non-Dimension Fields
+
+    // Create a direct store for advanced filtering (non-dimension fields)
+    // Note: The TypedStore doesn't expose all filtering capabilities yet
+    directStore, err := nanostore.New("todos.json", config)
+    if err != nil {
+        log.Fatal(err)
+    }
+    defer directStore.Close()
+    
+    // Filter by AssignedTo (non-dimension field)
+    opts := nanostore.NewListOptions()
+    opts.Filters["AssignedTo"] = "alice"
+    opts.Filters["Status"] = "pending" // Can combine with dimension filters
+    
+    results, err := directStore.List(opts)
+    
+    // Order by non-dimension fields
+    opts.OrderBy = []nanostore.OrderClause{
+        {Column: "DueDate", Descending: false},    // Non-dimension field
+        {Column: "Priority", Descending: true},    // Dimension field
+    }
+    
+    // Filter by multiple non-dimension fields
+    opts.Filters["Tags"] = "urgent"
+    opts.Filters["CreatedBy"] = "system"
+    
+    results, err = directStore.List(opts)
+
 7. Search Functionality
 
     Text Search Across Titles
@@ -503,7 +553,7 @@ Output with --all flag to show completed items:
             // Handle missing todo
             return fmt.Errorf("todo not found")
         }
-        return fmt.Errorf("database error: %w", err)
+        return fmt.Errorf("storage error: %w", err)
     }
 
 11. Complete Working Example
@@ -528,11 +578,17 @@ Output with --all flag to show completed items:
         Priority string `values:"low,medium,high" prefix:"high=h" default:"medium"`
         Activity string `values:"active,archived,deleted" default:"active"`
         ParentID string `dimension:"parent_id,ref"`
+        
+        // Non-dimension fields
+        Description string
+        AssignedTo  string
+        Tags        string
+        DueDate     time.Time
     }
 
     func main() {
         // Initialize the store
-        store, err := nanostore.NewFromType[TodoItem](":memory:")
+        store, err := nanostore.NewFromType[TodoItem]("todos.json")
         if err != nil {
             log.Fatal(err)
         }
@@ -541,16 +597,36 @@ Output with --all flag to show completed items:
         fmt.Println("=== Creating Todo Structure ===")
         
         // Create root todos
-        groceriesID, _ := store.Create("Groceries", &TodoItem{})
+        groceriesID, _ := store.Create("Groceries", &TodoItem{
+            Description: "Weekly grocery shopping",
+            AssignedTo:  "alice",
+        })
         fmt.Printf("Created: %s. Groceries\n", groceriesID)
         
-        tripID, _ := store.Create("Pack for Trip", &TodoItem{Priority: "high"})
+        tripID, _ := store.Create("Pack for Trip", &TodoItem{
+            Priority:    "high",
+            Description: "Prepare for weekend trip",
+            AssignedTo:  "bob",
+            Tags:        "travel,urgent",
+        })
         fmt.Printf("Created: %s. Pack for Trip\n", tripID)
         
         // Add groceries
-        milkID, _ := store.Create("Milk", &TodoItem{ParentID: groceriesID})
-        breadID, _ := store.Create("Bread", &TodoItem{ParentID: groceriesID})
-        eggsID, _ := store.Create("Eggs", &TodoItem{ParentID: groceriesID})
+        milkID, _ := store.Create("Milk", &TodoItem{
+            ParentID:   groceriesID,
+            AssignedTo: "alice",
+            Tags:       "dairy",
+        })
+        breadID, _ := store.Create("Bread", &TodoItem{
+            ParentID:   groceriesID,
+            AssignedTo: "alice",
+            Tags:       "bakery",
+        })
+        eggsID, _ := store.Create("Eggs", &TodoItem{
+            ParentID:   groceriesID,
+            AssignedTo: "alice",
+            Tags:       "dairy,protein",
+        })
         
         fmt.Printf("Created: %s. Milk\n", milkID)
         fmt.Printf("Created: %s. Bread\n", breadID)
@@ -593,7 +669,7 @@ Output with --all flag to show completed items:
         
         for _, todo := range highPriorityTodos {
             fmt.Printf("%s. %s (priority: %s, status: %s)\n", 
-                todo.UserFacingID, todo.Title, todo.Priority, todo.Status)
+                todo.SimpleID, todo.Title, todo.Priority, todo.Status)
         }
         
         fmt.Println("\n=== Search for 'Pack' ===")
@@ -603,7 +679,7 @@ Output with --all flag to show completed items:
             Find()
         
         for _, todo := range searchResults {
-            fmt.Printf("%s. %s\n", todo.UserFacingID, todo.Title)
+            fmt.Printf("%s. %s\n", todo.SimpleID, todo.Title)
         }
         
         fmt.Println("\n=== Root Todos Only ===")
@@ -613,7 +689,7 @@ Output with --all flag to show completed items:
             Find()
         
         for _, todo := range rootTodos {
-            fmt.Printf("%s. %s\n", todo.UserFacingID, todo.Title)
+            fmt.Printf("%s. %s\n", todo.SimpleID, todo.Title)
         }
         
         fmt.Println("\n=== Statistics ===")
@@ -646,7 +722,7 @@ Output with --all flag to show completed items:
                 status = "◐"
             }
             
-            fmt.Printf("%s%s %s. %s\n", indent, status, todo.UserFacingID, todo.Title)
+            fmt.Printf("%s%s %s. %s\n", indent, status, todo.SimpleID, todo.Title)
         }
     }
 
@@ -669,7 +745,7 @@ Output with --all flag to show completed items:
                 status = "●"
             }
             
-            fmt.Printf("%s%s %s. %s\n", indent, status, todo.UserFacingID, todo.Title)
+            fmt.Printf("%s%s %s. %s\n", indent, status, todo.SimpleID, todo.Title)
         }
     }
 
@@ -765,12 +841,13 @@ Implementation Notes
 
     For production applications:
 
-    - Use proper database paths instead of :memory:
+    - Use proper file paths (e.g., "/var/data/todos.json") instead of relative paths
     - Implement proper error handling and validation
-    - Add transaction support for bulk operations
-    - Consider indexing for performance on large datasets
-    - Implement backup/restore functionality
+    - Use file locking for concurrent access (automatically handled by nanostore)
+    - Consider data size limitations of JSON format for large datasets
+    - Implement backup/restore functionality for JSON files
     - Add user authentication and multi-tenancy if needed
+    - Monitor file I/O performance for high-frequency operations
 
     Next Steps
 
