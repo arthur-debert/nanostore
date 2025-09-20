@@ -14,6 +14,7 @@ import (
 
 	"github.com/arthur-debert/nanostore/nanostore"
 	"github.com/arthur-debert/nanostore/nanostore/testutil"
+	"github.com/arthur-debert/nanostore/types"
 )
 
 func TestTransparentFilteringVerificationMigrated(t *testing.T) {
@@ -33,7 +34,7 @@ func TestTransparentFilteringVerificationMigrated(t *testing.T) {
 
 	t.Run("FilterByDimensionValues", func(t *testing.T) {
 		// Test standard dimension filtering works
-		opts := nanostore.NewListOptions()
+		opts := types.NewListOptions()
 		opts.Filters["status"] = "pending"
 
 		results, err := store.List(opts)
@@ -53,7 +54,7 @@ func TestTransparentFilteringVerificationMigrated(t *testing.T) {
 
 	t.Run("FilterByMultipleDimensionValues", func(t *testing.T) {
 		// Test filtering by multiple dimension values
-		opts := nanostore.NewListOptions()
+		opts := types.NewListOptions()
 		opts.Filters["status"] = []string{"pending", "active"}
 		opts.Filters["priority"] = "high"
 
@@ -74,7 +75,7 @@ func TestTransparentFilteringVerificationMigrated(t *testing.T) {
 
 	t.Run("OrderByDimensionValues", func(t *testing.T) {
 		// Test ordering by dimension values
-		opts := nanostore.NewListOptions()
+		opts := types.NewListOptions()
 		opts.OrderBy = []nanostore.OrderClause{
 			{Column: "status", Descending: false},
 			{Column: "priority", Descending: true},
@@ -110,7 +111,7 @@ func TestTransparentFilteringVerificationMigrated(t *testing.T) {
 
 	t.Run("CombinedFilterAndOrder", func(t *testing.T) {
 		// Test combined filtering and ordering
-		opts := nanostore.NewListOptions()
+		opts := types.NewListOptions()
 		opts.Filters["parent_id"] = universe.WorkRoot.UUID
 		opts.OrderBy = []nanostore.OrderClause{
 			{Column: "title", Descending: false},
@@ -192,7 +193,7 @@ func TestTransparentNonDimensionFilteringMigrated(t *testing.T) {
 	}
 
 	t.Run("FilterByNonDimensionString", func(t *testing.T) {
-		opts := nanostore.NewListOptions()
+		opts := types.NewListOptions()
 		opts.Filters["owner"] = "alice"
 
 		results, err := store.List(opts)
@@ -219,7 +220,7 @@ func TestTransparentNonDimensionFilteringMigrated(t *testing.T) {
 
 	t.Run("FilterByNonDimensionNumber", func(t *testing.T) {
 		// Filter for high scores (>= 85)
-		opts := nanostore.NewListOptions()
+		opts := types.NewListOptions()
 		opts.Filters["score"] = 85
 
 		results, err := store.List(opts)
@@ -236,7 +237,7 @@ func TestTransparentNonDimensionFilteringMigrated(t *testing.T) {
 	})
 
 	t.Run("CombineDimensionAndNonDimensionFilters", func(t *testing.T) {
-		opts := nanostore.NewListOptions()
+		opts := types.NewListOptions()
 		opts.Filters["status"] = "active"
 		opts.Filters["owner"] = "alice"
 
@@ -259,7 +260,7 @@ func TestTransparentNonDimensionFilteringMigrated(t *testing.T) {
 	})
 
 	t.Run("OrderByNonDimensionField", func(t *testing.T) {
-		opts := nanostore.NewListOptions()
+		opts := types.NewListOptions()
 		opts.OrderBy = []nanostore.OrderClause{
 			{Column: "score", Descending: true},
 		}

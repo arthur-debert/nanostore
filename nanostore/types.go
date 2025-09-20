@@ -20,51 +20,14 @@ const (
 // Document is an alias for the types.Document
 type Document = types.Document
 
-// ListOptions configures how documents are listed
-type ListOptions struct {
-	// Filters allows filtering by any configured dimension
-	// Key is dimension name, value can be a single value or slice of values
-	// Example: {"status": []string{"active", "pending"}, "priority": "high"}
-	Filters map[string]interface{}
+// ListOptions is an alias for types.ListOptions
+type ListOptions = types.ListOptions
 
-	// FilterBySearch performs a text search on title and body
-	// Empty string returns all documents (no filtering)
-	FilterBySearch string
+// OrderClause is an alias for types.OrderClause
+type OrderClause = types.OrderClause
 
-	// OrderBy specifies the order of results
-	// Each OrderClause contains a field name and direction
-	OrderBy []OrderClause
-
-	// Limit specifies the maximum number of results to return
-	// nil or negative values mean no limit
-	// 0 returns no results
-	Limit *int
-
-	// Offset specifies the number of results to skip
-	// nil or negative values mean no offset (start from beginning)
-	// Values greater than result count return empty results
-	Offset *int
-}
-
-// OrderClause represents a single ORDER BY clause
-type OrderClause struct {
-	Column     string
-	Descending bool
-}
-
-// NewListOptions creates a new ListOptions with empty filters
-func NewListOptions() ListOptions {
-	return ListOptions{
-		Filters: make(map[string]interface{}),
-	}
-}
-
-// UpdateRequest specifies fields to update on a document
-type UpdateRequest struct {
-	Title      *string
-	Body       *string
-	Dimensions map[string]interface{} // Optional: dimension values to update (e.g., "status": "completed", "parent_uuid": "some-uuid")
-}
+// UpdateRequest is an alias for types.UpdateRequest
+type UpdateRequest = types.UpdateRequest
 
 // DimensionConfig defines a single dimension for ID partitioning and document organization.
 //

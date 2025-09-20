@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/arthur-debert/nanostore/nanostore"
+	"github.com/arthur-debert/nanostore/types"
 )
 
 func TestDimensionHelpers(t *testing.T) {
@@ -201,7 +202,7 @@ func TestDimensionHelpers(t *testing.T) {
 }
 
 func TestNewListOptions(t *testing.T) {
-	opts := nanostore.NewListOptions()
+	opts := types.NewListOptions()
 
 	// Should have initialized Filters map
 	if opts.Filters == nil {

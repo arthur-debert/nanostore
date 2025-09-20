@@ -15,6 +15,7 @@ import (
 
 	"github.com/arthur-debert/nanostore/nanostore"
 	"github.com/arthur-debert/nanostore/nanostore/api"
+	"github.com/arthur-debert/nanostore/types"
 )
 
 // Test struct with both dimension and non-dimension fields for filtering tests
@@ -119,7 +120,7 @@ func TestTransparentFilteringForNonDimensionFields(t *testing.T) {
 
 		// We'll need to add a custom filter method or use the store directly
 		// For now, let's test with the internal store API
-		opts := nanostore.NewListOptions()
+		opts := types.NewListOptions()
 		opts.Filters["Priority"] = 1
 
 		// We need to test this against the underlying store to see current behavior
@@ -144,7 +145,7 @@ func TestTransparentFilteringForNonDimensionFields(t *testing.T) {
 	})
 
 	t.Run("FilterByNonDimensionStringField", func(t *testing.T) {
-		opts := nanostore.NewListOptions()
+		opts := types.NewListOptions()
 		opts.Filters["Owner"] = "alice"
 
 		// This will test the current filtering behavior
@@ -166,7 +167,7 @@ func TestTransparentFilteringForNonDimensionFields(t *testing.T) {
 	})
 
 	t.Run("FilterByNonDimensionBoolField", func(t *testing.T) {
-		opts := nanostore.NewListOptions()
+		opts := types.NewListOptions()
 		opts.Filters["IsImportant"] = true
 
 		results, err := store.Query().Find()
@@ -223,7 +224,7 @@ func TestTransparentFilteringForNonDimensionFields(t *testing.T) {
 		}
 
 		// Test filtering by dimension field (should work)
-		opts1 := nanostore.NewListOptions()
+		opts1 := types.NewListOptions()
 		opts1.Filters["status"] = "active"
 
 		results1, err := store2.List(opts1)
@@ -236,7 +237,7 @@ func TestTransparentFilteringForNonDimensionFields(t *testing.T) {
 		}
 
 		// Test filtering by non-dimension field (current behavior)
-		opts2 := nanostore.NewListOptions()
+		opts2 := types.NewListOptions()
 		opts2.Filters["Priority"] = 1
 
 		results2, err := store2.List(opts2)
@@ -249,7 +250,7 @@ func TestTransparentFilteringForNonDimensionFields(t *testing.T) {
 			len(results2), docID)
 
 		// Now test with the _data prefix (what should work internally)
-		opts3 := nanostore.NewListOptions()
+		opts3 := types.NewListOptions()
 		opts3.Filters["_data.Priority"] = 1
 
 		results3, err := store2.List(opts3)
