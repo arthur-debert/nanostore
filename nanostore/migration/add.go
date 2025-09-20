@@ -140,12 +140,6 @@ func (a *AddField) Execute(ctx *MigrationContext) *Result {
 	for i := range ctx.Documents {
 		doc := &ctx.Documents[i]
 
-		// Skip if field already exists (shouldn't happen after validation)
-		if _, exists := doc.Dimensions[fieldKey]; exists {
-			result.Stats.SkippedDocs++
-			continue
-		}
-
 		// Add the field
 		if !ctx.DryRun {
 			doc.Dimensions[fieldKey] = a.DefaultValue
@@ -168,13 +162,6 @@ func (a *AddField) Execute(ctx *MigrationContext) *Result {
 			Level: LevelInfo,
 			Text: fmt.Sprintf("Added %s field '%s' with default value to %d documents",
 				fieldType, a.FieldName, result.Stats.ModifiedDocs),
-		})
-	}
-
-	if result.Stats.SkippedDocs > 0 {
-		result.Messages = append(result.Messages, Message{
-			Level: LevelWarning,
-			Text:  fmt.Sprintf("Skipped %d documents where field already exists", result.Stats.SkippedDocs),
 		})
 	}
 
