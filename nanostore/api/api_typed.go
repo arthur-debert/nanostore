@@ -70,7 +70,7 @@ func MarshalDimensions(v interface{}) (dimensions map[string]interface{}, data m
 			}
 
 			// Validate that the dimension value is a simple type
-			if err = validateSimpleType(value, dimName); err != nil {
+			if err = ValidateSimpleType(value, dimName); err != nil {
 				return nil, nil, err
 			}
 
@@ -286,8 +286,8 @@ func setFieldFromInterface(field reflect.Value, value interface{}) error {
 	return setFieldValue(field, strVal)
 }
 
-// validateSimpleType ensures a dimension value is a simple type (string, number, bool)
-func validateSimpleType(value interface{}, dimensionName string) error {
+// ValidateSimpleType ensures a dimension value is a simple type (string, number, bool)
+func ValidateSimpleType(value interface{}, dimensionName string) error {
 	if value == nil {
 		return nil
 	}
@@ -315,7 +315,7 @@ func validateSimpleType(value interface{}, dimensionName string) error {
 		if v.IsNil() {
 			return nil
 		}
-		return validateSimpleType(v.Elem().Interface(), dimensionName)
+		return ValidateSimpleType(v.Elem().Interface(), dimensionName)
 	default:
 		return fmt.Errorf("dimension '%s' must be a simple type (string, number, or bool), got %T", dimensionName, value)
 	}

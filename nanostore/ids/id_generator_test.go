@@ -43,10 +43,10 @@ func TestIDGenerator(t *testing.T) {
 			Meta:         types.DimensionMetadata{Order: 2},
 		},
 	}
-	ds := types.Newtypes.DimensionSet(dims)
+	ds := types.NewDimensionSet(dims)
 
 	// Set up canonical view (pending status, medium priority)
-	cv := types.Newtypes.CanonicalView(
+	cv := types.NewCanonicalView(
 		types.CanonicalFilter{Dimension: "status", Value: "pending"},
 		types.CanonicalFilter{Dimension: "priority", Value: "medium"},
 		types.CanonicalFilter{Dimension: "parent", Value: "*"},
@@ -272,7 +272,7 @@ func TestIDGenerator(t *testing.T) {
 		}
 	})
 
-	t.Run("GetFullyQualifiedtypes.Partition", func(t *testing.T) {
+	t.Run("GetFullyQualifiedPartition", func(t *testing.T) {
 		baseTime := time.Now()
 		doc := types.Document{
 			UUID:      "test-doc",
@@ -285,7 +285,7 @@ func TestIDGenerator(t *testing.T) {
 			},
 		}
 
-		partition := generator.GetFullyQualifiedtypes.Partition(doc, 5)
+		partition := generator.GetFullyQualifiedPartition(doc, 5)
 
 		// Check position
 		if partition.Position != 5 {

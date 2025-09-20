@@ -41,10 +41,10 @@ func TestIDTransformer(t *testing.T) {
 			Meta:         types.DimensionMetadata{Order: 2},
 		},
 	}
-	ds := types.Newtypes.DimensionSet(dims)
+	ds := types.NewDimensionSet(dims)
 
 	// Set up canonical view (pending status, medium priority)
-	cv := types.Newtypes.CanonicalView(
+	cv := types.NewCanonicalView(
 		types.CanonicalFilter{Dimension: "status", Value: "pending"},
 		types.CanonicalFilter{Dimension: "priority", Value: "medium"},
 		types.CanonicalFilter{Dimension: "parent", Value: "*"},

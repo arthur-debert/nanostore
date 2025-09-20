@@ -14,7 +14,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/arthur-debert/nanostore/nanostore"
+	_ "github.com/arthur-debert/nanostore/nanostore" // for embedded Document type
+	"github.com/arthur-debert/nanostore/nanostore/api"
 )
 
 func TestQueryRobustness(t *testing.T) {
@@ -27,7 +28,7 @@ func TestQueryRobustness(t *testing.T) {
 	_ = tmpfile.Close()
 
 	// Create typed store
-	store, err := nanostore.NewFromType[TodoItem](tmpfile.Name())
+	store, err := api.NewFromType[TodoItem](tmpfile.Name())
 	if err != nil {
 		t.Fatalf("failed to create typed store: %v", err)
 	}
