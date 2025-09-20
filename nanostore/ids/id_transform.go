@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/arthur-debert/nanostore/internal/matching"
 	"github.com/arthur-debert/nanostore/types"
 )
 
@@ -17,15 +18,17 @@ import (
 // For detailed documentation on the transformation algorithms, partition concepts,
 // and usage examples, see doc.go in this package.
 type IDTransformer struct {
-	dimensionSet  *types.DimensionSet
-	canonicalView *types.CanonicalView
+	dimensionSet     *types.DimensionSet
+	canonicalView    *types.CanonicalView
+	canonicalMatcher *matching.CanonicalMatcher
 }
 
 // NewIDTransformer creates a new ID transformer
 func NewIDTransformer(dimensionSet *types.DimensionSet, canonicalView *types.CanonicalView) *IDTransformer {
 	return &IDTransformer{
-		dimensionSet:  dimensionSet,
-		canonicalView: canonicalView,
+		dimensionSet:     dimensionSet,
+		canonicalView:    canonicalView,
+		canonicalMatcher: matching.NewCanonicalMatcher(canonicalView, dimensionSet),
 	}
 }
 
@@ -33,7 +36,7 @@ func NewIDTransformer(dimensionSet *types.DimensionSet, canonicalView *types.Can
 // Example: parent:1,status:pending,priority:medium|3 → 1.3 (with canonical status:pending,priority:medium)
 func (t *IDTransformer) ToShortForm(partition types.Partition) string {
 	// Extract canonical dimension values (to be omitted)
-	canonicalValues := t.canonicalView.ExtractFromPartition(partition)
+	canonicalValues := t.canonicalMatcher.ExtractFromPartition(partition)
 
 	// Build map of canonical dimensions for quick lookup
 	canonicalMap := make(map[string]bool)

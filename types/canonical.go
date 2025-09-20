@@ -38,49 +38,6 @@ func (cv *CanonicalView) String() string {
 	return fmt.Sprintf("canonical:%s", strings.Join(parts, ","))
 }
 
-// Matches checks if a document matches the canonical view filters
-func (cv *CanonicalView) Matches(doc Document, dimensionSet *DimensionSet) bool {
-	if cv == nil || len(cv.Filters) == 0 {
-		// No filters means everything matches
-		return true
-	}
-
-	// Document must match ALL filters
-	for _, filter := range cv.Filters {
-		dim, exists := dimensionSet.Get(filter.Dimension)
-		if !exists {
-			// Filter references unknown dimension
-			return false
-		}
-
-		docValue := ""
-		switch dim.Type {
-		case Enumerated:
-			if v, exists := doc.Dimensions[dim.Name]; exists {
-				docValue = fmt.Sprintf("%v", v)
-			} else {
-				// Use default value
-				docValue = dim.DefaultValue
-			}
-		case Hierarchical:
-			// Hierarchical dimensions can have "*" as filter value
-			if filter.Value == "*" {
-				continue // Any value matches
-			}
-			if v, exists := doc.Dimensions[dim.RefField]; exists {
-				docValue = fmt.Sprintf("%v", v)
-			}
-		}
-
-		// Check if document value matches filter value
-		if docValue != filter.Value && filter.Value != "*" {
-			return false
-		}
-	}
-
-	return true
-}
-
 // GetFilterValue returns the filter value for a specific dimension
 func (cv *CanonicalView) GetFilterValue(dimension string) (string, bool) {
 	if cv == nil {
@@ -99,39 +56,6 @@ func (cv *CanonicalView) GetFilterValue(dimension string) (string, bool) {
 func (cv *CanonicalView) HasFilter(dimension string) bool {
 	_, exists := cv.GetFilterValue(dimension)
 	return exists
-}
-
-// IsCanonicalValue checks if a value matches the canonical filter for a dimension
-func (cv *CanonicalView) IsCanonicalValue(dimension, value string) bool {
-	filterValue, hasFilter := cv.GetFilterValue(dimension)
-	if !hasFilter {
-		// No filter means any value is canonical
-		return true
-	}
-
-	// Check if value matches the filter
-	return filterValue == value || filterValue == "*"
-}
-
-// ExtractFromPartition extracts canonical filters from a partition
-// Returns dimension values that should be removed from the user-facing ID
-func (cv *CanonicalView) ExtractFromPartition(partition Partition) []DimensionValue {
-	var canonical []DimensionValue
-
-	for _, dv := range partition.Values {
-		// Only extract if there's a filter for this dimension AND the value matches
-		if filterValue, hasFilter := cv.GetFilterValue(dv.Dimension); hasFilter {
-			// Skip wildcard filters (typically used for hierarchical dimensions)
-			if filterValue == "*" {
-				continue
-			}
-			if filterValue == dv.Value {
-				canonical = append(canonical, dv)
-			}
-		}
-	}
-
-	return canonical
 }
 
 // ConfigWithCanonicalView extends Config with canonical view information

@@ -78,77 +78,6 @@ func TestCanonicalView(t *testing.T) {
 		}
 	})
 
-	t.Run("Matches", func(t *testing.T) {
-		cv := NewCanonicalView(
-			CanonicalFilter{Dimension: "status", Value: "pending"},
-			CanonicalFilter{Dimension: "priority", Value: "medium"},
-			CanonicalFilter{Dimension: "parent", Value: "*"},
-		)
-
-		tests := []struct {
-			name    string
-			doc     Document
-			matches bool
-		}{
-			{
-				name: "matches all filters",
-				doc: Document{
-					Dimensions: map[string]interface{}{
-						"status":      "pending",
-						"priority":    "medium",
-						"parent_uuid": "some-parent",
-					},
-				},
-				matches: true,
-			},
-			{
-				name: "matches with defaults",
-				doc: Document{
-					Dimensions: map[string]interface{}{
-						"parent_uuid": "some-parent",
-					},
-				},
-				matches: true, // status and priority use defaults
-			},
-			{
-				name: "different status",
-				doc: Document{
-					Dimensions: map[string]interface{}{
-						"status":   "done",
-						"priority": "medium",
-					},
-				},
-				matches: false,
-			},
-			{
-				name: "different priority",
-				doc: Document{
-					Dimensions: map[string]interface{}{
-						"status":   "pending",
-						"priority": "high",
-					},
-				},
-				matches: false,
-			},
-			{
-				name: "empty dimensions",
-				doc: Document{
-					Dimensions: map[string]interface{}{},
-				},
-				matches: true, // Uses all defaults
-			},
-		}
-
-		for _, tt := range tests {
-			t.Run(tt.name, func(t *testing.T) {
-				got := cv.Matches(tt.doc, ds)
-				if got != tt.matches {
-					t.Errorf("Matches(): got %v, want %v", got, tt.matches)
-				}
-			})
-		}
-	})
-
 	t.Run("Filter operations", func(t *testing.T) {
 		cv := NewCanonicalView(
 			CanonicalFilter{Dimension: "status", Value: "pending"},
@@ -169,46 +98,6 @@ func TestCanonicalView(t *testing.T) {
 		}
 		if cv.HasFilter("nonexistent") {
 			t.Error("HasFilter(nonexistent) should return false")
-		}
-
-		// Test IsCanonicalValue
-		if !cv.IsCanonicalValue("status", "pending") {
-			t.Error("IsCanonicalValue(status, pending) should return true")
-		}
-		if cv.IsCanonicalValue("status", "done") {
-			t.Error("IsCanonicalValue(status, done) should return false")
-		}
-		if !cv.IsCanonicalValue("parent", "anything") {
-			t.Error("IsCanonicalValue(parent, anything) should return true (no filter)")
-		}
-	})
-
-	t.Run("ExtractFromPartition", func(t *testing.T) {
-		cv := NewCanonicalView(
-			CanonicalFilter{Dimension: "status", Value: "pending"},
-			CanonicalFilter{Dimension: "priority", Value: "medium"},
-		)
-
-		partition := Partition{
-			Values: []DimensionValue{
-				{Dimension: "parent", Value: "1"},
-				{Dimension: "status", Value: "pending"},
-				{Dimension: "priority", Value: "high"},
-			},
-			Position: 1,
-		}
-
-		canonical := cv.ExtractFromPartition(partition)
-
-		// Should only extract status:pending (matches canonical)
-		// priority:high doesn't match canonical filter
-		// parent:1 has no canonical filter
-		if len(canonical) != 1 {
-			t.Fatalf("ExtractFromPartition: expected 1 canonical value, got %d", len(canonical))
-		}
-		if canonical[0].Dimension != "status" || canonical[0].Value != "pending" {
-			t.Errorf("ExtractFromPartition: expected status:pending, got %s:%s",
-				canonical[0].Dimension, canonical[0].Value)
 		}
 	})
 
