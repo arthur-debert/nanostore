@@ -451,6 +451,10 @@ func (s *jsonFileStore) Add(title string, dimensions map[string]interface{}) (st
 
 		// Validate all provided dimensions are simple types
 		for name, value := range cmd.Dimensions {
+			// Skip validation for _data fields - they can be any type
+			if strings.HasPrefix(name, "_data.") {
+				continue
+			}
 			if err := ValidateSimpleType(value, name); err != nil {
 				return "", err
 			}
@@ -552,6 +556,10 @@ func (s *jsonFileStore) Update(id string, updates UpdateRequest) error {
 		if cmd.Request.Dimensions != nil {
 			// Validate all dimensions are simple types
 			for name, value := range cmd.Request.Dimensions {
+				// Skip validation for _data fields - they can be any type
+				if strings.HasPrefix(name, "_data.") {
+					continue
+				}
 				if value != nil {
 					if err := ValidateSimpleType(value, name); err != nil {
 						return err
@@ -808,6 +816,10 @@ func (s *jsonFileStore) UpdateByDimension(filters map[string]interface{}, update
 		// Validate update dimensions if provided
 		if updates.Dimensions != nil {
 			for name, value := range updates.Dimensions {
+				// Skip validation for _data fields - they can be any type
+				if strings.HasPrefix(name, "_data.") {
+					continue
+				}
 				if value != nil {
 					if err := ValidateSimpleType(value, name); err != nil {
 						return 0, err
