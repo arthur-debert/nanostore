@@ -30,14 +30,17 @@ func (a *API) RenameField(docs []types.Document, config types.Config, oldName, n
 
 // RemoveField removes a field from all documents
 func (a *API) RemoveField(docs []types.Document, config types.Config, fieldName string, opts Options) *Result {
-	// TODO: Implement
-	return &Result{
-		Success: false,
-		Code:    CodeExecutionError,
-		Messages: []Message{
-			{Level: LevelError, Text: "RemoveField not implemented"},
-		},
+	ctx := &MigrationContext{
+		Documents: docs,
+		Config:    config,
+		DryRun:    opts.DryRun,
 	}
+
+	cmd := &RemoveField{
+		FieldName: fieldName,
+	}
+
+	return cmd.Execute(ctx)
 }
 
 // AddField adds a field with a default value to all documents
