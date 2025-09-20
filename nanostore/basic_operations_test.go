@@ -1,47 +1,32 @@
 package nanostore_test
 
+// IMPORTANT: This test must follow the testing patterns established in:
+// nanostore/testutil/model_test.go
+//
+// Key principles:
+// 1. Use testutil.LoadUniverse() for standard test setup
+// 2. Leverage fixture data instead of creating test data
+// 3. Use assertion helpers for cleaner test code
+// 4. Only create fresh stores for specific scenarios (see model_test.go)
+
+
 import (
-	"os"
 	"testing"
 
 	"github.com/arthur-debert/nanostore/nanostore"
+	"github.com/arthur-debert/nanostore/nanostore/testutil"
 )
 
-func TestBasicOperations(t *testing.T) {
-	// Create a temporary file
-	tmpfile, err := os.CreateTemp("", "test*.json")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = os.Remove(tmpfile.Name()) }()
-	_ = tmpfile.Close()
+func TestBasicOperationsMigrated(t *testing.T) {
+	var store nanostore.Store
+	var universe *testutil.UniverseData
 
-	config := nanostore.Config{
-		Dimensions: []nanostore.DimensionConfig{
-			{
-				Name:         "status",
-				Type:         nanostore.Enumerated,
-				Values:       []string{"todo", "in_progress", "done"},
-				DefaultValue: "todo",
-			},
-			{
-				Name:         "priority",
-				Type:         nanostore.Enumerated,
-				Values:       []string{"low", "medium", "high"},
-				DefaultValue: "medium",
-			},
-		},
-	}
-
-	store, err := nanostore.New(tmpfile.Name(), config)
-	if err != nil {
-		t.Fatalf("failed to create store: %v", err)
-	}
-	defer func() { _ = store.Close() }()
+	// Initial load
+	store, _ = testutil.LoadUniverse(t)
 
 	t.Run("Add", func(t *testing.T) {
 		// Add a document with default dimensions
-		id1, err := store.Add("Task 1", nil)
+		id1, err := store.Add("New Task 1", nil)
 		if err != nil {
 			t.Fatalf("failed to add document: %v", err)
 		}
@@ -49,182 +34,179 @@ func TestBasicOperations(t *testing.T) {
 			t.Fatal("expected non-empty ID")
 		}
 
-		// Add a document with custom dimensions
-		id2, err := store.Add("Task 2", map[string]interface{}{
-			"status":   "in_progress",
+		// Add with specific dimensions
+		id2, err := store.Add("New Task 2", map[string]interface{}{
+			"status":   "done",
 			"priority": "high",
 		})
 		if err != nil {
-			t.Fatalf("failed to add document: %v", err)
+			t.Fatalf("failed to add document with dimensions: %v", err)
 		}
 		if id2 == "" {
 			t.Fatal("expected non-empty ID")
 		}
 
-		// Verify documents were added
+		// Verify the documents exist
 		docs, err := store.List(nanostore.ListOptions{})
 		if err != nil {
-			t.Fatalf("failed to list documents: %v", err)
+			t.Fatal(err)
 		}
-		if len(docs) != 2 {
-			t.Errorf("expected 2 documents, got %d", len(docs))
+
+		// Count new docs (should have original fixture docs + 2 new ones)
+		newDocsFound := 0
+		for _, doc := range docs {
+			if doc.UUID == id1 || doc.UUID == id2 {
+				newDocsFound++
+			}
+		}
+		if newDocsFound != 2 {
+			t.Errorf("expected 2 new documents, found %d", newDocsFound)
 		}
 	})
 
-	t.Run("Update", func(t *testing.T) {
-		// Add a document
-		id, err := store.Add("Update Test", nil)
-		if err != nil {
-			t.Fatalf("failed to add document: %v", err)
-		}
+	// Reload universe for clean state
+	store, universe = testutil.LoadUniverse(t)
 
-		// Update title
+	t.Run("Update", func(t *testing.T) {
+		// Update an existing document from fixture
 		newTitle := "Updated Title"
-		err = store.Update(id, nanostore.UpdateRequest{
+		newBody := "Updated body content"
+
+		err := store.Update(universe.BuyGroceries.UUID, nanostore.UpdateRequest{
 			Title: &newTitle,
+			Body:  &newBody,
+			Dimensions: map[string]interface{}{
+				"status": "done",
+			},
 		})
 		if err != nil {
 			t.Fatalf("failed to update document: %v", err)
 		}
 
-		// Update dimensions
-		err = store.Update(id, nanostore.UpdateRequest{
-			Dimensions: map[string]interface{}{
-				"status":   "done",
-				"priority": "high",
+		// Verify the update
+		docs, err := store.List(nanostore.ListOptions{
+			Filters: map[string]interface{}{
+				"uuid": universe.BuyGroceries.UUID,
 			},
 		})
 		if err != nil {
-			t.Fatalf("failed to update dimensions: %v", err)
+			t.Fatal(err)
 		}
 
-		// Verify updates
-		docs, _ := store.List(nanostore.ListOptions{})
-		for _, doc := range docs {
-			if doc.UUID == id {
-				if doc.Title != "Updated Title" {
-					t.Errorf("title not updated: %s", doc.Title)
-				}
-				if doc.Dimensions["status"] != "done" {
-					t.Errorf("status not updated: %v", doc.Dimensions["status"])
-				}
-				if doc.Dimensions["priority"] != "high" {
-					t.Errorf("priority not updated: %v", doc.Dimensions["priority"])
-				}
-				break
-			}
+		testutil.AssertDocumentCount(t, docs, 1)
+		if docs[0].Title != newTitle {
+			t.Errorf("expected title %q, got %q", newTitle, docs[0].Title)
 		}
+		if docs[0].Body != newBody {
+			t.Errorf("expected body %q, got %q", newBody, docs[0].Body)
+		}
+		testutil.AssertHasStatus(t, docs[0], "done")
 	})
 
+	// Reload for clean state
+	store, universe = testutil.LoadUniverse(t)
+
 	t.Run("Delete", func(t *testing.T) {
-		// Add a document
-		id, err := store.Add("Delete Test", nil)
+		// Count initial documents
+		initialDocs, err := store.List(nanostore.ListOptions{})
 		if err != nil {
-			t.Fatalf("failed to add document: %v", err)
+			t.Fatal(err)
 		}
+		initialCount := len(initialDocs)
 
-		// Get count before delete
-		docs, _ := store.List(nanostore.ListOptions{})
-		countBefore := len(docs)
-
-		// Delete the document
-		err = store.Delete(id, false)
+		// Delete a leaf document (no children)
+		err = store.Delete(universe.UnicodeEmoji.UUID, false)
 		if err != nil {
 			t.Fatalf("failed to delete document: %v", err)
 		}
 
 		// Verify deletion
-		docs, _ = store.List(nanostore.ListOptions{})
-		if len(docs) != countBefore-1 {
-			t.Errorf("document not deleted: expected %d, got %d", countBefore-1, len(docs))
+		remainingDocs, err := store.List(nanostore.ListOptions{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(remainingDocs) != initialCount-1 {
+			t.Errorf("expected %d documents after delete, got %d", initialCount-1, len(remainingDocs))
+		}
+
+		// Ensure the document is gone
+		docs, err := store.List(nanostore.ListOptions{
+			Filters: map[string]interface{}{
+				"uuid": universe.UnicodeEmoji.UUID,
+			},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(docs) != 0 {
+			t.Error("deleted document still exists")
 		}
 	})
 
-	t.Run("Invalidtypes.DimensionValue", func(t *testing.T) {
-		// Try to add with invalid status
-		_, err := store.Add("Invalid", map[string]interface{}{
+	// Reload for clean state
+	store, universe = testutil.LoadUniverse(t)
+
+	t.Run("InvalidDimensionValue", func(t *testing.T) {
+		// Try to add with invalid dimension value
+		_, err := store.Add("Invalid Task", map[string]interface{}{
 			"status": "invalid_status",
 		})
 		if err == nil {
-			t.Error("expected error for invalid dimension value")
+			t.Fatal("expected error for invalid dimension value, got nil")
+		}
+
+		// Try to update with invalid dimension value
+		err = store.Update(universe.ExerciseRoutine.UUID, nanostore.UpdateRequest{
+			Dimensions: map[string]interface{}{
+				"priority": "invalid_priority",
+			},
+		})
+		if err == nil {
+			t.Fatal("expected error for invalid dimension value, got nil")
 		}
 	})
-}
 
-func TestHierarchicalOperations(t *testing.T) {
-	// Create a temporary file
-	tmpfile, err := os.CreateTemp("", "test*.json")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = os.Remove(tmpfile.Name()) }()
-	_ = tmpfile.Close()
-
-	config := nanostore.Config{
-		Dimensions: []nanostore.DimensionConfig{
-			{
-				Name:     "parent",
-				Type:     nanostore.Hierarchical,
-				RefField: "parent_uuid",
-			},
-		},
-	}
-
-	store, err := nanostore.New(tmpfile.Name(), config)
-	if err != nil {
-		t.Fatalf("failed to create store: %v", err)
-	}
-	defer func() { _ = store.Close() }()
+	// Reload for clean state
+	store, universe = testutil.LoadUniverse(t)
 
 	t.Run("ParentChild", func(t *testing.T) {
-		// Add parent
-		parentID, err := store.Add("Parent", nil)
-		if err != nil {
-			t.Fatalf("failed to add parent: %v", err)
-		}
-
-		// Add children
-		child1ID, err := store.Add("Child 1", map[string]interface{}{
-			"parent_uuid": parentID,
+		// The fixture already has parent-child relationships
+		// Test that we can query children of a parent
+		children, err := store.List(nanostore.ListOptions{
+			Filters: map[string]interface{}{
+				"parent_id": universe.PersonalRoot.UUID,
+			},
 		})
 		if err != nil {
-			t.Fatalf("failed to add child 1: %v", err)
+			t.Fatal(err)
+		}
+		if len(children) == 0 {
+			t.Error("expected PersonalRoot to have children")
 		}
 
-		child2ID, _ := store.Add("Child 2", map[string]interface{}{
-			"parent_uuid": parentID,
-		})
-
-		// Try to delete parent without cascade
-		err = store.Delete(parentID, false)
+		// Try to delete a parent with children (should fail without cascade)
+		err = store.Delete(universe.PersonalRoot.UUID, false)
 		if err == nil {
-			t.Error("expected error when deleting parent without cascade")
+			t.Error("expected error when deleting parent with children without cascade")
 		}
 
-		// Delete parent with cascade
-		err = store.Delete(parentID, true)
+		// Delete with cascade should work
+		err = store.Delete(universe.WorkRoot.UUID, true)
 		if err != nil {
 			t.Fatalf("failed to delete parent with cascade: %v", err)
 		}
 
-		// Verify all were deleted
-		docs, _ := store.List(nanostore.ListOptions{})
-		if len(docs) != 0 {
-			t.Errorf("expected 0 documents after cascade delete, got %d", len(docs))
+		// Verify all WorkRoot children are gone
+		workChildren, err := store.List(nanostore.ListOptions{
+			Filters: map[string]interface{}{
+				"parent_id": universe.WorkRoot.UUID,
+			},
+		})
+		if err != nil {
+			t.Fatal(err)
 		}
-
-		// Verify children were deleted by checking they can't be found
-		for _, childID := range []string{child1ID, child2ID} {
-			found := false
-			for _, doc := range docs {
-				if doc.UUID == childID {
-					found = true
-					break
-				}
-			}
-			if found {
-				t.Errorf("child %s not deleted", childID)
-			}
+		if len(workChildren) != 0 {
+			t.Errorf("expected 0 children after cascade delete, found %d", len(workChildren))
 		}
 	})
 }

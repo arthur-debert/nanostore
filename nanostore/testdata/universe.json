@@ -1,0 +1,386 @@
+{
+  "documents": [
+    {
+      "uuid": "root-1",
+      "title": "Personal Tasks",
+      "body": "Root category for all personal tasks and activities",
+      "dimensions": {
+        "status": "active",
+        "priority": "high",
+        "category": "personal",
+        "activity": "active"
+      },
+      "created_at": "2024-01-01T10:00:00Z",
+      "updated_at": "2024-01-01T10:00:00Z"
+    },
+    {
+      "uuid": "root-2",
+      "title": "Work Projects",
+      "body": "Root category for work-related projects and tasks",
+      "dimensions": {
+        "status": "active",
+        "priority": "high",
+        "category": "work",
+        "activity": "active"
+      },
+      "created_at": "2024-01-01T10:00:00Z",
+      "updated_at": "2024-01-01T10:00:00Z"
+    },
+    {
+      "uuid": "root-3",
+      "title": "Archived Root",
+      "body": "A root that has been archived but has active children",
+      "dimensions": {
+        "status": "done",
+        "priority": "low",
+        "category": "other",
+        "activity": "archived"
+      },
+      "created_at": "2024-01-01T10:00:00Z",
+      "updated_at": "2024-01-01T10:00:00Z"
+    },
+    {
+      "uuid": "personal-1",
+      "title": "Buy groceries",
+      "body": "Weekly shopping list for household items",
+      "dimensions": {
+        "status": "pending",
+        "priority": "medium",
+        "category": "personal",
+        "activity": "active",
+        "parent_id": "root-1"
+      },
+      "created_at": "2024-01-01T11:00:00Z",
+      "updated_at": "2024-01-01T11:00:00Z"
+    },
+    {
+      "uuid": "personal-2",
+      "title": "Exercise routine",
+      "body": "Daily workout schedule and fitness goals",
+      "dimensions": {
+        "status": "active",
+        "priority": "high",
+        "category": "personal",
+        "activity": "active",
+        "parent_id": "root-1"
+      },
+      "created_at": "2024-01-01T11:00:00Z",
+      "updated_at": "2024-01-01T11:00:00Z"
+    },
+    {
+      "uuid": "personal-3",
+      "title": "Read book",
+      "body": "Finish reading the current novel",
+      "dimensions": {
+        "status": "done",
+        "priority": "low",
+        "category": "personal",
+        "activity": "active",
+        "parent_id": "root-1"
+      },
+      "created_at": "2024-01-01T11:00:00Z",
+      "updated_at": "2024-01-01T11:00:00Z"
+    },
+    {
+      "uuid": "work-1",
+      "title": "Team meeting",
+      "body": "Weekly sync with the development team",
+      "dimensions": {
+        "status": "pending",
+        "priority": "high",
+        "category": "work",
+        "activity": "active",
+        "parent_id": "root-2"
+      },
+      "created_at": "2024-01-01T12:00:00Z",
+      "updated_at": "2024-01-01T12:00:00Z"
+    },
+    {
+      "uuid": "work-2",
+      "title": "Code review",
+      "body": "Review pull requests from team members",
+      "dimensions": {
+        "status": "active",
+        "priority": "medium",
+        "category": "work",
+        "activity": "active",
+        "parent_id": "root-2"
+      },
+      "created_at": "2024-01-01T12:00:00Z",
+      "updated_at": "2024-01-01T12:00:00Z"
+    },
+    {
+      "uuid": "work-3",
+      "title": "Deploy to production",
+      "body": "Release version 2.0 to production servers",
+      "dimensions": {
+        "status": "done",
+        "priority": "high",
+        "category": "work",
+        "activity": "archived",
+        "parent_id": "root-2"
+      },
+      "created_at": "2024-01-01T12:00:00Z",
+      "updated_at": "2024-01-01T12:00:00Z"
+    },
+    {
+      "uuid": "grocery-1",
+      "title": "Milk",
+      "body": "2% organic milk, 1 gallon",
+      "dimensions": {
+        "status": "pending",
+        "priority": "high",
+        "category": "personal",
+        "activity": "active",
+        "parent_id": "personal-1"
+      },
+      "created_at": "2024-01-01T13:00:00Z",
+      "updated_at": "2024-01-01T13:00:00Z"
+    },
+    {
+      "uuid": "grocery-2",
+      "title": "Bread",
+      "body": "Whole wheat sandwich bread",
+      "dimensions": {
+        "status": "done",
+        "priority": "medium",
+        "category": "personal",
+        "activity": "active",
+        "parent_id": "personal-1"
+      },
+      "created_at": "2024-01-01T13:00:00Z",
+      "updated_at": "2024-01-01T13:00:00Z"
+    },
+    {
+      "uuid": "meeting-1",
+      "title": "Prepare agenda",
+      "body": "Create meeting agenda and share with team",
+      "dimensions": {
+        "status": "done",
+        "priority": "high",
+        "category": "work",
+        "activity": "active",
+        "parent_id": "work-1"
+      },
+      "created_at": "2024-01-01T14:00:00Z",
+      "updated_at": "2024-01-01T14:00:00Z"
+    },
+    {
+      "uuid": "meeting-2",
+      "title": "Update slides",
+      "body": "Update presentation slides with latest metrics",
+      "dimensions": {
+        "status": "active",
+        "priority": "medium",
+        "category": "work",
+        "activity": "active",
+        "parent_id": "work-1"
+      },
+      "created_at": "2024-01-01T14:00:00Z",
+      "updated_at": "2024-01-01T14:00:00Z"
+    },
+    {
+      "uuid": "archived-child-1",
+      "title": "Old task under archived root",
+      "body": "This task is active but under an archived parent",
+      "dimensions": {
+        "status": "active",
+        "priority": "low",
+        "category": "other",
+        "activity": "active",
+        "parent_id": "root-3"
+      },
+      "created_at": "2024-01-01T15:00:00Z",
+      "updated_at": "2024-01-01T15:00:00Z"
+    },
+    {
+      "uuid": "deep-1",
+      "title": "Level 3 task",
+      "body": "Three levels deep in hierarchy",
+      "dimensions": {
+        "status": "pending",
+        "priority": "low",
+        "category": "work",
+        "activity": "active",
+        "parent_id": "meeting-1"
+      },
+      "created_at": "2024-01-01T16:00:00Z",
+      "updated_at": "2024-01-01T16:00:00Z"
+    },
+    {
+      "uuid": "deep-2",
+      "title": "Level 4 task",
+      "body": "Four levels deep in hierarchy",
+      "dimensions": {
+        "status": "active",
+        "priority": "medium",
+        "category": "work",
+        "activity": "active",
+        "parent_id": "deep-1"
+      },
+      "created_at": "2024-01-01T17:00:00Z",
+      "updated_at": "2024-01-01T17:00:00Z"
+    },
+    {
+      "uuid": "deep-3",
+      "title": "Level 5 task",
+      "body": "Five levels deep - maximum nesting",
+      "dimensions": {
+        "status": "done",
+        "priority": "high",
+        "category": "work",
+        "activity": "active",
+        "parent_id": "deep-2"
+      },
+      "created_at": "2024-01-01T18:00:00Z",
+      "updated_at": "2024-01-01T18:00:00Z"
+    },
+    {
+      "uuid": "edge-empty",
+      "title": "",
+      "body": "Document with empty title for edge case testing",
+      "dimensions": {
+        "status": "pending",
+        "priority": "low",
+        "category": "other",
+        "activity": "active"
+      },
+      "created_at": "2024-01-01T19:00:00Z",
+      "updated_at": "2024-01-01T19:00:00Z"
+    },
+    {
+      "uuid": "edge-special",
+      "title": "Task with 'quotes' and \"double quotes\" and special!@#$%",
+      "body": "Testing special characters in title",
+      "dimensions": {
+        "status": "active",
+        "priority": "medium",
+        "category": "other",
+        "activity": "active"
+      },
+      "created_at": "2024-01-01T19:00:00Z",
+      "updated_at": "2024-01-01T19:00:00Z"
+    },
+    {
+      "uuid": "edge-unicode",
+      "title": "🚀 Launch project 💥",
+      "body": "Testing unicode emoji in title 🎉",
+      "dimensions": {
+        "status": "pending",
+        "priority": "high",
+        "category": "work",
+        "activity": "active"
+      },
+      "created_at": "2024-01-01T19:00:00Z",
+      "updated_at": "2024-01-01T19:00:00Z"
+    },
+    {
+      "uuid": "search-1",
+      "title": "Pack for trip",
+      "body": "Pack clothes and essentials for vacation",
+      "dimensions": {
+        "status": "pending",
+        "priority": "high",
+        "category": "personal",
+        "activity": "active"
+      },
+      "created_at": "2024-01-01T20:00:00Z",
+      "updated_at": "2024-01-01T20:00:00Z"
+    },
+    {
+      "uuid": "search-2",
+      "title": "Pack lunch",
+      "body": "Prepare lunch box for tomorrow",
+      "dimensions": {
+        "status": "done",
+        "priority": "medium",
+        "category": "personal",
+        "activity": "active"
+      },
+      "created_at": "2024-01-01T20:00:00Z",
+      "updated_at": "2024-01-01T20:00:00Z"
+    },
+    {
+      "uuid": "mixed-parent",
+      "title": "Parent with mixed child states",
+      "body": "This parent has children in different states",
+      "dimensions": {
+        "status": "active",
+        "priority": "medium",
+        "category": "work",
+        "activity": "active"
+      },
+      "created_at": "2024-01-01T21:00:00Z",
+      "updated_at": "2024-01-01T21:00:00Z"
+    },
+    {
+      "uuid": "mixed-child-1",
+      "title": "Active child",
+      "body": "Child in active state",
+      "dimensions": {
+        "status": "active",
+        "priority": "high",
+        "category": "work",
+        "activity": "active",
+        "parent_id": "mixed-parent"
+      },
+      "created_at": "2024-01-01T21:00:00Z",
+      "updated_at": "2024-01-01T21:00:00Z"
+    },
+    {
+      "uuid": "mixed-child-2",
+      "title": "Pending child",
+      "body": "Child in pending state",
+      "dimensions": {
+        "status": "pending",
+        "priority": "medium",
+        "category": "work",
+        "activity": "active",
+        "parent_id": "mixed-parent"
+      },
+      "created_at": "2024-01-01T21:00:00Z",
+      "updated_at": "2024-01-01T21:00:00Z"
+    },
+    {
+      "uuid": "mixed-child-3",
+      "title": "Done child",
+      "body": "Child in done state",
+      "dimensions": {
+        "status": "done",
+        "priority": "low",
+        "category": "work",
+        "activity": "active",
+        "parent_id": "mixed-parent"
+      },
+      "created_at": "2024-01-01T21:00:00Z",
+      "updated_at": "2024-01-01T21:00:00Z"
+    },
+    {
+      "uuid": "deleted-parent",
+      "title": "Deleted parent with active children",
+      "body": "This parent is deleted but has active children",
+      "dimensions": {
+        "status": "done",
+        "priority": "low",
+        "category": "other",
+        "activity": "deleted"
+      },
+      "created_at": "2024-01-01T22:00:00Z",
+      "updated_at": "2024-01-01T22:00:00Z"
+    },
+    {
+      "uuid": "orphan-1",
+      "title": "Active orphan",
+      "body": "Active child of deleted parent",
+      "dimensions": {
+        "status": "active",
+        "priority": "high",
+        "category": "other",
+        "activity": "active",
+        "parent_id": "deleted-parent"
+      },
+      "created_at": "2024-01-01T22:00:00Z",
+      "updated_at": "2024-01-01T22:00:00Z"
+    }
+  ]
+}

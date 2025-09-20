@@ -395,11 +395,81 @@
       "Dimensions": {
         "status": "inactive"
       }
+    },
+    {
+      "UUID": "a9d86659-26c7-4cce-9737-448372a1500e",
+      "SimpleID": "",
+      "Title": "Task 1",
+      "Body": "",
+      "CreatedAt": "2025-09-19T17:23:44.544855-03:00",
+      "UpdatedAt": "2025-09-19T17:23:44.544855-03:00",
+      "Dimensions": {
+        "_data.owner": "alice",
+        "_data.score": 95,
+        "priority": "high",
+        "status": "active"
+      }
+    },
+    {
+      "UUID": "c1a2c59c-5009-4eef-814e-3ba294fea9b6",
+      "SimpleID": "",
+      "Title": "Task 2",
+      "Body": "",
+      "CreatedAt": "2025-09-19T17:23:44.545567-03:00",
+      "UpdatedAt": "2025-09-19T17:23:44.545567-03:00",
+      "Dimensions": {
+        "_data.owner": "bob",
+        "_data.score": 75,
+        "priority": "medium",
+        "status": "pending"
+      }
+    },
+    {
+      "UUID": "5380e5ba-da85-4da6-ac1d-0cc9af2d9b5f",
+      "SimpleID": "",
+      "Title": "Task 3",
+      "Body": "",
+      "CreatedAt": "2025-09-19T17:23:44.545891-03:00",
+      "UpdatedAt": "2025-09-19T17:23:44.545891-03:00",
+      "Dimensions": {
+        "_data.owner": "alice",
+        "_data.score": 85,
+        "priority": "high",
+        "status": "active"
+      }
+    },
+    {
+      "UUID": "41cdcad3-2e3d-4061-93ec-f9a4b2d3c8f5",
+      "SimpleID": "",
+      "Title": "Task 4",
+      "Body": "",
+      "CreatedAt": "2025-09-19T17:23:44.546174-03:00",
+      "UpdatedAt": "2025-09-19T17:23:44.546174-03:00",
+      "Dimensions": {
+        "_data.owner": "charlie",
+        "_data.score": 60,
+        "priority": "low",
+        "status": "done"
+      }
+    },
+    {
+      "UUID": "93b45faa-2271-42ad-8c3d-680add503a12",
+      "SimpleID": "",
+      "Title": "Task 5",
+      "Body": "",
+      "CreatedAt": "2025-09-19T17:23:44.546423-03:00",
+      "UpdatedAt": "2025-09-19T17:23:44.546423-03:00",
+      "Dimensions": {
+        "_data.owner": "alice",
+        "_data.score": 90,
+        "priority": "medium",
+        "status": "active"
+      }
     }
   ],
   "metadata": {
     "version": "1.0",
     "created_at": "2025-09-18T14:41:52.644249-03:00",
-    "updated_at": "2025-09-18T16:12:39.082523-03:00"
+    "updated_at": "2025-09-19T17:23:44.546432-03:00"
   }
 }

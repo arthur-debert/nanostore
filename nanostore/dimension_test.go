@@ -1,5 +1,11 @@
 package nanostore_test
 
+// IMPORTANT: This test must follow the testing patterns established in:
+// nanostore/testutil/model_test.go
+//
+// EXCEPTION: This test validates utility functions and type conversions.
+// It doesn't require store operations or fixture data.
+
 import (
 	"testing"
 

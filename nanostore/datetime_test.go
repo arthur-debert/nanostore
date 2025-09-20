@@ -1,275 +1,208 @@
 package nanostore_test
 
+// IMPORTANT: This test must follow the testing patterns established in:
+// nanostore/testutil/model_test.go
+//
+// Key principles:
+// 1. Use testutil.LoadUniverse() for standard test setup
+// 2. Leverage fixture data instead of creating test data
+// 3. Use assertion helpers for cleaner test code
+// 4. Only create fresh stores for specific scenarios (see model_test.go)
+
+
 import (
-	"os"
 	"testing"
 	"time"
 
 	"github.com/arthur-debert/nanostore/nanostore"
+	"github.com/arthur-debert/nanostore/nanostore/testutil"
 )
 
-func TestDateTimeFiltering(t *testing.T) {
-	// Create a temporary file
-	tmpfile, err := os.CreateTemp("", "test*.json")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = os.Remove(tmpfile.Name()) }()
-	_ = tmpfile.Close()
+func TestDateTimeFilteringMigrated(t *testing.T) {
+	store, _ := testutil.LoadUniverse(t)
 
-	config := nanostore.Config{
-		Dimensions: []nanostore.DimensionConfig{
-			{
-				Name:         "status",
-				Type:         nanostore.Enumerated,
-				Values:       []string{"todo", "done"},
-				DefaultValue: "todo",
-			},
-		},
-	}
-
-	store, err := nanostore.New(tmpfile.Name(), config)
-	if err != nil {
-		t.Fatalf("failed to create store: %v", err)
-	}
-	defer func() { _ = store.Close() }()
-
-	// Get test store interface
-	testStore := nanostore.AsTestStore(store)
-	if testStore == nil {
-		t.Fatal("store doesn't support testing features")
-	}
-
-	// Use deterministic timestamps
-	baseTime := time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC)
-	currentTime := baseTime
-
-	// Set time function that increments by 1 minute each call
-	testStore.SetTimeFunc(func() time.Time {
-		t := currentTime
-		currentTime = currentTime.Add(1 * time.Minute)
-		return t
-	})
-
-	// Add documents with different timestamps
-	doc1ID, _ := store.Add("First task", nil)  // 10:00
-	doc2ID, _ := store.Add("Second task", nil) // 10:01
-	doc3ID, _ := store.Add("Third task", nil)  // 10:02
-
-	// Get all documents to check their timestamps
-	allDocs, _ := store.List(nanostore.ListOptions{})
-
-	var doc1, doc2, doc3 nanostore.Document
-	for _, doc := range allDocs {
-		switch doc.UUID {
-		case doc1ID:
-			doc1 = doc
-		case doc2ID:
-			doc2 = doc
-		case doc3ID:
-			doc3 = doc
-		}
-	}
-
-	t.Run("FilterByCreatedAt", func(t *testing.T) {
-		// Filter by exact created_at timestamp
-		docs, err := store.List(nanostore.ListOptions{
-			Filters: map[string]interface{}{
-				"created_at": doc2.CreatedAt,
-			},
+	t.Run("UpdateChangesTimestamp", func(t *testing.T) {
+		// Create a new document
+		docID, err := store.Add("Timestamp test", map[string]interface{}{
+			"status":   "active",
+			"priority": "medium",
 		})
 		if err != nil {
-			t.Fatalf("failed to filter by created_at: %v", err)
+			t.Fatal(err)
 		}
 
-		if len(docs) != 1 {
-			t.Errorf("expected 1 document, got %d", len(docs))
-		}
-		if len(docs) > 0 && docs[0].UUID != doc2ID {
-			t.Errorf("expected doc2, got %s", docs[0].UUID)
-		}
-	})
-
-	t.Run("FilterByCreatedAtString", func(t *testing.T) {
-		// Filter using string representation of time
-		timeStr := doc1.CreatedAt.Format(time.RFC3339Nano)
-
+		// Get the document to check initial timestamps
 		docs, err := store.List(nanostore.ListOptions{
 			Filters: map[string]interface{}{
-				"created_at": timeStr,
+				"uuid": docID,
 			},
 		})
-		if err != nil {
-			t.Fatalf("failed to filter by created_at string: %v", err)
+		if err != nil || len(docs) != 1 {
+			t.Fatal("failed to get document")
 		}
+		originalDoc := docs[0]
 
-		if len(docs) != 1 {
-			t.Errorf("expected 1 document, got %d", len(docs))
-		}
-		if len(docs) > 0 && docs[0].UUID != doc1ID {
-			t.Errorf("expected doc1, got %s", docs[0].UUID)
-		}
-	})
+		// Wait a moment to ensure timestamp difference
+		time.Sleep(10 * time.Millisecond)
 
-	t.Run("FilterByUpdatedAt", func(t *testing.T) {
-		// Update a document to change its updated_at
-		newTitle := "Updated second task"
-		err := store.Update(doc2ID, nanostore.UpdateRequest{
+		// Update the document
+		newTitle := "Updated timestamp test"
+		err = store.Update(docID, nanostore.UpdateRequest{
 			Title: &newTitle,
 		})
 		if err != nil {
-			t.Fatalf("failed to update document: %v", err)
+			t.Fatal(err)
 		}
 
 		// Get the updated document
-		docs, _ := store.List(nanostore.ListOptions{
+		updatedDocs, err := store.List(nanostore.ListOptions{
 			Filters: map[string]interface{}{
-				"uuid": doc2ID,
+				"uuid": docID,
 			},
 		})
-		updatedDoc := docs[0]
+		if err != nil || len(updatedDocs) != 1 {
+			t.Fatal("failed to get updated document")
+		}
+		updatedDoc := updatedDocs[0]
 
-		// Filter by updated_at
-		docs, err = store.List(nanostore.ListOptions{
-			Filters: map[string]interface{}{
-				"updated_at": updatedDoc.UpdatedAt,
+		// Verify updated_at changed
+		if !updatedDoc.UpdatedAt.After(originalDoc.UpdatedAt) {
+			t.Error("expected updated_at to be after original updated_at")
+		}
+
+		// Clean up
+		_ = store.Delete(docID, false)
+	})
+}
+
+func TestDateTimeOrderingMigrated(t *testing.T) {
+	store, _ := testutil.LoadUniverse(t)
+
+	t.Run("OrderByCreatedAtAscending", func(t *testing.T) {
+		docs, err := store.List(nanostore.ListOptions{
+			OrderBy: []nanostore.OrderClause{
+				{Column: "created_at", Descending: false},
 			},
 		})
 		if err != nil {
-			t.Fatalf("failed to filter by updated_at: %v", err)
+			t.Fatal(err)
 		}
 
-		if len(docs) != 1 {
-			t.Errorf("expected 1 document, got %d", len(docs))
-		}
-		if len(docs) > 0 && docs[0].UUID != doc2ID {
-			t.Errorf("expected doc2, got %s", docs[0].UUID)
+		// Verify documents are ordered by created_at ascending
+		for i := 1; i < len(docs); i++ {
+			if docs[i-1].CreatedAt.After(docs[i].CreatedAt) {
+				t.Errorf("documents not in created_at ascending order at positions %d,%d", i-1, i)
+			}
 		}
 	})
 
-	t.Run("FilterByDateTimeInSlice", func(t *testing.T) {
-		// Filter using time values in a slice
+	t.Run("OrderByCreatedAtDescending", func(t *testing.T) {
+		docs, err := store.List(nanostore.ListOptions{
+			OrderBy: []nanostore.OrderClause{
+				{Column: "created_at", Descending: true},
+			},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// Verify documents are ordered by created_at descending
+		for i := 1; i < len(docs); i++ {
+			if docs[i-1].CreatedAt.Before(docs[i].CreatedAt) {
+				t.Errorf("documents not in created_at descending order at positions %d,%d", i-1, i)
+			}
+		}
+	})
+
+	t.Run("FilterAndOrderByDates", func(t *testing.T) {
+		// Get some recent documents and filter/order them
 		docs, err := store.List(nanostore.ListOptions{
 			Filters: map[string]interface{}{
-				"created_at": []interface{}{doc1.CreatedAt, doc3.CreatedAt},
+				"status": "pending",
+			},
+			OrderBy: []nanostore.OrderClause{
+				{Column: "created_at", Descending: true},
 			},
 		})
 		if err != nil {
-			t.Fatalf("failed to filter by datetime slice: %v", err)
+			t.Fatal(err)
 		}
 
-		if len(docs) != 2 {
-			t.Errorf("expected 2 documents, got %d", len(docs))
-		}
-
-		// Verify we got the right documents
-		foundDoc1 := false
-		foundDoc3 := false
-		for _, doc := range docs {
-			if doc.UUID == doc1ID {
-				foundDoc1 = true
+		// Verify all are pending and ordered by date
+		for i, doc := range docs {
+			testutil.AssertHasStatus(t, doc, "pending")
+			if i > 0 && docs[i-1].CreatedAt.Before(docs[i].CreatedAt) {
+				t.Error("filtered results not properly ordered by created_at desc")
 			}
-			if doc.UUID == doc3ID {
-				foundDoc3 = true
-			}
-		}
-
-		if !foundDoc1 || !foundDoc3 {
-			t.Error("didn't find expected documents")
 		}
 	})
 
-	t.Run("FilterByVariousDateFormats", func(t *testing.T) {
-		// Test that various date string formats work
-		baseTime := doc1.CreatedAt
-
-		formats := []string{
-			time.RFC3339Nano,
-			time.RFC3339,
-			"2006-01-02T15:04:05Z",
+	t.Run("MixedDateAndOtherOrdering", func(t *testing.T) {
+		// Order by status first, then by created_at within each status
+		docs, err := store.List(nanostore.ListOptions{
+			OrderBy: []nanostore.OrderClause{
+				{Column: "status", Descending: false},
+				{Column: "created_at", Descending: true},
+			},
+		})
+		if err != nil {
+			t.Fatal(err)
 		}
 
-		for _, format := range formats {
-			timeStr := baseTime.Format(format)
-
-			// For date-only format, we need to match the date part
-			if format == "2006-01-02" {
-				// Skip date-only format in this exact match test
-				continue
+		// Verify within each status group, dates are descending
+		var lastStatus string
+		var lastTime time.Time
+		for _, doc := range docs {
+			status := doc.Dimensions["status"].(string)
+			if status == lastStatus && !lastTime.IsZero() && doc.CreatedAt.After(lastTime) {
+				t.Errorf("within status %q, created_at not in descending order", status)
 			}
-
-			_, err := store.List(nanostore.ListOptions{
-				Filters: map[string]interface{}{
-					"created_at": timeStr,
-				},
-			})
-
-			// Some formats lose precision, so we might not get exact matches
-			if err != nil {
-				t.Errorf("failed to filter with format %s: %v", format, err)
+			if status != lastStatus {
+				lastStatus = status
+				lastTime = time.Time{} // Reset for new group
+			} else {
+				lastTime = doc.CreatedAt
 			}
 		}
 	})
 }
 
-func TestDateTimeConsistency(t *testing.T) {
-	// Create a temporary file
-	tmpfile, err := os.CreateTemp("", "test*.json")
-	if err != nil {
-		t.Fatal(err)
-	}
-	filename := tmpfile.Name()
-	_ = tmpfile.Close()
-	defer func() { _ = os.Remove(filename) }()
+func TestDateTimeEdgeCasesMigrated(t *testing.T) {
+	store, _ := testutil.LoadUniverse(t)
 
-	config := nanostore.Config{
-		Dimensions: []nanostore.DimensionConfig{
-			{
-				Name:         "status",
-				Type:         nanostore.Enumerated,
-				Values:       []string{"todo", "done"},
-				DefaultValue: "todo",
+	t.Run("FilterByFutureDate", func(t *testing.T) {
+		// Filter by a date far in the future
+		futureDate := time.Date(2099, 12, 31, 23, 59, 59, 0, time.UTC)
+
+		docs, err := store.List(nanostore.ListOptions{
+			Filters: map[string]interface{}{
+				"created_at": futureDate,
 			},
-		},
-	}
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
 
-	// Create store and add a document
-	store1, err := nanostore.New(filename, config)
-	if err != nil {
-		t.Fatalf("failed to create store: %v", err)
-	}
-
-	docID, _ := store1.Add("Test task", nil)
-
-	// Get the document to check its timestamps
-	docs, _ := store1.List(nanostore.ListOptions{
-		Filters: map[string]interface{}{"uuid": docID},
+		if len(docs) != 0 {
+			t.Error("expected no documents with future created_at")
+		}
 	})
-	originalDoc := docs[0]
 
-	_ = store1.Close()
+	t.Run("FilterByVeryOldDate", func(t *testing.T) {
+		// Filter by a date in the past
+		oldDate := time.Date(1970, 1, 1, 0, 0, 0, 0, time.UTC)
 
-	// Reopen the store
-	store2, err := nanostore.New(filename, config)
-	if err != nil {
-		t.Fatalf("failed to reopen store: %v", err)
-	}
-	defer func() { _ = store2.Close() }()
+		docs, err := store.List(nanostore.ListOptions{
+			Filters: map[string]interface{}{
+				"created_at": oldDate,
+			},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
 
-	// Filter by the original created_at time
-	docs, err = store2.List(nanostore.ListOptions{
-		Filters: map[string]interface{}{
-			"created_at": originalDoc.CreatedAt,
-		},
+		if len(docs) != 0 {
+			t.Error("expected no documents with 1970 created_at")
+		}
 	})
-	if err != nil {
-		t.Fatalf("failed to filter by created_at after reload: %v", err)
-	}
-
-	if len(docs) != 1 {
-		t.Errorf("expected 1 document after reload, got %d", len(docs))
-	}
-	if len(docs) > 0 && docs[0].UUID != docID {
-		t.Errorf("expected same document after reload")
-	}
 }

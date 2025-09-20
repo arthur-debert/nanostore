@@ -1,21 +1,31 @@
 package nanostore_test
 
+// IMPORTANT: This test must follow the testing patterns established in:
+// nanostore/testutil/model_test.go
+//
+// Key principles:
+// 1. Use testutil.LoadUniverse() for standard test setup
+// 2. Leverage fixture data instead of creating test data
+// 3. Use assertion helpers for cleaner test code
+// 4. Only create fresh stores for specific scenarios (see model_test.go)
+
 import (
 	"os"
 	"testing"
 
 	"github.com/arthur-debert/nanostore/nanostore"
+	"github.com/arthur-debert/nanostore/nanostore/testutil"
 )
 
-// TestTask is a test type for typed store tests
-type TestTask struct {
+// TestTaskMigrated is a test type for typed store tests
+type TestTaskMigrated struct {
 	nanostore.Document
 	Status   string `values:"todo,done" default:"todo"`
 	Priority string `values:"low,high" default:"low"`
 }
 
-func TestTypedStoreUpdateWithSmartID(t *testing.T) {
-	// Create a temporary file
+func TestTypedStoreUpdateWithSmartIDMigrated(t *testing.T) {
+	// Create a temporary file for typed store
 	tmpfile, err := os.CreateTemp("", "test*.json")
 	if err != nil {
 		t.Fatal(err)
@@ -23,14 +33,14 @@ func TestTypedStoreUpdateWithSmartID(t *testing.T) {
 	defer func() { _ = os.Remove(tmpfile.Name()) }()
 	_ = tmpfile.Close()
 
-	store, err := nanostore.NewFromType[TestTask](tmpfile.Name())
+	store, err := nanostore.NewFromType[TestTaskMigrated](tmpfile.Name())
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() { _ = store.Close() }()
 
 	// Create a task
-	uuid, err := store.Create("Test Task", &TestTask{
+	uuid, err := store.Create("Test Task", &TestTaskMigrated{
 		Status:   "todo",
 		Priority: "high",
 	})
@@ -48,53 +58,56 @@ func TestTypedStoreUpdateWithSmartID(t *testing.T) {
 	}
 	simpleID := tasks[0].SimpleID
 
-	// Test 1: Update using UUID should still work
-	err = store.Update(uuid, &TestTask{
-		Document: nanostore.Document{Title: "Updated via UUID"},
-		Status:   "done",
-		Priority: "high",
+	t.Run("UpdateUsingUUID", func(t *testing.T) {
+		err = store.Update(uuid, &TestTaskMigrated{
+			Document: nanostore.Document{Title: "Updated via UUID"},
+			Status:   "done",
+			Priority: "high",
+		})
+		if err != nil {
+			t.Errorf("Update with UUID failed: %v", err)
+		}
+
+		// Verify update
+		task, err := store.Get(uuid)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if task.Title != "Updated via UUID" || task.Status != "done" {
+			t.Errorf("expected updated values, got title=%q status=%q", task.Title, task.Status)
+		}
 	})
-	if err != nil {
-		t.Errorf("Update with UUID failed: %v", err)
-	}
 
-	// Verify update
-	task, err := store.Get(uuid)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if task.Title != "Updated via UUID" || task.Status != "done" {
-		t.Errorf("expected updated values, got title=%q status=%q", task.Title, task.Status)
-	}
+	t.Run("UpdateUsingSimpleID", func(t *testing.T) {
+		err = store.Update(simpleID, &TestTaskMigrated{
+			Document: nanostore.Document{Title: "Updated via SimpleID"},
+			Status:   "todo",
+			Priority: "low",
+		})
+		if err != nil {
+			t.Errorf("Update with SimpleID failed: %v", err)
+		}
 
-	// Test 2: Update using SimpleID should work
-	err = store.Update(simpleID, &TestTask{
-		Document: nanostore.Document{Title: "Updated via SimpleID"},
-		Status:   "todo",
-		Priority: "low",
+		// Verify update
+		task, err := store.Get(simpleID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if task.Title != "Updated via SimpleID" || task.Status != "todo" || task.Priority != "low" {
+			t.Errorf("expected updated values, got title=%q status=%q priority=%q", task.Title, task.Status, task.Priority)
+		}
 	})
-	if err != nil {
-		t.Errorf("Update with SimpleID failed: %v", err)
-	}
 
-	// Verify update
-	task, err = store.Get(simpleID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if task.Title != "Updated via SimpleID" || task.Status != "todo" || task.Priority != "low" {
-		t.Errorf("expected updated values, got title=%q status=%q priority=%q", task.Title, task.Status, task.Priority)
-	}
-
-	// Test 3: Update with invalid ID should fail
-	err = store.Update("invalid-id", &TestTask{})
-	if err == nil {
-		t.Error("expected error for invalid ID, got nil")
-	}
+	t.Run("UpdateWithInvalidID", func(t *testing.T) {
+		err = store.Update("invalid-id", &TestTaskMigrated{})
+		if err == nil {
+			t.Error("expected error for invalid ID, got nil")
+		}
+	})
 }
 
-func TestTypedStoreDeleteWithSmartID(t *testing.T) {
-	// Create a temporary file
+func TestTypedStoreDeleteWithSmartIDMigrated(t *testing.T) {
+	// Create a temporary file for typed store
 	tmpfile, err := os.CreateTemp("", "test*.json")
 	if err != nil {
 		t.Fatal(err)
@@ -102,102 +115,155 @@ func TestTypedStoreDeleteWithSmartID(t *testing.T) {
 	defer func() { _ = os.Remove(tmpfile.Name()) }()
 	_ = tmpfile.Close()
 
-	store, err := nanostore.NewFromType[TestTask](tmpfile.Name())
+	store, err := nanostore.NewFromType[TestTaskMigrated](tmpfile.Name())
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() { _ = store.Close() }()
 
-	// Create tasks
-	uuid1, err := store.Create("Task 1", &TestTask{
-		Status:   "todo",
-		Priority: "high",
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	_, err = store.Create("Task 2", &TestTask{
-		Status:   "done",
-		Priority: "low",
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Get all tasks to find SimpleIDs
-	tasks, err := store.Query().Find()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(tasks) != 2 {
-		t.Fatalf("expected 2 tasks, got %d", len(tasks))
-	}
-
-	// Find the simple ID for task 1
-	var simpleID string
-	for _, task := range tasks {
-		if task.UUID == uuid1 {
-			simpleID = task.SimpleID
-			break
+	t.Run("DeleteUsingUUID", func(t *testing.T) {
+		// Create a task
+		uuid, err := store.Create("Task to delete by UUID", &TestTaskMigrated{
+			Status:   "todo",
+			Priority: "high",
+		})
+		if err != nil {
+			t.Fatal(err)
 		}
-	}
 
-	// Test 1: Delete using UUID should work
-	err = store.Delete(uuid1, false)
-	if err != nil {
-		t.Errorf("Delete with UUID failed: %v", err)
-	}
-
-	// Verify deletion
-	tasks, err = store.Query().Find()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(tasks) != 1 {
-		t.Errorf("expected 1 task after delete, got %d", len(tasks))
-	}
-
-	// Re-create task for next test
-	_, err = store.Create("Task 1", &TestTask{
-		Status:   "todo",
-		Priority: "high",
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Get the new simple ID
-	tasks, err = store.Query().Find()
-	if err != nil {
-		t.Fatal(err)
-	}
-	// Find the task we just created (it should have a different simple ID now)
-	for _, task := range tasks {
-		if task.Title == "Task 1" {
-			simpleID = task.SimpleID
-			break
+		// Verify task exists
+		tasks, err := store.Query().Find()
+		if err != nil {
+			t.Fatal(err)
 		}
-	}
+		initialCount := len(tasks)
 
-	// Test 2: Delete using SimpleID should work
-	err = store.Delete(simpleID, false)
-	if err != nil {
-		t.Errorf("Delete with SimpleID failed: %v", err)
-	}
+		// Delete using UUID
+		err = store.Delete(uuid, false)
+		if err != nil {
+			t.Errorf("Delete with UUID failed: %v", err)
+		}
 
-	// Verify deletion
-	tasks, err = store.Query().Find()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(tasks) != 1 {
-		t.Errorf("expected 1 task after delete, got %d", len(tasks))
-	}
+		// Verify deletion
+		tasks, err = store.Query().Find()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(tasks) != initialCount-1 {
+			t.Errorf("expected %d tasks after delete, got %d", initialCount-1, len(tasks))
+		}
+	})
 
-	// Test 3: Delete with invalid ID should fail
-	err = store.Delete("invalid-id", false)
-	if err == nil {
-		t.Error("expected error for invalid ID, got nil")
-	}
+	t.Run("DeleteUsingSimpleID", func(t *testing.T) {
+		// Create a task
+		uuid, err := store.Create("Task to delete by SimpleID", &TestTaskMigrated{
+			Status:   "done",
+			Priority: "low",
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// Get the simple ID
+		tasks, err := store.Query().Find()
+		if err != nil {
+			t.Fatal(err)
+		}
+		var simpleID string
+		for _, task := range tasks {
+			if task.UUID == uuid {
+				simpleID = task.SimpleID
+				break
+			}
+		}
+		if simpleID == "" {
+			t.Fatal("could not find SimpleID for created task")
+		}
+		initialCount := len(tasks)
+
+		// Delete using SimpleID
+		err = store.Delete(simpleID, false)
+		if err != nil {
+			t.Errorf("Delete with SimpleID failed: %v", err)
+		}
+
+		// Verify deletion
+		tasks, err = store.Query().Find()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(tasks) != initialCount-1 {
+			t.Errorf("expected %d tasks after delete, got %d", initialCount-1, len(tasks))
+		}
+	})
+
+	t.Run("DeleteWithInvalidID", func(t *testing.T) {
+		err := store.Delete("invalid-id", false)
+		if err == nil {
+			t.Error("expected error for invalid ID, got nil")
+		}
+	})
+}
+
+// TestTypedStoreSmartIDWithFixtureMigrated tests typed store behavior with fixture data
+func TestTypedStoreSmartIDWithFixtureMigrated(t *testing.T) {
+	// Load fixture to verify smart IDs work consistently
+	store, universe := testutil.LoadUniverse(t)
+
+	t.Run("VerifySimpleIDsExist", func(t *testing.T) {
+		// Get document by UUID first
+		docs, err := store.List(nanostore.ListOptions{
+			Filters: map[string]interface{}{
+				"uuid": universe.TeamMeeting.UUID,
+			},
+		})
+		if err != nil || len(docs) != 1 {
+			t.Fatal("failed to get TeamMeeting")
+		}
+
+		simpleID := docs[0].SimpleID
+		if simpleID == "" {
+			t.Error("expected SimpleID to be populated")
+		}
+
+		// Verify SimpleID is populated (format may vary based on implementation)
+		t.Logf("TeamMeeting SimpleID: %q", simpleID)
+	})
+
+	t.Run("UpdateBySimpleID", func(t *testing.T) {
+		// Get a document with known parent to test hierarchical SimpleID
+		docs, err := store.List(nanostore.ListOptions{
+			Filters: map[string]interface{}{
+				"uuid": universe.CodeReview.UUID,
+			},
+		})
+		if err != nil || len(docs) != 1 {
+			t.Fatal("failed to get CodeReview")
+		}
+
+		simpleID := docs[0].SimpleID
+		newTitle := "Code Review Updated"
+
+		// Update using SimpleID
+		err = store.Update(simpleID, nanostore.UpdateRequest{
+			Title: &newTitle,
+		})
+		if err != nil {
+			t.Fatalf("failed to update by SimpleID: %v", err)
+		}
+
+		// Verify update by getting with UUID
+		updatedDocs, err := store.List(nanostore.ListOptions{
+			Filters: map[string]interface{}{
+				"uuid": universe.CodeReview.UUID,
+			},
+		})
+		if err != nil || len(updatedDocs) != 1 {
+			t.Fatal("failed to get updated doc")
+		}
+
+		if updatedDocs[0].Title != newTitle {
+			t.Errorf("expected title %q, got %q", newTitle, updatedDocs[0].Title)
+		}
+	})
 }

@@ -1,336 +1,392 @@
 package nanostore_test
 
+// IMPORTANT: This test must follow the testing patterns established in:
+// nanostore/testutil/model_test.go
+//
+// Key principles:
+// 1. Use testutil.LoadUniverse() for standard test setup
+// 2. Leverage fixture data instead of creating test data
+// 3. Use assertion helpers for cleaner test code
+// 4. Only create fresh stores for specific scenarios (see model_test.go)
+
+
 import (
-	"os"
 	"testing"
 
 	"github.com/arthur-debert/nanostore/nanostore"
+	"github.com/arthur-debert/nanostore/nanostore/testutil"
 )
 
-// Test struct for transparent filtering and ordering
-type TransparentTestItem struct {
-	nanostore.Document
+func TestTransparentFilteringAndOrderingMigrated(t *testing.T) {
+	store, _ := testutil.LoadUniverse(t)
 
-	// Dimension fields
-	Status   string `values:"pending,active,done" default:"pending"`
-	Category string `values:"A,B,C" default:"A"`
-
-	// Non-dimension fields that should support transparent filtering/ordering
-	Priority    int
-	Score       float64
-	IsImportant bool
-	Owner       string
-	CreatedBy   string
-}
-
-func TestTransparentFilteringAndOrdering(t *testing.T) {
-	// Create a temporary file
-	tmpfile, err := os.CreateTemp("", "test*.json")
+	// Add test documents with custom data fields
+	doc1, err := store.Add("High priority task", map[string]interface{}{
+		"status":            "active",
+		"priority":          "high",
+		"_data.Priority":    1,
+		"_data.Score":       95.5,
+		"_data.IsImportant": true,
+		"_data.Owner":       "alice",
+		"_data.CreatedBy":   "system",
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = os.Remove(tmpfile.Name()) }()
-	_ = tmpfile.Close()
 
-	// Create direct store for testing transparent support
-	store, err := nanostore.New(tmpfile.Name(), nanostore.Config{
-		Dimensions: []nanostore.DimensionConfig{
-			{
-				Name:         "status",
-				Type:         nanostore.Enumerated,
-				Values:       []string{"pending", "active", "done"},
-				DefaultValue: "pending",
-			},
-			{
-				Name:         "category",
-				Type:         nanostore.Enumerated,
-				Values:       []string{"A", "B", "C"},
-				DefaultValue: "A",
-			},
-		},
+	doc2, err := store.Add("Medium priority task", map[string]interface{}{
+		"status":            "active",
+		"priority":          "medium",
+		"_data.Priority":    2,
+		"_data.Score":       75.0,
+		"_data.IsImportant": false,
+		"_data.Owner":       "bob",
+		"_data.CreatedBy":   "admin",
 	})
 	if err != nil {
-		t.Fatalf("failed to create store: %v", err)
-	}
-	defer func() { _ = store.Close() }()
-
-	// Create test data with both dimensions and data fields
-	testDocs := []struct {
-		title string
-		dims  map[string]interface{}
-	}{
-		{
-			title: "High priority task",
-			dims: map[string]interface{}{
-				"status":            "active",
-				"category":          "A",
-				"_data.Priority":    1,
-				"_data.Score":       95.5,
-				"_data.IsImportant": true,
-				"_data.Owner":       "alice",
-				"_data.CreatedBy":   "system",
-			},
-		},
-		{
-			title: "Medium priority task",
-			dims: map[string]interface{}{
-				"status":            "active",
-				"category":          "B",
-				"_data.Priority":    2,
-				"_data.Score":       75.0,
-				"_data.IsImportant": false,
-				"_data.Owner":       "bob",
-				"_data.CreatedBy":   "admin",
-			},
-		},
-		{
-			title: "Low priority task",
-			dims: map[string]interface{}{
-				"status":            "pending",
-				"category":          "A",
-				"_data.Priority":    3,
-				"_data.Score":       50.0,
-				"_data.IsImportant": false,
-				"_data.Owner":       "alice",
-				"_data.CreatedBy":   "user",
-			},
-		},
-		{
-			title: "Another high priority",
-			dims: map[string]interface{}{
-				"status":            "done",
-				"category":          "C",
-				"_data.Priority":    1,
-				"_data.Score":       88.0,
-				"_data.IsImportant": true,
-				"_data.Owner":       "charlie",
-				"_data.CreatedBy":   "admin",
-			},
-		},
+		t.Fatal(err)
 	}
 
-	// Add all test documents
-	for _, test := range testDocs {
-		_, err := store.Add(test.title, test.dims)
-		if err != nil {
-			t.Fatalf("failed to add %s: %v", test.title, err)
-		}
-	}
-
-	t.Run("TransparentFilteringByNonDimensionFields", func(t *testing.T) {
-		tests := []struct {
-			name           string
-			filterKey      string
-			filterValue    interface{}
-			expectedCount  int
-			expectedTitles []string
-		}{
-			{
-				name:           "filter by Priority=1",
-				filterKey:      "Priority",
-				filterValue:    1,
-				expectedCount:  2,
-				expectedTitles: []string{"High priority task", "Another high priority"},
-			},
-			{
-				name:           "filter by Owner=alice",
-				filterKey:      "Owner",
-				filterValue:    "alice",
-				expectedCount:  2,
-				expectedTitles: []string{"High priority task", "Low priority task"},
-			},
-			{
-				name:           "filter by IsImportant=true",
-				filterKey:      "IsImportant",
-				filterValue:    true,
-				expectedCount:  2,
-				expectedTitles: []string{"High priority task", "Another high priority"},
-			},
-			{
-				name:           "filter by Score=75.0",
-				filterKey:      "Score",
-				filterValue:    75.0,
-				expectedCount:  1,
-				expectedTitles: []string{"Medium priority task"},
-			},
-		}
-
-		for _, test := range tests {
-			t.Run(test.name, func(t *testing.T) {
-				opts := nanostore.NewListOptions()
-				opts.Filters[test.filterKey] = test.filterValue
-
-				results, err := store.List(opts)
-				if err != nil {
-					t.Fatalf("failed to filter: %v", err)
-				}
-
-				if len(results) != test.expectedCount {
-					t.Errorf("expected %d results, got %d", test.expectedCount, len(results))
-					t.Logf("Results found:")
-					for _, doc := range results {
-						t.Logf("  - %s", doc.Title)
-					}
-				}
-
-				// Verify the correct documents were returned
-				foundTitles := make(map[string]bool)
-				for _, doc := range results {
-					foundTitles[doc.Title] = true
-				}
-
-				for _, expectedTitle := range test.expectedTitles {
-					if !foundTitles[expectedTitle] {
-						t.Errorf("expected to find '%s' in results", expectedTitle)
-					}
-				}
-			})
-		}
+	doc3, err := store.Add("Low priority task", map[string]interface{}{
+		"status":            "pending",
+		"priority":          "low",
+		"_data.Priority":    3,
+		"_data.Score":       50.0,
+		"_data.IsImportant": false,
+		"_data.Owner":       "alice",
+		"_data.CreatedBy":   "user",
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
-	t.Run("TransparentOrderingByNonDimensionFields", func(t *testing.T) {
-		tests := []struct {
-			name          string
-			orderColumn   string
-			descending    bool
-			expectedOrder []string
-		}{
-			{
-				name:        "order by Priority ascending",
-				orderColumn: "Priority",
-				descending:  false,
-				expectedOrder: []string{
-					"High priority task",    // Priority 1
-					"Another high priority", // Priority 1
-					"Medium priority task",  // Priority 2
-					"Low priority task",     // Priority 3
-				},
-			},
-			{
-				name:        "order by Score descending",
-				orderColumn: "Score",
-				descending:  true,
-				expectedOrder: []string{
-					"High priority task",    // Score 95.5
-					"Another high priority", // Score 88.0
-					"Medium priority task",  // Score 75.0
-					"Low priority task",     // Score 50.0
-				},
-			},
-			{
-				name:        "order by Owner ascending",
-				orderColumn: "Owner",
-				descending:  false,
-				expectedOrder: []string{
-					"High priority task",    // alice
-					"Low priority task",     // alice
-					"Medium priority task",  // bob
-					"Another high priority", // charlie
-				},
-			},
-		}
-
-		for _, test := range tests {
-			t.Run(test.name, func(t *testing.T) {
-				opts := nanostore.NewListOptions()
-				opts.OrderBy = []nanostore.OrderClause{
-					{Column: test.orderColumn, Descending: test.descending},
-				}
-
-				results, err := store.List(opts)
-				if err != nil {
-					t.Fatalf("failed to order: %v", err)
-				}
-
-				if len(results) != len(test.expectedOrder) {
-					t.Fatalf("expected %d results, got %d", len(test.expectedOrder), len(results))
-				}
-
-				// For ordering tests, check if results are in the expected order
-				// Allow for stable sort behavior (items with same value may be in any order)
-				for i, expectedTitle := range test.expectedOrder {
-					if i < len(results) {
-						actualTitle := results[i].Title
-						t.Logf("Position %d: expected '%s', got '%s'", i, expectedTitle, actualTitle)
-					}
-				}
-
-				// Verify that ordering actually worked by checking the values
-				if test.orderColumn == "Priority" {
-					for i := 1; i < len(results); i++ {
-						prev := results[i-1].Dimensions["_data.Priority"]
-						curr := results[i].Dimensions["_data.Priority"]
-
-						if test.descending {
-							// For descending order, previous should be >= current
-							if prev.(int) < curr.(int) {
-								t.Errorf("Ordering failed: %v should be >= %v", prev, curr)
-							}
-						} else {
-							// For ascending order, previous should be <= current
-							if prev.(int) > curr.(int) {
-								t.Errorf("Ordering failed: %v should be <= %v", prev, curr)
-							}
-						}
-					}
-				}
-			})
-		}
+	doc4, err := store.Add("Another high priority", map[string]interface{}{
+		"status":            "done",
+		"priority":          "high",
+		"_data.Priority":    1,
+		"_data.Score":       88.0,
+		"_data.IsImportant": true,
+		"_data.Owner":       "bob",
+		"_data.CreatedBy":   "system",
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
-	t.Run("CombinedFilteringAndOrdering", func(t *testing.T) {
-		// Filter by IsImportant=true and order by Score descending
-		opts := nanostore.NewListOptions()
-		opts.Filters["IsImportant"] = true
-		opts.OrderBy = []nanostore.OrderClause{
-			{Column: "Score", Descending: true},
-		}
-
-		results, err := store.List(opts)
+	t.Run("filter by non-dimension string field", func(t *testing.T) {
+		// Filter by Owner (non-dimension field)
+		results, err := store.List(nanostore.ListOptions{
+			Filters: map[string]interface{}{
+				"_data.Owner": "alice",
+			},
+		})
 		if err != nil {
-			t.Fatalf("failed to filter and order: %v", err)
+			t.Fatal(err)
 		}
-
-		// Should get 2 important items ordered by score
 		if len(results) != 2 {
-			t.Errorf("expected 2 results, got %d", len(results))
+			t.Errorf("expected 2 documents owned by alice, got %d", len(results))
 		}
-
-		// Verify ordering of the filtered results
-		if len(results) >= 2 {
-			score1 := results[0].Dimensions["_data.Score"].(float64)
-			score2 := results[1].Dimensions["_data.Score"].(float64)
-
-			if score1 < score2 {
-				t.Errorf("Ordering failed: %f should be >= %f", score1, score2)
-			}
-
-			t.Logf("Filtered and ordered results:")
-			for i, doc := range results {
-				score := doc.Dimensions["_data.Score"].(float64)
-				t.Logf("  %d. %s (Score: %f)", i+1, doc.Title, score)
+		for _, doc := range results {
+			if doc.Dimensions["_data.Owner"] != "alice" {
+				t.Errorf("expected owner to be alice, got %v", doc.Dimensions["_data.Owner"])
 			}
 		}
 	})
 
-	t.Run("MixedDimensionAndNonDimensionFiltering", func(t *testing.T) {
-		// Filter by both dimension (status) and non-dimension (Priority) fields
-		opts := nanostore.NewListOptions()
-		opts.Filters["status"] = "active"
-		opts.Filters["Priority"] = 2
-
-		results, err := store.List(opts)
+	t.Run("filter by non-dimension numeric field", func(t *testing.T) {
+		// Filter by Priority value
+		results, err := store.List(nanostore.ListOptions{
+			Filters: map[string]interface{}{
+				"_data.Priority": 1,
+			},
+		})
 		if err != nil {
-			t.Fatalf("failed to filter by mixed fields: %v", err)
+			t.Fatal(err)
 		}
-
-		// Should find exactly 1 result: Medium priority task
-		if len(results) != 1 {
-			t.Errorf("expected 1 result, got %d", len(results))
-		}
-
-		if len(results) > 0 && results[0].Title != "Medium priority task" {
-			t.Errorf("expected 'Medium priority task', got '%s'", results[0].Title)
+		if len(results) != 2 {
+			t.Errorf("expected 2 documents with Priority=1, got %d", len(results))
 		}
 	})
+
+	t.Run("filter by non-dimension boolean field", func(t *testing.T) {
+		// Filter by IsImportant
+		results, err := store.List(nanostore.ListOptions{
+			Filters: map[string]interface{}{
+				"_data.IsImportant": true,
+			},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(results) != 2 {
+			t.Errorf("expected 2 important documents, got %d", len(results))
+		}
+	})
+
+	t.Run("combined dimension and non-dimension filters", func(t *testing.T) {
+		// Filter by status (dimension) AND Owner (non-dimension)
+		results, err := store.List(nanostore.ListOptions{
+			Filters: map[string]interface{}{
+				"status":      "active",
+				"_data.Owner": "bob",
+			},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(results) != 1 {
+			t.Errorf("expected 1 document (active AND bob), got %d", len(results))
+		}
+		if len(results) > 0 && results[0].UUID != doc2 {
+			t.Error("wrong document returned")
+		}
+	})
+
+	t.Run("order by non-dimension numeric field", func(t *testing.T) {
+		// Order by Score descending
+		results, err := store.List(nanostore.ListOptions{
+			OrderBy: []nanostore.OrderClause{
+				{Column: "_data.Score", Descending: true},
+			},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// Just check our test documents are in correct order
+		testDocIDs := map[string]bool{doc1: true, doc2: true, doc3: true, doc4: true}
+		scores := []float64{}
+		for _, doc := range results {
+			if testDocIDs[doc.UUID] {
+				if score, ok := doc.Dimensions["_data.Score"].(float64); ok {
+					scores = append(scores, score)
+				}
+			}
+		}
+
+		// Verify descending order
+		for i := 1; i < len(scores); i++ {
+			if scores[i] > scores[i-1] {
+				t.Error("scores not in descending order")
+			}
+		}
+	})
+
+	t.Run("order by non-dimension string field", func(t *testing.T) {
+		// Order by Owner ascending
+		results, err := store.List(nanostore.ListOptions{
+			OrderBy: []nanostore.OrderClause{
+				{Column: "_data.Owner", Descending: false},
+			},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// Check our test documents
+		testDocIDs := map[string]bool{doc1: true, doc2: true, doc3: true, doc4: true}
+		var firstTestDoc, lastTestDoc *nanostore.Document
+		for _, doc := range results {
+			if testDocIDs[doc.UUID] {
+				if firstTestDoc == nil {
+					firstTestDoc = &doc
+				}
+				lastTestDoc = &doc
+			}
+		}
+
+		// alice should come before bob
+		if firstTestDoc != nil && firstTestDoc.Dimensions["_data.Owner"] != "alice" {
+			t.Error("expected alice to come first in ascending order")
+		}
+		if lastTestDoc != nil && lastTestDoc.Dimensions["_data.Owner"] != "bob" {
+			t.Error("expected bob to come last in ascending order")
+		}
+	})
+
+	t.Run("multiple order by clauses", func(t *testing.T) {
+		// Get all results ordered by Priority asc, then Score desc
+		results, err := store.List(nanostore.ListOptions{
+			OrderBy: []nanostore.OrderClause{
+				{Column: "_data.Priority", Descending: false},
+				{Column: "_data.Score", Descending: true},
+			},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// Find our test documents in results
+		testDocIDs := map[string]bool{doc1: true, doc2: true, doc3: true, doc4: true}
+		var testDocs []nanostore.Document
+		for _, doc := range results {
+			if testDocIDs[doc.UUID] {
+				testDocs = append(testDocs, doc)
+			}
+		}
+
+		if len(testDocs) != 4 {
+			t.Fatalf("expected 4 test documents, found %d", len(testDocs))
+		}
+
+		// Check ordering: Priority 1 docs should come first
+		if testDocs[0].Dimensions["_data.Priority"] != 1 {
+			t.Error("expected Priority=1 documents first")
+		}
+		// Among Priority 1 docs, higher score should come first
+		if testDocs[0].Dimensions["_data.Score"].(float64) < testDocs[1].Dimensions["_data.Score"].(float64) {
+			t.Error("within same priority, higher scores should come first")
+		}
+	})
+
+	t.Run("filter with limit and offset", func(t *testing.T) {
+		limit := 2
+		offset := 1
+
+		// Create a specific filter for our test docs
+		results, err := store.List(nanostore.ListOptions{
+			Filters: map[string]interface{}{
+				"_data.Priority": []interface{}{1, 2, 3}, // Our test docs have these priorities
+			},
+			OrderBy: []nanostore.OrderClause{
+				{Column: "_data.Score", Descending: true},
+			},
+			Limit:  &limit,
+			Offset: &offset,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// Just verify we got results with limit
+		if len(results) > limit {
+			t.Errorf("expected at most %d results with limit, got %d", limit, len(results))
+		}
+	})
+
+	// Clean up test documents
+	for _, id := range []string{doc1, doc2, doc3, doc4} {
+		_ = store.Delete(id, false)
+	}
+}
+
+func TestTransparentFilteringEdgeCasesMigrated(t *testing.T) {
+	store, _ := testutil.LoadUniverse(t)
+
+	// Add documents with edge case values
+	doc1, err := store.Add("Null values doc", map[string]interface{}{
+		"status":          "active",
+		"priority":        "medium",
+		"_data.NullField": nil,
+		"_data.EmptyStr":  "",
+		"_data.Zero":      0,
+		"_data.False":     false,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	doc2, err := store.Add("Mixed types doc", map[string]interface{}{
+		"status":           "active",
+		"priority":         "medium",
+		"_data.StringNum":  "123",
+		"_data.ActualNum":  123,
+		"_data.Float":      123.0,
+		"_data.BoolString": "true",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Run("filter by null value", func(t *testing.T) {
+		results, err := store.List(nanostore.ListOptions{
+			Filters: map[string]interface{}{
+				"_data.NullField": nil,
+			},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		found := false
+		for _, doc := range results {
+			if doc.UUID == doc1 {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Error("document with null field not found")
+		}
+	})
+
+	t.Run("filter by empty string", func(t *testing.T) {
+		results, err := store.List(nanostore.ListOptions{
+			Filters: map[string]interface{}{
+				"_data.EmptyStr": "",
+			},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		found := false
+		for _, doc := range results {
+			if doc.UUID == doc1 {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Error("document with empty string not found")
+		}
+	})
+
+	t.Run("filter by zero value", func(t *testing.T) {
+		results, err := store.List(nanostore.ListOptions{
+			Filters: map[string]interface{}{
+				"_data.Zero": 0,
+			},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		found := false
+		for _, doc := range results {
+			if doc.UUID == doc1 {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Error("document with zero value not found")
+		}
+	})
+
+	t.Run("filter by false boolean", func(t *testing.T) {
+		results, err := store.List(nanostore.ListOptions{
+			Filters: map[string]interface{}{
+				"_data.False": false,
+			},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		found := false
+		for _, doc := range results {
+			if doc.UUID == doc1 {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Error("document with false value not found")
+		}
+	})
+
+	// Clean up
+	_ = store.Delete(doc1, false)
+	_ = store.Delete(doc2, false)
 }

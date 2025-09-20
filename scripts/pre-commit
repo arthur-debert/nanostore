@@ -100,7 +100,23 @@ run_checks() {
         overall_success=false
     fi
 
-    echo "" # Add blank line before final result
+    echo "" # Add blank line before test guideline reminder
+    
+    # Check if any test files are being modified
+    if git diff --cached --name-only | grep -q '_test\.go$'; then
+        echo "📚 Test Guidelines Reminder:"
+        echo "   You are modifying test files. Please follow the testing patterns in"
+        echo "   nanostore/testutil/model_test.go which demonstrates:"
+        echo "   • Using testutil.LoadUniverse() for one-line test setup"
+        echo "   • Leveraging fixture data instead of creating test data"
+        echo "   • Using assertion helpers for cleaner test code"
+        echo "   • When to create fresh stores for specific scenarios"
+        echo ""
+        echo "   💡 All test files now have header comments indicating which testing"
+        echo "      patterns to follow. Check the comment at the top of your test file"
+        echo "      for specific guidance."
+        echo ""
+    fi
 
     # Exit based on overall result
     if [ "$overall_success" = true ]; then

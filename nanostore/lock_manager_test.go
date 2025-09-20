@@ -1,5 +1,11 @@
 package nanostore
 
+// IMPORTANT: This test must follow the testing patterns established in:
+// nanostore/testutil/model_test.go
+//
+// EXCEPTION: This is an internal package test that needs access to unexported types.
+// It cannot use the standard fixture approach but should still follow other best practices where possible.
+
 import (
 	"sync"
 	"testing"

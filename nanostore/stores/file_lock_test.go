@@ -1,5 +1,11 @@
 package stores_test
 
+// IMPORTANT: This test must follow the testing patterns established in:
+// nanostore/testutil/model_test.go
+//
+// EXCEPTION: This is an internal package test that needs access to unexported types.
+// It cannot use the standard fixture approach but should still follow other best practices where possible.
+
 import (
 	"fmt"
 	"os"
@@ -37,7 +43,7 @@ func TestFileLocking(t *testing.T) {
 		// so multiple store instances don't see each other's changes
 		// until they reload. The file lock prevents corruption but
 		// doesn't provide real-time synchronization.
-		
+
 		store, err := nanostore.New(filename, config)
 		if err != nil {
 			t.Fatalf("failed to create store: %v", err)
@@ -83,7 +89,7 @@ func TestFileLocking(t *testing.T) {
 	t.Run("LockTimeout", func(t *testing.T) {
 		// This test verifies that lock acquisition times out appropriately
 		// Create a store and keep it locked by starting a long operation
-		
+
 		store, err := nanostore.New(filename, config)
 		if err != nil {
 			t.Fatalf("failed to create store: %v", err)
