@@ -163,3 +163,149 @@ func TestAPITransformFieldPartialFailure(t *testing.T) {
 		t.Error("original doc 3 was modified")
 	}
 }
+
+func TestAPIRemoveField(t *testing.T) {
+	docs := []types.Document{
+		{
+			UUID: "1",
+			Dimensions: map[string]interface{}{
+				"field1":       "value1",
+				"field2":       "value2",
+				"_data.field2": "data value",
+			},
+		},
+		{
+			UUID: "2",
+			Dimensions: map[string]interface{}{
+				"field1": "value1",
+				"field2": "value2",
+			},
+		},
+	}
+
+	api := NewAPI()
+
+	t.Run("remove dimension field", func(t *testing.T) {
+		modifiedDocs, result := api.RemoveField(docs, types.Config{}, "field1", Options{
+			DryRun:    false,
+			FieldType: FieldTypeDimension,
+		})
+
+		if !result.Success {
+			t.Errorf("expected success, got failure")
+		}
+		if result.Stats.ModifiedDocs != 2 {
+			t.Errorf("expected 2 modified docs, got %d", result.Stats.ModifiedDocs)
+		}
+
+		// Verify field removed
+		for _, doc := range modifiedDocs {
+			if _, exists := doc.Dimensions["field1"]; exists {
+				t.Errorf("field1 still exists in doc %s", doc.UUID)
+			}
+			// Other fields should remain
+			if _, exists := doc.Dimensions["field2"]; !exists {
+				t.Errorf("field2 was incorrectly removed from doc %s", doc.UUID)
+			}
+		}
+	})
+
+	t.Run("remove data field only", func(t *testing.T) {
+		modifiedDocs, result := api.RemoveField(docs, types.Config{}, "field2", Options{
+			DryRun:    false,
+			FieldType: FieldTypeData,
+		})
+
+		if !result.Success {
+			t.Errorf("expected success, got failure")
+		}
+
+		// Only doc 1 has _data.field2
+		if result.Stats.ModifiedDocs != 1 {
+			t.Errorf("expected 1 modified doc, got %d", result.Stats.ModifiedDocs)
+		}
+
+		// Verify only data field removed
+		if _, exists := modifiedDocs[0].Dimensions["_data.field2"]; exists {
+			t.Error("_data.field2 still exists")
+		}
+		if _, exists := modifiedDocs[0].Dimensions["field2"]; !exists {
+			t.Error("dimension field2 was incorrectly removed")
+		}
+	})
+}
+
+func TestAPIAddField(t *testing.T) {
+	docs := []types.Document{
+		{
+			UUID: "1",
+			Dimensions: map[string]interface{}{
+				"existing": "value",
+			},
+		},
+		{
+			UUID: "2",
+			Dimensions: map[string]interface{}{
+				"existing": "value",
+			},
+		},
+	}
+
+	api := NewAPI()
+
+	t.Run("add dimension field", func(t *testing.T) {
+		modifiedDocs, result := api.AddField(docs, types.Config{}, "newfield", "default", Options{
+			DryRun:      false,
+			IsDataField: false,
+		})
+
+		if !result.Success {
+			t.Errorf("expected success, got failure")
+		}
+		if result.Stats.ModifiedDocs != 2 {
+			t.Errorf("expected 2 modified docs, got %d", result.Stats.ModifiedDocs)
+		}
+
+		// Verify field added
+		for _, doc := range modifiedDocs {
+			if val, exists := doc.Dimensions["newfield"]; !exists {
+				t.Errorf("newfield not found in doc %s", doc.UUID)
+			} else if val != "default" {
+				t.Errorf("expected newfield='default', got %v", val)
+			}
+		}
+	})
+
+	t.Run("add data field", func(t *testing.T) {
+		modifiedDocs, result := api.AddField(docs, types.Config{}, "datafield", 42, Options{
+			DryRun:      false,
+			IsDataField: true,
+		})
+
+		if !result.Success {
+			t.Errorf("expected success, got failure")
+		}
+
+		// Verify data field added
+		for _, doc := range modifiedDocs {
+			if val, exists := doc.Dimensions["_data.datafield"]; !exists {
+				t.Errorf("_data.datafield not found in doc %s", doc.UUID)
+			} else if val != 42 {
+				t.Errorf("expected _data.datafield=42, got %v", val)
+			}
+		}
+	})
+
+	t.Run("add to existing field fails", func(t *testing.T) {
+		_, result := api.AddField(docs, types.Config{}, "existing", "value", Options{
+			DryRun: false,
+		})
+
+		if result.Success {
+			t.Error("expected failure when adding existing field")
+		}
+		if result.Code != CodeValidationError {
+			t.Errorf("expected validation error code, got %d", result.Code)
+		}
+	})
+}
