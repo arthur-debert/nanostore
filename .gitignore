@@ -59,3 +59,4 @@ Thumbs.db
 # padz cache
 .padz/
 coverage.*
+samples/todos/samples-todos
