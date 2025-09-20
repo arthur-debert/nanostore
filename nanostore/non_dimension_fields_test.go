@@ -1,15 +1,25 @@
 package nanostore_test
 
+// IMPORTANT: This test must follow the testing patterns established in:
+// nanostore/testutil/model_test.go
+//
+// Key principles:
+// 1. Use testutil.LoadUniverse() for standard test setup
+// 2. Leverage fixture data instead of creating test data
+// 3. Use assertion helpers for cleaner test code
+// 4. Only create fresh stores for specific scenarios (see model_test.go)
+
 import (
 	"os"
 	"testing"
 	"time"
 
 	"github.com/arthur-debert/nanostore/nanostore"
+	"github.com/arthur-debert/nanostore/nanostore/testutil"
 )
 
 // Test struct with both dimension and non-dimension fields
-type MixedFieldsItem struct {
+type MixedFieldsItemMigrated struct {
 	nanostore.Document
 
 	// Dimension fields
@@ -26,8 +36,10 @@ type MixedFieldsItem struct {
 	Metadata    string
 }
 
-func TestNonDimensionFieldsPreserved(t *testing.T) {
-	// Create a temporary file
+func TestNonDimensionFieldsPreservedMigrated(t *testing.T) {
+	// Note: This test specifically tests typed store behavior that requires
+	// a custom type, so we create a separate typed store rather than using
+	// the fixture's direct store
 	tmpfile, err := os.CreateTemp("", "test*.json")
 	if err != nil {
 		t.Fatal(err)
@@ -36,7 +48,7 @@ func TestNonDimensionFieldsPreserved(t *testing.T) {
 	_ = tmpfile.Close()
 
 	// Create typed store
-	store, err := nanostore.NewFromType[MixedFieldsItem](tmpfile.Name())
+	store, err := nanostore.NewFromType[MixedFieldsItemMigrated](tmpfile.Name())
 	if err != nil {
 		t.Fatalf("failed to create typed store: %v", err)
 	}
@@ -44,7 +56,7 @@ func TestNonDimensionFieldsPreserved(t *testing.T) {
 
 	t.Run("CreateAndRetrieveWithNonDimensionFields", func(t *testing.T) {
 		// Create item with all fields populated
-		item := &MixedFieldsItem{
+		item := &MixedFieldsItemMigrated{
 			Status:      "active",
 			Priority:    "high",
 			Description: "This is a test item with mixed fields",
@@ -101,7 +113,7 @@ func TestNonDimensionFieldsPreserved(t *testing.T) {
 
 	t.Run("UpdateNonDimensionFields", func(t *testing.T) {
 		// Create initial item
-		item := &MixedFieldsItem{
+		item := &MixedFieldsItemMigrated{
 			Status:      "pending",
 			Description: "Initial description",
 			Count:       10,
@@ -113,7 +125,7 @@ func TestNonDimensionFieldsPreserved(t *testing.T) {
 		}
 
 		// Update with new values
-		update := &MixedFieldsItem{
+		update := &MixedFieldsItemMigrated{
 			Status:      "active", // dimension field
 			Description: "Updated description",
 			Count:       20,
@@ -151,12 +163,12 @@ func TestNonDimensionFieldsPreserved(t *testing.T) {
 
 	t.Run("QueryIgnoresNonDimensionFields", func(t *testing.T) {
 		// Create items with same non-dimension values but different dimensions
-		item1 := &MixedFieldsItem{
+		item1 := &MixedFieldsItemMigrated{
 			Status:      "active",
 			Description: "Same description",
 			Count:       100,
 		}
-		item2 := &MixedFieldsItem{
+		item2 := &MixedFieldsItemMigrated{
 			Status:      "pending",
 			Description: "Same description",
 			Count:       100,
@@ -191,7 +203,7 @@ func TestNonDimensionFieldsPreserved(t *testing.T) {
 
 	t.Run("ZeroValuesNotStored", func(t *testing.T) {
 		// Create item with only some fields set
-		item := &MixedFieldsItem{
+		item := &MixedFieldsItemMigrated{
 			Status:      "active",
 			Description: "Only description is set",
 			// All numeric fields left as zero
@@ -225,9 +237,9 @@ func TestNonDimensionFieldsPreserved(t *testing.T) {
 	})
 }
 
-func TestNonDimensionFieldTypes(t *testing.T) {
+func TestNonDimensionFieldTypesMigrated(t *testing.T) {
 	// Test various field types are handled correctly
-	type ComplexFieldsItem struct {
+	type ComplexFieldsItemMigrated struct {
 		nanostore.Document
 
 		// Dimension
@@ -250,14 +262,14 @@ func TestNonDimensionFieldTypes(t *testing.T) {
 	defer func() { _ = os.Remove(tmpfile.Name()) }()
 	_ = tmpfile.Close()
 
-	store, err := nanostore.NewFromType[ComplexFieldsItem](tmpfile.Name())
+	store, err := nanostore.NewFromType[ComplexFieldsItemMigrated](tmpfile.Name())
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
 	defer func() { _ = store.Close() }()
 
 	now := time.Now().Round(time.Second) // Round to avoid nanosecond precision issues
-	item := &ComplexFieldsItem{
+	item := &ComplexFieldsItemMigrated{
 		Type:        "B",
 		IntField:    -42,
 		Int64Field:  9223372036854775807, // max int64
@@ -300,4 +312,59 @@ func TestNonDimensionFieldTypes(t *testing.T) {
 	if retrieved.StringField != item.StringField {
 		t.Errorf("StringField: expected %s, got %s", item.StringField, retrieved.StringField)
 	}
+}
+
+// TestNonDimensionFieldsWithFixtureMigrated tests interaction with fixture data
+func TestNonDimensionFieldsWithFixtureMigrated(t *testing.T) {
+	store, universe := testutil.LoadUniverse(t)
+
+	t.Run("VerifyFixtureNonDimensionData", func(t *testing.T) {
+		// The fixture documents have body content which is non-dimension data
+		docs, err := store.List(nanostore.ListOptions{
+			Filters: map[string]interface{}{
+				"uuid": universe.TeamMeeting.UUID,
+			},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if len(docs) != 1 {
+			t.Fatalf("expected 1 document, got %d", len(docs))
+		}
+
+		doc := docs[0]
+		if doc.Body == "" {
+			t.Error("expected TeamMeeting to have body content")
+		}
+	})
+
+	t.Run("UpdateNonDimensionDataInFixture", func(t *testing.T) {
+		// Update body content for a fixture document
+		newBody := "Updated meeting notes with important decisions"
+		err := store.Update(universe.TeamMeeting.UUID, nanostore.UpdateRequest{
+			Body: &newBody,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// Verify update
+		docs, err := store.List(nanostore.ListOptions{
+			Filters: map[string]interface{}{
+				"uuid": universe.TeamMeeting.UUID,
+			},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if len(docs) != 1 {
+			t.Fatalf("expected 1 document, got %d", len(docs))
+		}
+
+		if docs[0].Body != newBody {
+			t.Errorf("expected body to be updated, got %q", docs[0].Body)
+		}
+	})
 }

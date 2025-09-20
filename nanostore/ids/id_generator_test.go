@@ -1,5 +1,14 @@
 package ids
 
+// IMPORTANT: This test must follow the testing patterns established in:
+// nanostore/testutil/model_test.go
+//
+// Key principles:
+// 1. Use testutil.LoadUniverse() for standard test setup
+// 2. Leverage fixture data instead of creating test data
+// 3. Use assertion helpers for cleaner test code
+// 4. Only create fresh stores for specific scenarios (see model_test.go)
+
 import (
 	"sort"
 	"testing"

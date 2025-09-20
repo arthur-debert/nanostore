@@ -296,26 +296,46 @@ Nanostore Technical Architecture
 
 8. Testing Strategy
 
-8.1 Unit Testing
+8.1 Test Infrastructure
 
-    - Type package: Pure functions, no dependencies
-    - IDs package: Deterministic ID generation algorithms
-    - Stores package: File system mocking and temporary directories
-    - API package: Generated method validation
+    The testing approach prioritizes unit tests with minimal integration testing:
+    
+    - Fixture-based testing: Comprehensive universe.json test fixture with 28 documents
+    - Test utilities: Located in nanostore/testutil for discoverability
+    - Model test file: nanostore/testutil/model_test.go demonstrates all testing patterns
+    - Domain-specific assertions: Cleaner test code with semantic helpers
+    
+    Test Pattern:
+    ```go
+    store, universe := testutil.LoadUniverse(t)  // One-line setup
+    // ... test using fixture data
+    // Automatic cleanup via t.Cleanup()
+    ```
 
-8.2 Integration Testing
+8.2 Unit Testing
 
-    - End-to-end workflows with real files
-    - Concurrent access simulation
-    - Large dataset performance testing
-    - Error injection and recovery testing
+    - Type package: Pure functions testing dimension configurations
+    - IDs package: ID generation using fixture data
+    - Stores package: Temporary JSON files with automatic cleanup
+    - API package: Type-safe operations against fixture store
 
-8.3 Property-Based Testing
+8.3 Integration Testing
 
-    - ID stability across operations
-    - Hierarchical relationship preservation
-    - Canonical view consistency
-    - Round-trip serialization integrity
+    Minimal integration tests for:
+    - Fresh store creation scenarios
+    - Error conditions and validation
+    - Internal package functionality
+    - Utility functions without store dependencies
+    
+    All test files contain header comments indicating which testing
+    patterns to follow based on their category.
+
+8.4 Test Categories
+
+    - Standard tests: Use LoadUniverse() and fixture data
+    - Internal tests: Test unexported functionality in same package
+    - Validation tests: Test error conditions requiring controlled setup
+    - Utility tests: Test pure functions without store operations
 
 Conclusion
 

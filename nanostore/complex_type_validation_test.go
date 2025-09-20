@@ -1,5 +1,11 @@
 package nanostore_test
 
+// IMPORTANT: This test must follow the testing patterns established in:
+// nanostore/testutil/model_test.go
+//
+// EXCEPTION: This test validates error conditions and configuration failures.
+// It creates fresh stores to test specific validation scenarios.
+
 import (
 	"os"
 	"strings"

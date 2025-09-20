@@ -105,15 +105,16 @@ run_checks() {
     # Check if any test files are being modified
     if git diff --cached --name-only | grep -q '_test\.go$'; then
         echo "📚 Test Guidelines Reminder:"
-        echo "   You are modifying test files. Please follow the test guidelines in"
-        echo "   testutil/examples_test.go which demonstrate:"
+        echo "   You are modifying test files. Please follow the testing patterns in"
+        echo "   nanostore/testutil/model_test.go which demonstrates:"
         echo "   • Using testutil.LoadUniverse() for one-line test setup"
-        echo "   • Using assertion helpers for cleaner tests"
-        echo "   • Leveraging the fixture data instead of creating test data"
+        echo "   • Leveraging fixture data instead of creating test data"
+        echo "   • Using assertion helpers for cleaner test code"
+        echo "   • When to create fresh stores for specific scenarios"
         echo ""
-        echo "   💡 Consider migrating the entire test file to the new infrastructure"
-        echo "      if you're making significant changes. This helps maintain consistency"
-        echo "      and makes tests more maintainable."
+        echo "   💡 All test files now have header comments indicating which testing"
+        echo "      patterns to follow. Check the comment at the top of your test file"
+        echo "      for specific guidance."
         echo ""
     fi
 
