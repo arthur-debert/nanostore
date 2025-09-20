@@ -34,39 +34,15 @@ echo -e "  Commit:  ${BOLD}$COMMIT${NC}"
 echo -e "  Date:    ${BOLD}$BUILD_DATE${NC}"
 echo
 
-# Build all Go packages first
-echo -e "${BLUE}Building all Go packages...${NC}"
-if [ -f "vendor/modules.txt" ]; then
-    # Use vendor if available
-    if go build -mod=vendor -v ./...; then
-        echo -e "${GREEN}✓ All packages built successfully${NC}"
-    else
-        echo -e "${RED}∅ Package build failed${NC}"
-        exit 1
-    fi
+# Build nanostore CLI binary
+echo -e "${BLUE}Building nanostore CLI...${NC}"
+LDFLAGS="-X main.version=${VERSION} -X main.commit=${COMMIT} -X main.buildDate=${BUILD_DATE}"
+if go build -ldflags "${LDFLAGS}" -o "${BIN_DIR}/nanostore" ./cmd/migrate; then
+    echo -e "${GREEN}✓ nanostore CLI built successfully${NC}"
+    chmod +x "${BIN_DIR}/nanostore"
 else
-    # Fall back to normal build
-    if go build -v ./...; then
-        echo -e "${GREEN}✓ All packages built successfully${NC}"
-    else
-        echo -e "${RED}∅ Package build failed${NC}"
-        exit 1
-    fi
-fi
-
-# Build C bindings
-echo
-echo -e "${BLUE}Building C bindings...${NC}"
-if [ -d "c-bindings" ] && [ -f "c-bindings/build.sh" ]; then
-    # Call the c-bindings build script, passing the output directory
-    if (cd c-bindings && ./build.sh "../${BIN_DIR}"); then
-        echo -e "${GREEN}✓ C bindings built successfully${NC}"
-    else
-        echo -e "${RED}∅ C bindings build failed${NC}"
-        exit 1
-    fi
-else
-    echo -e "${YELLOW}[!] No c-bindings directory or build script found, skipping C library build${NC}"
+    echo -e "${RED}∅ nanostore CLI build failed${NC}"
+    exit 1
 fi
 
 # Run tests if not skipped
