@@ -1,4 +1,4 @@
-package nanostore_test
+package types_test
 
 // IMPORTANT: This test must follow the testing patterns established in:
 // nanostore/testutil/model_test.go
@@ -9,36 +9,35 @@ package nanostore_test
 import (
 	"testing"
 
-	"github.com/arthur-debert/nanostore/nanostore"
 	"github.com/arthur-debert/nanostore/types"
 )
 
 func TestDimensionHelpers(t *testing.T) {
 	// Create a test configuration with various dimension types
-	config := nanostore.Config{
-		Dimensions: []nanostore.DimensionConfig{
+	config := types.Config{
+		Dimensions: []types.DimensionConfig{
 			{
 				Name:         "status",
-				Type:         nanostore.Enumerated,
+				Type:         types.Enumerated,
 				Values:       []string{"pending", "active", "done"},
 				Prefixes:     map[string]string{"done": "d"},
 				DefaultValue: "pending",
 			},
 			{
 				Name:         "priority",
-				Type:         nanostore.Enumerated,
+				Type:         types.Enumerated,
 				Values:       []string{"low", "medium", "high"},
 				Prefixes:     map[string]string{"high": "h"},
 				DefaultValue: "medium",
 			},
 			{
 				Name:     "parent_uuid",
-				Type:     nanostore.Hierarchical,
+				Type:     types.Hierarchical,
 				RefField: "parent_uuid",
 			},
 			{
 				Name:         "category",
-				Type:         nanostore.Enumerated,
+				Type:         types.Enumerated,
 				Values:       []string{"work", "personal", "other"},
 				DefaultValue: "other",
 			},
@@ -140,7 +139,7 @@ func TestDimensionHelpers(t *testing.T) {
 	})
 
 	t.Run("EmptyConfig", func(t *testing.T) {
-		emptyConfig := nanostore.Config{}
+		emptyConfig := types.Config{}
 
 		// Should return empty slices
 		enumerated := emptyConfig.GetEnumeratedDimensions()
