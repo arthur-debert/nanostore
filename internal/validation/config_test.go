@@ -1,4 +1,4 @@
-package nanostore_test
+package validation_test
 
 // IMPORTANT: This test must follow the testing patterns established in:
 // nanostore/testutil/model_test.go
@@ -10,27 +10,29 @@ import (
 	"os"
 	"testing"
 
+	"github.com/arthur-debert/nanostore/internal/validation"
 	"github.com/arthur-debert/nanostore/nanostore"
+	"github.com/arthur-debert/nanostore/types"
 )
 
 func TestValidateConfig(t *testing.T) {
 	tests := []struct {
 		name    string
-		config  nanostore.Config
+		config  types.Config
 		wantErr bool
 	}{
 		{
 			name:    "empty config",
-			config:  nanostore.Config{},
+			config:  types.Config{},
 			wantErr: true, // Empty config requires at least one dimension
 		},
 		{
 			name: "valid enumerated dimension",
-			config: nanostore.Config{
-				Dimensions: []nanostore.DimensionConfig{
+			config: types.Config{
+				Dimensions: []types.DimensionConfig{
 					{
 						Name:         "status",
-						Type:         nanostore.Enumerated,
+						Type:         types.Enumerated,
 						Values:       []string{"todo", "done"},
 						DefaultValue: "todo",
 					},
@@ -40,11 +42,11 @@ func TestValidateConfig(t *testing.T) {
 		},
 		{
 			name: "valid hierarchical dimension",
-			config: nanostore.Config{
-				Dimensions: []nanostore.DimensionConfig{
+			config: types.Config{
+				Dimensions: []types.DimensionConfig{
 					{
 						Name:     "parent",
-						Type:     nanostore.Hierarchical,
+						Type:     types.Hierarchical,
 						RefField: "parent_uuid",
 					},
 				},
@@ -55,9 +57,13 @@ func TestValidateConfig(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := nanostore.ValidateConfig(tt.config)
+			// Create DimensionSet from Config to test validation
+			ds := types.DimensionSetFromConfig(types.Config{
+				Dimensions: tt.config.Dimensions,
+			})
+			err := validation.Validate(ds)
 			if (err != nil) != tt.wantErr {
-				t.Errorf("ValidateConfig() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("Validate() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
 	}
@@ -72,11 +78,11 @@ func TestNewJSONStore(t *testing.T) {
 	defer func() { _ = os.Remove(tmpfile.Name()) }()
 	_ = tmpfile.Close()
 
-	config := nanostore.Config{
-		Dimensions: []nanostore.DimensionConfig{
+	config := types.Config{
+		Dimensions: []types.DimensionConfig{
 			{
 				Name:         "status",
-				Type:         nanostore.Enumerated,
+				Type:         types.Enumerated,
 				Values:       []string{"todo", "done"},
 				DefaultValue: "todo",
 			},
@@ -104,11 +110,11 @@ func TestNotImplemented(t *testing.T) {
 	defer func() { _ = os.Remove(tmpfile.Name()) }()
 	_ = tmpfile.Close()
 
-	store, err := nanostore.New(tmpfile.Name(), nanostore.Config{
-		Dimensions: []nanostore.DimensionConfig{
+	store, err := nanostore.New(tmpfile.Name(), types.Config{
+		Dimensions: []types.DimensionConfig{
 			{
 				Name:         "status",
-				Type:         nanostore.Enumerated,
+				Type:         types.Enumerated,
 				Values:       []string{"todo", "done"},
 				DefaultValue: "todo",
 			},
