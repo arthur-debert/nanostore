@@ -1,4 +1,4 @@
-package nanostore_test
+package api_test
 
 // IMPORTANT: This test must follow the testing patterns established in:
 // nanostore/testutil/model_test.go
