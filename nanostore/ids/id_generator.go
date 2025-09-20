@@ -233,7 +233,7 @@ func (g *IDGenerator) buildHistoricalPartitionMap(documents []types.Document, uu
 // GetFullyQualifiedPartition returns a partition with all dimension values and the given position
 func (g *IDGenerator) GetFullyQualifiedPartition(doc types.Document, position int) types.Partition {
 	// Build partition for this document
-	partition := types.BuildPartitionForDocument(doc, g.dimensionSet)
+	partition := BuildPartitionForDocument(doc, g.dimensionSet)
 	// Set the position
 	partition.Position = position
 	return partition
