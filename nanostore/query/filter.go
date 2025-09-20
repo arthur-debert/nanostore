@@ -117,3 +117,8 @@ func (p *processor) matchesSearch(doc types.Document, searchText string) bool {
 
 	return false
 }
+
+// MatchesFilters implements the Processor interface method
+func (p *processor) MatchesFilters(doc types.Document, filters map[string]interface{}) bool {
+	return p.matchesFilters(doc, filters)
+}

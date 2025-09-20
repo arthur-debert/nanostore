@@ -11,6 +11,9 @@ import (
 type Processor interface {
 	// Execute runs a query against documents and returns the results
 	Execute(docs []types.Document, opts types.ListOptions) ([]types.Document, error)
+
+	// MatchesFilters checks if a document matches the given filters
+	MatchesFilters(doc types.Document, filters map[string]interface{}) bool
 }
 
 // processor implements the Processor interface

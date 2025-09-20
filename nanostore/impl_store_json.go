@@ -6,11 +6,11 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"sort"
 	"strings"
 	"time"
 
 	"github.com/arthur-debert/nanostore/nanostore/ids"
+	"github.com/arthur-debert/nanostore/nanostore/query"
 	"github.com/arthur-debert/nanostore/nanostore/storage"
 	"github.com/arthur-debert/nanostore/types"
 	"github.com/gofrs/flock"
@@ -25,6 +25,7 @@ type jsonFileStore struct {
 	canonicalView *types.CanonicalView
 	idGenerator   *ids.IDGenerator
 	preprocessor  *commandPreprocessor
+	queryProc     query.Processor
 	lockManager   *storage.LockManager
 	fileLock      *flock.Flock // Cross-process file locking
 	data          *storeData
@@ -73,12 +74,15 @@ func newJSONFileStore(filePath string, config Config) (*jsonFileStore, error) {
 	}
 	canonicalView := types.NewCanonicalView(filters...)
 
+	idGen := ids.NewIDGenerator(config.GetDimensionSet(), canonicalView)
+
 	store := &jsonFileStore{
 		filePath:      filePath,
 		config:        config,
 		dimensionSet:  config.GetDimensionSet(),
 		canonicalView: canonicalView,
-		idGenerator:   ids.NewIDGenerator(config.GetDimensionSet(), canonicalView),
+		idGenerator:   idGen,
+		queryProc:     query.NewProcessor(config.GetDimensionSet(), idGen),
 		lockManager:   storage.NewLockManager(),
 		fileLock:      fileLock,
 		timeFunc:      time.Now, // Default to time.Now
@@ -240,69 +244,12 @@ func (s *jsonFileStore) save() error {
 func (s *jsonFileStore) List(opts ListOptions) ([]Document, error) {
 	var result []Document
 	err := s.lockManager.Execute(storage.ReadOperation, func() error {
-		// Start with all documents
-		result = make([]Document, 0, len(s.data.Documents))
-
-		// Apply filters
-		for _, doc := range s.data.Documents {
-			// Check dimension filters
-			if !s.matchesFilters(doc, opts.Filters) {
-				continue
-			}
-
-			// Check text search filter
-			if opts.FilterBySearch != "" && !s.matchesSearch(doc, opts.FilterBySearch) {
-				continue
-			}
-
-			// Make a copy to avoid mutations
-			docCopy := doc
-			// Set SimpleID to UUID for now (will be replaced with proper ID generation)
-			docCopy.SimpleID = doc.UUID
-			result = append(result, docCopy)
+		// Use query processor to execute the query
+		docs, err := s.queryProc.Execute(s.data.Documents, opts)
+		if err != nil {
+			return err
 		}
-
-		// Apply ordering
-		if len(opts.OrderBy) > 0 {
-			s.sortDocuments(result, opts.OrderBy)
-		}
-
-		// Generate SimpleIDs using the new ID generator
-		// Get all documents for ID generation (not just the filtered ones)
-		// GenerateIDs now handles copying internally, so we can pass the slice directly
-		idMap := s.idGenerator.GenerateIDs(s.data.Documents)
-
-		// Create reverse mapping (SimpleID -> UUID)
-		uuidToID := make(map[string]string)
-		for simpleID, uuid := range idMap {
-			uuidToID[uuid] = simpleID
-		}
-
-		// Assign SimpleIDs to results
-		for i := range result {
-			if simpleID, exists := uuidToID[result[i].UUID]; exists {
-				result[i].SimpleID = simpleID
-			} else {
-				// Fallback to UUID if not found (shouldn't happen)
-				result[i].SimpleID = result[i].UUID
-			}
-		}
-
-		// Apply pagination
-		if opts.Offset != nil && *opts.Offset > 0 {
-			if *opts.Offset >= len(result) {
-				result = []Document{}
-			} else {
-				result = result[*opts.Offset:]
-			}
-		}
-
-		if opts.Limit != nil && *opts.Limit > 0 {
-			if *opts.Limit < len(result) {
-				result = result[:*opts.Limit]
-			}
-		}
-
+		result = docs
 		return nil
 	})
 
@@ -310,117 +257,6 @@ func (s *jsonFileStore) List(opts ListOptions) ([]Document, error) {
 		return nil, err
 	}
 	return result, nil
-}
-
-// matchesFilters checks if a document matches all the provided filters
-func (s *jsonFileStore) matchesFilters(doc Document, filters map[string]interface{}) bool {
-	if len(filters) == 0 {
-		return true // No filters means match all
-	}
-
-	for filterKey, filterValue := range filters {
-		// Handle special filter for UUID
-		if filterKey == "uuid" {
-			if doc.UUID != fmt.Sprintf("%v", filterValue) {
-				return false
-			}
-			continue
-		}
-
-		// Handle datetime filters and dimension filters
-		var docValue interface{}
-		var exists bool
-
-		switch filterKey {
-		case "created_at":
-			docValue = doc.CreatedAt
-			exists = true
-		case "updated_at":
-			docValue = doc.UpdatedAt
-			exists = true
-		default:
-			// Check if it's a dimension filter
-			docValue, exists = doc.Dimensions[filterKey]
-			if !exists {
-				// Try with _data prefix for non-dimension fields
-				docValue, exists = doc.Dimensions["_data."+filterKey]
-				if !exists {
-					// Document doesn't have this dimension or data field
-					// Check if it's a hierarchical dimension ref field
-					found := false
-					for _, dim := range s.dimensionSet.Hierarchical() {
-						if dim.RefField == filterKey {
-							// It's a hierarchical ref field
-							if parentValue, ok := doc.Dimensions[dim.RefField]; ok {
-								docValue = parentValue
-								exists = true
-								found = true
-								break
-							}
-						}
-					}
-					if !found {
-						return false
-					}
-				}
-			}
-		}
-
-		// Convert values to comparable strings
-		docStr := s.valueToString(docValue)
-
-		// Handle slice values (for "IN" style filtering)
-		switch fv := filterValue.(type) {
-		case []string:
-			// Filter value is a slice, check if document value is in the slice
-			found := false
-			for _, v := range fv {
-				if docStr == v {
-					found = true
-					break
-				}
-			}
-			if !found {
-				return false
-			}
-		case []interface{}:
-			// Filter value is a slice, check if document value is in the slice
-			found := false
-			for _, v := range fv {
-				if docStr == s.valueToString(v) {
-					found = true
-					break
-				}
-			}
-			if !found {
-				return false
-			}
-		default:
-			// Simple equality check
-			filterStr := s.valueToString(filterValue)
-			if docStr != filterStr {
-				return false
-			}
-		}
-	}
-
-	return true
-}
-
-// matchesSearch checks if a document matches the search text
-func (s *jsonFileStore) matchesSearch(doc Document, searchText string) bool {
-	// Simple case-insensitive substring search in title and body
-	searchLower := strings.ToLower(searchText)
-
-	if strings.Contains(strings.ToLower(doc.Title), searchLower) {
-		return true
-	}
-
-	if strings.Contains(strings.ToLower(doc.Body), searchLower) {
-		return true
-	}
-
-	return false
 }
 
 // Add creates a new document
@@ -775,7 +611,7 @@ func (s *jsonFileStore) DeleteByDimension(filters map[string]interface{}) (int, 
 		// Find all documents matching the filters
 		toDelete := []int{}
 		for i, doc := range s.data.Documents {
-			if s.matchesFilters(doc, filters) {
+			if s.queryProc.MatchesFilters(doc, filters) {
 				toDelete = append(toDelete, i)
 			}
 		}
@@ -834,7 +670,7 @@ func (s *jsonFileStore) UpdateByDimension(filters map[string]interface{}, update
 		now := s.timeFunc()
 
 		for i := range s.data.Documents {
-			if s.matchesFilters(s.data.Documents[i], filters) {
+			if s.queryProc.MatchesFilters(s.data.Documents[i], filters) {
 				doc := &s.data.Documents[i]
 				doc.UpdatedAt = now
 
@@ -973,85 +809,4 @@ func contains(slice []string, str string) bool {
 		}
 	}
 	return false
-}
-
-// valueToString converts any value to a string for comparison
-// Special handling for time.Time values to use RFC3339Nano format
-func (s *jsonFileStore) valueToString(value interface{}) string {
-	switch v := value.(type) {
-	case time.Time:
-		// Use RFC3339Nano for consistent datetime comparison with nanosecond precision
-		return v.Format(time.RFC3339Nano)
-	case string:
-		// Check if it's a datetime string and normalize it
-		// Try various datetime formats
-		for _, format := range []string{
-			time.RFC3339Nano,
-			time.RFC3339,
-			"2006-01-02T15:04:05Z",
-			"2006-01-02 15:04:05",
-			"2006-01-02",
-		} {
-			if t, err := time.Parse(format, v); err == nil {
-				return t.Format(time.RFC3339Nano)
-			}
-		}
-		// Not a datetime, return as-is
-		return v
-	default:
-		return fmt.Sprintf("%v", value)
-	}
-}
-
-// sortDocuments sorts documents according to the order clauses
-func (s *jsonFileStore) sortDocuments(docs []Document, orderBy []OrderClause) {
-	sort.Slice(docs, func(i, j int) bool {
-		for _, clause := range orderBy {
-			// Get values for comparison
-			valI := s.getDocumentValue(docs[i], clause.Column)
-			valJ := s.getDocumentValue(docs[j], clause.Column)
-
-			// Convert to comparable strings
-			strI := s.valueToString(valI)
-			strJ := s.valueToString(valJ)
-
-			// Compare
-			if strI < strJ {
-				return !clause.Descending
-			} else if strI > strJ {
-				return clause.Descending
-			}
-			// If equal, continue to next order clause
-		}
-		return false // All equal
-	})
-}
-
-// getDocumentValue retrieves a value from a document by field name
-func (s *jsonFileStore) getDocumentValue(doc Document, column string) interface{} {
-	switch column {
-	case "uuid":
-		return doc.UUID
-	case "simple_id", "simpleid":
-		return doc.SimpleID
-	case "title":
-		return doc.Title
-	case "body":
-		return doc.Body
-	case "created_at":
-		return doc.CreatedAt
-	case "updated_at":
-		return doc.UpdatedAt
-	default:
-		// Check if it's a dimension
-		if val, exists := doc.Dimensions[column]; exists {
-			return val
-		}
-		// Try with _data prefix for non-dimension fields (transparent ordering support)
-		if val, exists := doc.Dimensions["_data."+column]; exists {
-			return val
-		}
-		// Return empty string for non-existent fields
-		return ""
-	}
 }

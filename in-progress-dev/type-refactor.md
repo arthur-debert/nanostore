@@ -294,7 +294,7 @@ Move logic OUT of types package to where it belongs:
    - Remove other converters
    - Test → commit
 
-## Phase 4: Extract Storage Layer
+## Phase 4: Extract  Layer
 
 1. **Create `storage/` package**
    - Define Storage interface → commit
@@ -304,7 +304,15 @@ Move logic OUT of types package to where it belongs:
    - Move `lock_manager.go` → test → commit
    - Update imports → test → commit
 
-## Phase 5: Final Organization
+## Phase 5: Extract each package
+
+    For each package (ids, query, search):
+1. **Create package**
+   - Define interfaces and exports
+   - Move relevant files (tests included)
+   - Update imports → test → commit
+
+## Phase 6: Final Organization
 
 1. **Create orchestrator in `store/`**
    - Implement Store by composing other packages
