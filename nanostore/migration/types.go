@@ -49,8 +49,9 @@ type MigrationContext struct {
 
 // Options configures migration behavior
 type Options struct {
-	DryRun  bool
-	Verbose bool
+	DryRun      bool
+	Verbose     bool
+	IsDataField bool // For add field operation
 }
 
 // Error codes

@@ -45,14 +45,19 @@ func (a *API) RemoveField(docs []types.Document, config types.Config, fieldName 
 
 // AddField adds a field with a default value to all documents
 func (a *API) AddField(docs []types.Document, config types.Config, fieldName string, defaultValue interface{}, opts Options) *Result {
-	// TODO: Implement
-	return &Result{
-		Success: false,
-		Code:    CodeExecutionError,
-		Messages: []Message{
-			{Level: LevelError, Text: "AddField not implemented"},
-		},
+	ctx := &MigrationContext{
+		Documents: docs,
+		Config:    config,
+		DryRun:    opts.DryRun,
 	}
+
+	cmd := &AddField{
+		FieldName:    fieldName,
+		DefaultValue: defaultValue,
+		IsDataField:  opts.IsDataField,
+	}
+
+	return cmd.Execute(ctx)
 }
 
 // TransformField applies a transformation to a field across all documents

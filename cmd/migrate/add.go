@@ -11,6 +11,7 @@ import (
 
 var (
 	defaultValue string
+	isDataField  bool
 )
 
 var addFieldCmd = &cobra.Command{
@@ -23,6 +24,7 @@ var addFieldCmd = &cobra.Command{
 
 func init() {
 	addFieldCmd.Flags().StringVar(&defaultValue, "default", "", "default value for the field (required)")
+	addFieldCmd.Flags().BoolVar(&isDataField, "data-field", false, "add as data field (with _data. prefix)")
 	_ = addFieldCmd.MarkFlagRequired("default")
 }
 
@@ -57,8 +59,9 @@ func runAddField(cmd *cobra.Command, args []string) error {
 	// Run migration
 	api := migration.NewAPI()
 	result := api.AddField(docs, config, fieldName, parsedValue, migration.Options{
-		DryRun:  dryRun,
-		Verbose: verbose,
+		DryRun:      dryRun,
+		Verbose:     verbose,
+		IsDataField: isDataField,
 	})
 
 	handleResult(result)
