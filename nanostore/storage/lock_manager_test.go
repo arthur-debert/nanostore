@@ -1,4 +1,4 @@
-package nanostore
+package storage
 
 // IMPORTANT: This test must follow the testing patterns established in:
 // nanostore/testutil/model_test.go
@@ -13,7 +13,7 @@ import (
 )
 
 func TestLockManager(t *testing.T) {
-	lm := newLockManager()
+	lm := NewLockManager()
 
 	t.Run("ConcurrentReads", func(t *testing.T) {
 		// Multiple reads should be able to proceed concurrently
@@ -25,7 +25,7 @@ func TestLockManager(t *testing.T) {
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
-				_ = lm.execute(readOperation, func() error {
+				_ = lm.Execute(ReadOperation, func() error {
 					start := time.Now()
 					time.Sleep(10 * time.Millisecond) // Simulate work
 					results <- start
@@ -74,7 +74,7 @@ func TestLockManager(t *testing.T) {
 
 		// Start a write that takes some time
 		go func() {
-			_ = lm.execute(writeOperation, func() error {
+			_ = lm.Execute(WriteOperation, func() error {
 				close(writeStarted)
 				time.Sleep(50 * time.Millisecond)
 				close(writeDone)
@@ -87,7 +87,7 @@ func TestLockManager(t *testing.T) {
 
 		// Try to read - should be blocked
 		go func() {
-			_ = lm.execute(readOperation, func() error {
+			_ = lm.Execute(ReadOperation, func() error {
 				close(readStarted)
 				return nil
 			})
@@ -124,7 +124,7 @@ func TestLockManager(t *testing.T) {
 			id := i
 			go func() {
 				defer wg.Done()
-				_ = lm.execute(writeOperation, func() error {
+				_ = lm.Execute(WriteOperation, func() error {
 					mu.Lock()
 					order = append(order, id)
 					mu.Unlock()
@@ -150,7 +150,7 @@ func TestLockManager(t *testing.T) {
 
 	t.Run("ExecuteWithResult", func(t *testing.T) {
 		// Test that executeWithResult properly returns values
-		result, err := lm.executeWithResult(readOperation, func() (interface{}, error) {
+		result, err := lm.ExecuteWithResult(ReadOperation, func() (interface{}, error) {
 			return "test-value", nil
 		})
 

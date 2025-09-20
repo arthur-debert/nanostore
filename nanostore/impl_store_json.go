@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/arthur-debert/nanostore/nanostore/ids"
+	"github.com/arthur-debert/nanostore/nanostore/storage"
 	"github.com/arthur-debert/nanostore/types"
 	"github.com/gofrs/flock"
 	"github.com/google/uuid"
@@ -24,7 +25,7 @@ type jsonFileStore struct {
 	canonicalView *types.CanonicalView
 	idGenerator   *ids.IDGenerator
 	preprocessor  *commandPreprocessor
-	lockManager   *lockManager
+	lockManager   *storage.LockManager
 	fileLock      *flock.Flock // Cross-process file locking
 	data          *storeData
 	// timeFunc is used to get the current time, defaults to time.Now
@@ -78,7 +79,7 @@ func newJSONFileStore(filePath string, config Config) (*jsonFileStore, error) {
 		dimensionSet:  config.GetDimensionSet(),
 		canonicalView: canonicalView,
 		idGenerator:   ids.NewIDGenerator(config.GetDimensionSet(), canonicalView),
-		lockManager:   newLockManager(),
+		lockManager:   storage.NewLockManager(),
 		fileLock:      fileLock,
 		timeFunc:      time.Now, // Default to time.Now
 		data: &storeData{
@@ -105,7 +106,7 @@ func newJSONFileStore(filePath string, config Config) (*jsonFileStore, error) {
 // SetTimeFunc sets a custom time function for testing
 // This allows tests to provide deterministic timestamps
 func (s *jsonFileStore) SetTimeFunc(fn func() time.Time) {
-	_ = s.lockManager.execute(writeOperation, func() error {
+	_ = s.lockManager.Execute(storage.WriteOperation, func() error {
 		s.timeFunc = fn
 		return nil
 	})
@@ -238,7 +239,7 @@ func (s *jsonFileStore) save() error {
 // List returns documents based on the provided options
 func (s *jsonFileStore) List(opts ListOptions) ([]Document, error) {
 	var result []Document
-	err := s.lockManager.execute(readOperation, func() error {
+	err := s.lockManager.Execute(storage.ReadOperation, func() error {
 		// Start with all documents
 		result = make([]Document, 0, len(s.data.Documents))
 
@@ -433,7 +434,7 @@ func (s *jsonFileStore) Add(title string, dimensions map[string]interface{}) (st
 		return "", fmt.Errorf("preprocessing failed: %w", err)
 	}
 
-	result, err := s.lockManager.executeWithResult(writeOperation, func() (interface{}, error) {
+	result, err := s.lockManager.ExecuteWithResult(storage.WriteOperation, func() (interface{}, error) {
 
 		// Generate UUID
 		docUUID := uuid.New().String()
@@ -522,7 +523,7 @@ func (s *jsonFileStore) Update(id string, updates UpdateRequest) error {
 		return fmt.Errorf("preprocessing failed: %w", err)
 	}
 
-	return s.lockManager.execute(writeOperation, func() error {
+	return s.lockManager.Execute(storage.WriteOperation, func() error {
 		// Find the document by UUID
 		var found bool
 		var docIndex int
@@ -648,7 +649,7 @@ func (s *jsonFileStore) Update(id string, updates UpdateRequest) error {
 
 // ResolveUUID converts a simple ID to a UUID
 func (s *jsonFileStore) ResolveUUID(simpleID string) (string, error) {
-	result, err := s.lockManager.executeWithResult(readOperation, func() (interface{}, error) {
+	result, err := s.lockManager.ExecuteWithResult(storage.ReadOperation, func() (interface{}, error) {
 		return s.resolveUUIDInternal(simpleID)
 	})
 	if err != nil {
@@ -679,7 +680,7 @@ func (s *jsonFileStore) Delete(id string, cascade bool) error {
 		return fmt.Errorf("preprocessing failed: %w", err)
 	}
 
-	return s.lockManager.execute(writeOperation, func() error {
+	return s.lockManager.Execute(storage.WriteOperation, func() error {
 		return s.deleteInternal(cmd.ID, cmd.Cascade)
 	})
 }
@@ -770,7 +771,7 @@ func (s *jsonFileStore) deleteInternal(id string, cascade bool) error {
 
 // DeleteByDimension removes documents matching dimension filters
 func (s *jsonFileStore) DeleteByDimension(filters map[string]interface{}) (int, error) {
-	result, err := s.lockManager.executeWithResult(writeOperation, func() (interface{}, error) {
+	result, err := s.lockManager.ExecuteWithResult(storage.WriteOperation, func() (interface{}, error) {
 		// Find all documents matching the filters
 		toDelete := []int{}
 		for i, doc := range s.data.Documents {
@@ -811,7 +812,7 @@ func (s *jsonFileStore) DeleteWhere(whereClause string, args ...interface{}) (in
 
 // UpdateByDimension updates documents matching dimension filters
 func (s *jsonFileStore) UpdateByDimension(filters map[string]interface{}, updates UpdateRequest) (int, error) {
-	result, err := s.lockManager.executeWithResult(writeOperation, func() (interface{}, error) {
+	result, err := s.lockManager.ExecuteWithResult(storage.WriteOperation, func() (interface{}, error) {
 
 		// Validate update dimensions if provided
 		if updates.Dimensions != nil {
@@ -954,7 +955,7 @@ func (s *jsonFileStore) UpdateWhere(whereClause string, updates UpdateRequest, a
 
 // Close releases any resources
 func (s *jsonFileStore) Close() error {
-	return s.lockManager.execute(writeOperation, func() error {
+	return s.lockManager.Execute(storage.WriteOperation, func() error {
 		// Don't need to save - data is saved on each operation
 		// Just ensure the lock file is cleaned up
 		lockPath := s.filePath + ".lock"

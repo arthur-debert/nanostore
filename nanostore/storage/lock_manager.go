@@ -1,28 +1,27 @@
-// Package nanostore provides document storage with smart ID management.
-package nanostore
+package storage
 
 import (
 	"sync"
 )
 
-// operationType defines whether an operation is read or write.
+// OperationType defines whether an operation is read or write.
 // This distinction allows the lockManager to use appropriate locking
 // strategies - read locks (RLock) for concurrent reads, and write locks
 // (Lock) for exclusive writes.
-type operationType int
+type OperationType int
 
 const (
-	// readOperation indicates an operation that only reads data.
+	// ReadOperation indicates an operation that only reads data.
 	// Multiple read operations can proceed concurrently.
-	readOperation operationType = iota
+	ReadOperation OperationType = iota
 
-	// writeOperation indicates an operation that modifies data.
+	// WriteOperation indicates an operation that modifies data.
 	// Write operations are exclusive - no other reads or writes
 	// can proceed while a write lock is held.
-	writeOperation
+	WriteOperation
 )
 
-// lockManager provides centralized lock management for thread-safe store operations.
+// LockManager provides centralized lock management for thread-safe store operations.
 // It encapsulates the locking strategy, ensuring consistent use of read/write locks
 // throughout the store implementation. This centralization prevents common concurrency
 // bugs like deadlocks from lock/unlock/relock patterns and ensures all operations
@@ -31,15 +30,15 @@ const (
 // The lockManager uses Go's sync.RWMutex, which allows multiple concurrent readers
 // but exclusive writers. This maximizes read throughput while maintaining data
 // consistency during writes.
-type lockManager struct {
+type LockManager struct {
 	mu *sync.RWMutex
 }
 
-// newLockManager creates a new lock manager instance.
-// The returned lockManager is ready to use and can handle concurrent
+// NewLockManager creates a new lock manager instance.
+// The returned LockManager is ready to use and can handle concurrent
 // operations immediately.
-func newLockManager() *lockManager {
-	return &lockManager{
+func NewLockManager() *LockManager {
+	return &LockManager{
 		mu: &sync.RWMutex{},
 	}
 }
@@ -63,16 +62,16 @@ func newLockManager() *lockManager {
 //
 // Example:
 //
-//	err := lockManager.execute(readOperation, func() error {
+//	err := lockManager.Execute(ReadOperation, func() error {
 //	    // Safe to read data here
 //	    return nil
 //	})
-func (lm *lockManager) execute(opType operationType, fn func() error) error {
+func (lm *LockManager) Execute(opType OperationType, fn func() error) error {
 	switch opType {
-	case readOperation:
+	case ReadOperation:
 		lm.mu.RLock()
 		defer lm.mu.RUnlock()
-	case writeOperation:
+	case WriteOperation:
 		lm.mu.Lock()
 		defer lm.mu.Unlock()
 	}
@@ -98,7 +97,7 @@ func (lm *lockManager) execute(opType operationType, fn func() error) error {
 //
 // Example:
 //
-//	result, err := lockManager.executeWithResult(readOperation, func() (interface{}, error) {
+//	result, err := lockManager.ExecuteWithResult(ReadOperation, func() (interface{}, error) {
 //	    // Safe to read data here
 //	    return someData, nil
 //	})
@@ -106,12 +105,12 @@ func (lm *lockManager) execute(opType operationType, fn func() error) error {
 //	    return nil, err
 //	}
 //	data := result.(ExpectedType)
-func (lm *lockManager) executeWithResult(opType operationType, fn func() (interface{}, error)) (interface{}, error) {
+func (lm *LockManager) ExecuteWithResult(opType OperationType, fn func() (interface{}, error)) (interface{}, error) {
 	switch opType {
-	case readOperation:
+	case ReadOperation:
 		lm.mu.RLock()
 		defer lm.mu.RUnlock()
-	case writeOperation:
+	case WriteOperation:
 		lm.mu.Lock()
 		defer lm.mu.Unlock()
 	}
