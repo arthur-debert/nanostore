@@ -1,3 +1,6 @@
+// Part of the nanostore CLI - this file implements the 'nanostore migrate <command>' subcommand.
+// Build the CLI with: scripts/build
+// This creates bin/nanostore which includes all migration commands.
 package main
 
 import (

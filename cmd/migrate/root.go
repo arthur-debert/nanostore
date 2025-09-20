@@ -1,3 +1,6 @@
+// Part of the nanostore CLI - this file implements the 'nanostore migrate <command>' subcommand.
+// Build the CLI with: scripts/build
+// This creates bin/nanostore which includes all migration commands.
 package main
 
 import (
@@ -18,22 +21,33 @@ var (
 )
 
 var rootCmd = &cobra.Command{
-	Use:   "nanostore-migrate",
-	Short: "Schema migration tools for nanostore",
+	Use:   "nanostore",
+	Short: "Nanostore CLI",
+	Long:  "Nanostore is a document and ID store library with SQLite backend.",
+}
+
+var migrateCmd = &cobra.Command{
+	Use:   "migrate",
+	Short: "Schema migration tools",
 	Long:  "Perform field operations on nanostore documents including rename, remove, add, and transform.",
 }
 
 func init() {
-	rootCmd.PersistentFlags().StringVarP(&storePath, "store", "s", "", "path to store file (required)")
-	rootCmd.PersistentFlags().BoolVarP(&dryRun, "dry-run", "n", false, "preview changes without applying them")
-	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "show detailed output")
-	_ = rootCmd.MarkPersistentFlagRequired("store")
+	// Add migrate as a subcommand of root
+	rootCmd.AddCommand(migrateCmd)
 
-	rootCmd.AddCommand(renameFieldCmd)
-	rootCmd.AddCommand(removeFieldCmd)
-	rootCmd.AddCommand(addFieldCmd)
-	rootCmd.AddCommand(transformFieldCmd)
-	rootCmd.AddCommand(validateCmd)
+	// Add flags to the migrate command
+	migrateCmd.PersistentFlags().StringVarP(&storePath, "store", "s", "", "path to store file (required)")
+	migrateCmd.PersistentFlags().BoolVarP(&dryRun, "dry-run", "n", false, "preview changes without applying them")
+	migrateCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "show detailed output")
+	_ = migrateCmd.MarkPersistentFlagRequired("store")
+
+	// Add subcommands to migrate
+	migrateCmd.AddCommand(renameFieldCmd)
+	migrateCmd.AddCommand(removeFieldCmd)
+	migrateCmd.AddCommand(addFieldCmd)
+	migrateCmd.AddCommand(transformFieldCmd)
+	migrateCmd.AddCommand(validateCmd)
 }
 
 // loadStore loads the nanostore from the specified path
