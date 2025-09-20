@@ -14,14 +14,18 @@ func NewAPI() *API {
 
 // RenameField renames a field across all documents
 func (a *API) RenameField(docs []types.Document, config types.Config, oldName, newName string, opts Options) *Result {
-	// TODO: Implement
-	return &Result{
-		Success: false,
-		Code:    CodeExecutionError,
-		Messages: []Message{
-			{Level: LevelError, Text: "RenameField not implemented"},
-		},
+	ctx := &MigrationContext{
+		Documents: docs,
+		Config:    config,
+		DryRun:    opts.DryRun,
 	}
+
+	cmd := &RenameField{
+		OldName: oldName,
+		NewName: newName,
+	}
+
+	return cmd.Execute(ctx)
 }
 
 // RemoveField removes a field from all documents

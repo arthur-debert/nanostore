@@ -60,3 +60,15 @@ const (
 	CodeExecutionError
 	CodePartialFailure
 )
+
+// Command represents a migration command
+type Command interface {
+	// Validate checks if the command can be executed
+	Validate(ctx *MigrationContext) []Message
+
+	// Execute runs the migration
+	Execute(ctx *MigrationContext) *Result
+
+	// Description returns a human-readable description
+	Description() string
+}
