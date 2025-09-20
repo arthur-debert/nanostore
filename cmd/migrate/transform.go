@@ -56,7 +56,7 @@ func runTransformField(cmd *cobra.Command, args []string) error {
 
 	// Run migration
 	api := migration.NewAPI()
-	result := api.TransformField(docs, config, fieldName, transformer, migration.Options{
+	_, result := api.TransformField(docs, config, fieldName, transformer, migration.Options{
 		DryRun:  dryRun,
 		Verbose: verbose,
 	})

@@ -62,7 +62,7 @@ func runRenameField(cmd *cobra.Command, args []string) error {
 
 	// Run migration
 	api := migration.NewAPI()
-	result := api.RenameField(docs, config, oldName, newName, migration.Options{
+	_, result := api.RenameField(docs, config, oldName, newName, migration.Options{
 		DryRun:    dryRun,
 		Verbose:   verbose,
 		FieldType: fieldType,

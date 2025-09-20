@@ -62,7 +62,7 @@ func runRemoveField(cmd *cobra.Command, args []string) error {
 
 	// Run migration
 	api := migration.NewAPI()
-	result := api.RemoveField(docs, config, fieldName, migration.Options{
+	_, result := api.RemoveField(docs, config, fieldName, migration.Options{
 		DryRun:    dryRun,
 		Verbose:   verbose,
 		FieldType: fieldType,

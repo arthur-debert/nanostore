@@ -38,7 +38,7 @@ func runValidate(cmd *cobra.Command, args []string) error {
 
 	// Run validation
 	api := migration.NewAPI()
-	result := api.ValidateSchema(docs, config, migration.Options{
+	_, result := api.ValidateSchema(docs, config, migration.Options{
 		DryRun:  dryRun,
 		Verbose: verbose,
 	})

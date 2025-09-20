@@ -61,7 +61,7 @@ func runAddField(cmd *cobra.Command, args []string) error {
 
 	// Run migration
 	api := migration.NewAPI()
-	result := api.AddField(docs, config, fieldName, parsedValue, migration.Options{
+	_, result := api.AddField(docs, config, fieldName, parsedValue, migration.Options{
 		DryRun:      dryRun,
 		Verbose:     verbose,
 		IsDataField: isDataField,
