@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/arthur-debert/nanostore/nanostore"
-	"github.com/arthur-debert/nanostore/testutil"
+	"github.com/arthur-debert/nanostore/nanostore/testutil"
 )
 
 func TestOrderingMigrated(t *testing.T) {

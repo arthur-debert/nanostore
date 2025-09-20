@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/arthur-debert/nanostore/nanostore"
-	"github.com/arthur-debert/nanostore/testutil"
+	"github.com/arthur-debert/nanostore/nanostore/testutil"
 )
 
 // Test struct with both dimension and non-dimension fields

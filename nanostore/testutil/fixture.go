@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/arthur-debert/nanostore/nanostore"
@@ -132,8 +133,13 @@ func LoadUniverse(t *testing.T) (nanostore.Store, *UniverseData) {
 	}
 	t.Cleanup(func() { _ = store.Close() })
 
-	// Load fixture data
-	fixturePath := filepath.Join("..", "testdata", "universe.json")
+	// Load fixture data - use runtime to find the correct path
+	_, filename, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("failed to get runtime caller info")
+	}
+	fixtureDir := filepath.Dir(filename)
+	fixturePath := filepath.Join(fixtureDir, "..", "testdata", "universe.json")
 	data, err := os.ReadFile(fixturePath)
 	if err != nil {
 		t.Fatalf("failed to read fixture file: %v", err)

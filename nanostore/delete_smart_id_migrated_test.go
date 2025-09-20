@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/arthur-debert/nanostore/nanostore"
-	"github.com/arthur-debert/nanostore/testutil"
+	"github.com/arthur-debert/nanostore/nanostore/testutil"
 )
 
 func TestDeleteWithSmartIDMigrated(t *testing.T) {
