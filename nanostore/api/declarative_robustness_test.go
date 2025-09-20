@@ -15,6 +15,7 @@ import (
 	"testing"
 
 	"github.com/arthur-debert/nanostore/nanostore"
+	"github.com/arthur-debert/nanostore/nanostore/api"
 )
 
 // Edge case struct types for testing
@@ -82,7 +83,7 @@ func TestDeclarativeRobustness(t *testing.T) {
 		defer func() { _ = os.Remove(tmpfile.Name()) }()
 		_ = tmpfile.Close()
 
-		_, err = nanostore.NewFromType[EdgeCaseItem](tmpfile.Name())
+		_, err = api.NewFromType[EdgeCaseItem](tmpfile.Name())
 		if err == nil {
 			t.Fatal("expected error for pointer field, got nil")
 		}
@@ -104,7 +105,7 @@ func TestDeclarativeRobustness(t *testing.T) {
 		_ = tmpfile.Close()
 
 		// This might fail during store creation
-		store, err := nanostore.NewFromType[InvalidTagsItem](tmpfile.Name())
+		store, err := api.NewFromType[InvalidTagsItem](tmpfile.Name())
 		if err != nil {
 			// Expected - invalid tags should be caught
 			t.Logf("Store creation failed as expected: %v", err)
@@ -130,7 +131,7 @@ func TestDeclarativeRobustness(t *testing.T) {
 		defer func() { _ = os.Remove(tmpfile.Name()) }()
 		_ = tmpfile.Close()
 
-		store, err := nanostore.NewFromType[SafeEdgeCaseItem](tmpfile.Name())
+		store, err := api.NewFromType[SafeEdgeCaseItem](tmpfile.Name())
 		if err != nil {
 			t.Fatalf("failed to create store: %v", err)
 		}
@@ -194,7 +195,7 @@ func TestDeclarativeRobustness(t *testing.T) {
 		defer func() { _ = os.Remove(tmpfile.Name()) }()
 		_ = tmpfile.Close()
 
-		store, err := nanostore.NewFromType[SafeEdgeCaseItem](tmpfile.Name())
+		store, err := api.NewFromType[SafeEdgeCaseItem](tmpfile.Name())
 		if err != nil {
 			t.Fatalf("failed to create store: %v", err)
 		}
@@ -268,7 +269,7 @@ func TestDeclarativeRobustness(t *testing.T) {
 		defer func() { _ = os.Remove(tmpfile.Name()) }()
 		_ = tmpfile.Close()
 
-		store, err := nanostore.NewFromType[SafeEdgeCaseItem](tmpfile.Name())
+		store, err := api.NewFromType[SafeEdgeCaseItem](tmpfile.Name())
 		if err != nil {
 			t.Fatalf("failed to create store: %v", err)
 		}

@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/arthur-debert/nanostore/nanostore"
+	"github.com/arthur-debert/nanostore/nanostore/api"
 )
 
 // TodoItem represents a todo item with hierarchical support
@@ -24,12 +25,12 @@ type TodoItem struct {
 
 // TodoApp manages the todo store and operations
 type TodoApp struct {
-	store *nanostore.TypedStore[TodoItem]
+	store *api.TypedStore[TodoItem]
 }
 
 // NewTodoApp creates a new todo application
 func NewTodoApp(filePath string) (*TodoApp, error) {
-	store, err := nanostore.NewFromType[TodoItem](filePath)
+	store, err := api.NewFromType[TodoItem](filePath)
 	if err != nil {
 		return nil, err
 	}

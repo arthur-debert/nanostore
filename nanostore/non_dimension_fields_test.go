@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/arthur-debert/nanostore/nanostore"
+	"github.com/arthur-debert/nanostore/nanostore/api"
 	"github.com/arthur-debert/nanostore/nanostore/testutil"
 )
 
@@ -48,7 +49,7 @@ func TestNonDimensionFieldsPreservedMigrated(t *testing.T) {
 	_ = tmpfile.Close()
 
 	// Create typed store
-	store, err := nanostore.NewFromType[MixedFieldsItemMigrated](tmpfile.Name())
+	store, err := api.NewFromType[MixedFieldsItemMigrated](tmpfile.Name())
 	if err != nil {
 		t.Fatalf("failed to create typed store: %v", err)
 	}
@@ -262,7 +263,7 @@ func TestNonDimensionFieldTypesMigrated(t *testing.T) {
 	defer func() { _ = os.Remove(tmpfile.Name()) }()
 	_ = tmpfile.Close()
 
-	store, err := nanostore.NewFromType[ComplexFieldsItemMigrated](tmpfile.Name())
+	store, err := api.NewFromType[ComplexFieldsItemMigrated](tmpfile.Name())
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}

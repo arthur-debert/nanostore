@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+
+	"github.com/arthur-debert/nanostore/nanostore/ids"
 )
 
 // IDResolutionError indicates that a SimpleID could not be resolved to a UUID
@@ -249,7 +251,7 @@ func (cp *commandPreprocessor) resolveIDField(field reflect.Value) error {
 	}
 
 	id := field.String()
-	if id == "" || isValidUUID(id) {
+	if id == "" || ids.IsValidUUID(id) {
 		return nil // Empty or already a UUID
 	}
 
@@ -289,7 +291,7 @@ func (cp *commandPreprocessor) resolveIDsInMap(mapVal reflect.Value) error {
 			}
 			if value.Kind() == reflect.String {
 				id := value.String()
-				if id != "" && !isValidUUID(id) {
+				if id != "" && !ids.IsValidUUID(id) {
 					// Try to resolve
 					uuid, err := cp.store.resolveUUIDInternal(id)
 					if err != nil {

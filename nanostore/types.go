@@ -1,6 +1,8 @@
 package nanostore
 
 import (
+	"fmt"
+	"reflect"
 	"time"
 
 	"github.com/arthur-debert/nanostore/types"
@@ -341,4 +343,52 @@ type Store interface {
 
 	// Close releases any resources held by the store
 	Close() error
+}
+
+// ToTypesDocument converts a local Document to types.Document
+func ToTypesDocument(doc Document) types.Document {
+	return types.Document{
+		UUID:       doc.UUID,
+		SimpleID:   doc.SimpleID,
+		Title:      doc.Title,
+		Body:       doc.Body,
+		Dimensions: doc.Dimensions,
+		CreatedAt:  doc.CreatedAt,
+		UpdatedAt:  doc.UpdatedAt,
+	}
+}
+
+// ValidateSimpleType ensures a dimension value is a simple type (string, number, bool)
+func ValidateSimpleType(value interface{}, dimensionName string) error {
+	if value == nil {
+		return nil
+	}
+
+	// Check the type using reflection
+	v := reflect.ValueOf(value)
+	switch v.Kind() {
+	case reflect.String, reflect.Bool,
+		reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64,
+		reflect.Float32, reflect.Float64:
+		return nil
+	case reflect.Slice, reflect.Array:
+		return fmt.Errorf("dimension '%s' cannot be an array/slice type, got %T", dimensionName, value)
+	case reflect.Map:
+		return fmt.Errorf("dimension '%s' cannot be a map type, got %T", dimensionName, value)
+	case reflect.Struct:
+		// Allow time.Time as it's commonly used
+		if _, ok := value.(time.Time); ok {
+			return nil
+		}
+		return fmt.Errorf("dimension '%s' cannot be a struct type, got %T", dimensionName, value)
+	case reflect.Ptr, reflect.Interface:
+		// Dereference and check the underlying type
+		if v.IsNil() {
+			return nil
+		}
+		return ValidateSimpleType(v.Elem().Interface(), dimensionName)
+	default:
+		return fmt.Errorf("dimension '%s' must be a simple type (string, number, or bool), got %T", dimensionName, value)
+	}
 }

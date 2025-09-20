@@ -287,7 +287,7 @@ func (g *IDGenerator) getPartitionWithSimpleParentID(doc types.Document, uuidToS
 // ResolveID converts a SimpleID back to a UUID
 func (g *IDGenerator) ResolveID(simpleID string, documents []types.Document) (string, error) {
 	// Maybe it's already a UUID?
-	if isValidUUID(simpleID) {
+	if IsValidUUID(simpleID) {
 		// Verify it exists
 		for _, doc := range documents {
 			if doc.UUID == simpleID {
@@ -308,8 +308,8 @@ func (g *IDGenerator) ResolveID(simpleID string, documents []types.Document) (st
 	return "", fmt.Errorf("simple ID not found: %s", simpleID)
 }
 
-// isValidUUID checks if a string looks like a UUID
-func isValidUUID(s string) bool {
+// IsValidUUID checks if a string looks like a UUID
+func IsValidUUID(s string) bool {
 	// Check for standard UUID format: 8-4-4-4-12 hex characters
 	if len(s) != 36 {
 		return false

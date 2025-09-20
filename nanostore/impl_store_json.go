@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/arthur-debert/nanostore/nanostore/ids"
 	"github.com/arthur-debert/nanostore/types"
 	"github.com/gofrs/flock"
 	"github.com/google/uuid"
@@ -20,8 +21,8 @@ type jsonFileStore struct {
 	filePath      string
 	config        Config
 	dimensionSet  *types.DimensionSet
-	canonicalView *CanonicalView
-	idGenerator   *IDGenerator
+	canonicalView *types.CanonicalView
+	idGenerator   *ids.IDGenerator
 	preprocessor  *commandPreprocessor
 	lockManager   *lockManager
 	fileLock      *flock.Flock // Cross-process file locking
@@ -53,10 +54,10 @@ func newJSONFileStore(filePath string, config Config) (*jsonFileStore, error) {
 
 	// Create canonical view from config
 	// Default canonical view based on dimension defaults
-	var filters []CanonicalFilter
+	var filters []types.CanonicalFilter
 	for _, dim := range config.GetDimensionSet().Enumerated() {
 		if dim.DefaultValue != "" {
-			filters = append(filters, CanonicalFilter{
+			filters = append(filters, types.CanonicalFilter{
 				Dimension: dim.Name,
 				Value:     dim.DefaultValue,
 			})
@@ -64,19 +65,19 @@ func newJSONFileStore(filePath string, config Config) (*jsonFileStore, error) {
 	}
 	// Hierarchical dimensions default to "*" (any value)
 	for _, dim := range config.GetDimensionSet().Hierarchical() {
-		filters = append(filters, CanonicalFilter{
+		filters = append(filters, types.CanonicalFilter{
 			Dimension: dim.Name,
 			Value:     "*",
 		})
 	}
-	canonicalView := NewCanonicalView(filters...)
+	canonicalView := types.NewCanonicalView(filters...)
 
 	store := &jsonFileStore{
 		filePath:      filePath,
 		config:        config,
 		dimensionSet:  config.GetDimensionSet(),
 		canonicalView: canonicalView,
-		idGenerator:   NewIDGenerator(config.GetDimensionSet(), canonicalView),
+		idGenerator:   ids.NewIDGenerator(config.GetDimensionSet(), canonicalView),
 		lockManager:   newLockManager(),
 		fileLock:      fileLock,
 		timeFunc:      time.Now, // Default to time.Now
@@ -268,7 +269,12 @@ func (s *jsonFileStore) List(opts ListOptions) ([]Document, error) {
 		// Generate SimpleIDs using the new ID generator
 		// Get all documents for ID generation (not just the filtered ones)
 		// GenerateIDs now handles copying internally, so we can pass the slice directly
-		idMap := s.idGenerator.GenerateIDs(s.data.Documents)
+		// Convert local Documents to types.Document
+		typesDocuments := make([]types.Document, len(s.data.Documents))
+		for i, doc := range s.data.Documents {
+			typesDocuments[i] = ToTypesDocument(doc)
+		}
+		idMap := s.idGenerator.GenerateIDs(typesDocuments)
 
 		// Create reverse mapping (SimpleID -> UUID)
 		uuidToID := make(map[string]string)
@@ -450,7 +456,7 @@ func (s *jsonFileStore) Add(title string, dimensions map[string]interface{}) (st
 
 		// Validate all provided dimensions are simple types
 		for name, value := range cmd.Dimensions {
-			if err := validateSimpleType(value, name); err != nil {
+			if err := ValidateSimpleType(value, name); err != nil {
 				return "", err
 			}
 		}
@@ -552,7 +558,7 @@ func (s *jsonFileStore) Update(id string, updates UpdateRequest) error {
 			// Validate all dimensions are simple types
 			for name, value := range cmd.Request.Dimensions {
 				if value != nil {
-					if err := validateSimpleType(value, name); err != nil {
+					if err := ValidateSimpleType(value, name); err != nil {
 						return err
 					}
 				}
@@ -655,7 +661,12 @@ func (s *jsonFileStore) resolveUUIDInternal(simpleID string) (string, error) {
 	copy(allDocs, s.data.Documents)
 
 	// Use the ID generator to resolve the ID
-	return s.idGenerator.ResolveID(simpleID, allDocs)
+	// Convert to types.Document
+	typesDocuments := make([]types.Document, len(allDocs))
+	for i, doc := range allDocs {
+		typesDocuments[i] = ToTypesDocument(doc)
+	}
+	return s.idGenerator.ResolveID(simpleID, typesDocuments)
 }
 
 // Delete removes a document
@@ -807,7 +818,7 @@ func (s *jsonFileStore) UpdateByDimension(filters map[string]interface{}, update
 		if updates.Dimensions != nil {
 			for name, value := range updates.Dimensions {
 				if value != nil {
-					if err := validateSimpleType(value, name); err != nil {
+					if err := ValidateSimpleType(value, name); err != nil {
 						return 0, err
 					}
 				}
@@ -898,7 +909,7 @@ func (s *jsonFileStore) UpdateByDimension(filters map[string]interface{}, update
 							if value != nil {
 								parentID := fmt.Sprintf("%v", value)
 								// Try to resolve if it's a SimpleID
-								if !isValidUUID(parentID) {
+								if !ids.IsValidUUID(parentID) {
 									if resolvedUUID, err := s.resolveUUIDInternal(parentID); err == nil {
 										parentID = resolvedUUID
 									}

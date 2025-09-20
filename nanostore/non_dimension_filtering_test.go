@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/arthur-debert/nanostore/nanostore"
+	"github.com/arthur-debert/nanostore/nanostore/api"
 )
 
 // Test struct with both dimension and non-dimension fields for filtering tests
@@ -42,7 +43,7 @@ func TestTransparentFilteringForNonDimensionFields(t *testing.T) {
 	_ = tmpfile.Close()
 
 	// Create typed store
-	store, err := nanostore.NewFromType[FilterableItem](tmpfile.Name())
+	store, err := api.NewFromType[FilterableItem](tmpfile.Name())
 	if err != nil {
 		t.Fatalf("failed to create typed store: %v", err)
 	}

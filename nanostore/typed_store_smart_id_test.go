@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/arthur-debert/nanostore/nanostore"
+	"github.com/arthur-debert/nanostore/nanostore/api"
 	"github.com/arthur-debert/nanostore/nanostore/testutil"
 )
 
@@ -33,7 +34,7 @@ func TestTypedStoreUpdateWithSmartIDMigrated(t *testing.T) {
 	defer func() { _ = os.Remove(tmpfile.Name()) }()
 	_ = tmpfile.Close()
 
-	store, err := nanostore.NewFromType[TestTaskMigrated](tmpfile.Name())
+	store, err := api.NewFromType[TestTaskMigrated](tmpfile.Name())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -115,7 +116,7 @@ func TestTypedStoreDeleteWithSmartIDMigrated(t *testing.T) {
 	defer func() { _ = os.Remove(tmpfile.Name()) }()
 	_ = tmpfile.Close()
 
-	store, err := nanostore.NewFromType[TestTaskMigrated](tmpfile.Name())
+	store, err := api.NewFromType[TestTaskMigrated](tmpfile.Name())
 	if err != nil {
 		t.Fatal(err)
 	}

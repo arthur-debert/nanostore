@@ -1,4 +1,4 @@
-module github.com/arthur-debert/nanostore/ids
+module github.com/arthur-debert/nanostore/nanostore/ids
 
 go 1.21
 

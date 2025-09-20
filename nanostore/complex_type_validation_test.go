@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/arthur-debert/nanostore/nanostore"
+	"github.com/arthur-debert/nanostore/nanostore/api"
 )
 
 func TestComplexTypeValidation(t *testing.T) {
@@ -219,7 +220,7 @@ func TestUnmarshalDimensionsComplexTypes(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			var result TestStruct
-			err := nanostore.UnmarshalDimensions(tc.doc, &result)
+			err := api.UnmarshalDimensions(tc.doc, &result)
 			if tc.expectErr {
 				if err == nil {
 					t.Fatal("expected error, got nil")

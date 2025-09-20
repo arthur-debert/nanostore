@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/arthur-debert/nanostore/nanostore"
+	"github.com/arthur-debert/nanostore/nanostore/api"
 )
 
 func TestConfigValidationRobustness(t *testing.T) {
@@ -424,7 +425,7 @@ func TestConfigValidationRobustness(t *testing.T) {
 
 		for _, tc := range testCases {
 			t.Run(tc.name, func(t *testing.T) {
-				err := nanostore.UnmarshalDimensions(tc.doc, tc.target)
+				err := api.UnmarshalDimensions(tc.doc, tc.target)
 				// Log the result - some might error, some might not
 				if err != nil {
 					t.Logf("UnmarshalDimensions error: %v", err)
