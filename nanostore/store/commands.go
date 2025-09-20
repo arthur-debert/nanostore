@@ -6,7 +6,7 @@ import "github.com/arthur-debert/nanostore/types"
 
 // UpdateCommand represents an update operation
 type UpdateCommand struct {
-	ID      string              `id:"true"`
+	ID      string `id:"true"`
 	Request types.UpdateRequest
 }
 
@@ -19,5 +19,6 @@ type DeleteCommand struct {
 // AddCommand represents an add operation
 type AddCommand struct {
 	Title      string
+	Body       string
 	Dimensions map[string]interface{}
 }

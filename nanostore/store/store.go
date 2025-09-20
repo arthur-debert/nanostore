@@ -46,6 +46,9 @@ type Store interface {
 	// UpdateWhere updates documents matching a custom WHERE clause
 	UpdateWhere(whereClause string, updates types.UpdateRequest, args ...interface{}) (int, error)
 
+	// GetByID retrieves a single document by its UUID
+	GetByID(id string) (*types.Document, error)
+
 	// Close releases any resources held by the store
 	Close() error
 }

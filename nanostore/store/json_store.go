@@ -792,6 +792,26 @@ func (s *jsonFileStore) UpdateWhere(whereClause string, updates types.UpdateRequ
 	return 0, errors.New("UpdateWhere not supported in JSON store")
 }
 
+// GetByID retrieves a single document by ID
+func (s *jsonFileStore) GetByID(id string) (*types.Document, error) {
+	var result *types.Document
+	err := s.lockManager.Execute(storage.ReadOperation, func() error {
+		// Find the document
+		for _, doc := range s.data.Documents {
+			if doc.UUID == id {
+				result = &doc
+				return nil
+			}
+		}
+		return nil // Not found
+	})
+
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
 // Close releases any resources
 func (s *jsonFileStore) Close() error {
 	return s.lockManager.Execute(storage.WriteOperation, func() error {
