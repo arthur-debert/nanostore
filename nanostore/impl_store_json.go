@@ -28,23 +28,10 @@ type jsonFileStore struct {
 	queryProc     query.Processor
 	lockManager   *storage.LockManager
 	fileLock      *flock.Flock // Cross-process file locking
-	data          *storeData
+	data          *storage.StoreData
 	// timeFunc is used to get the current time, defaults to time.Now
 	// Can be overridden for testing
 	timeFunc func() time.Time
-}
-
-// storeData represents the in-memory data structure
-type storeData struct {
-	Documents []Document    `json:"documents"`
-	Metadata  storeMetadata `json:"metadata"`
-}
-
-// storeMetadata contains store metadata
-type storeMetadata struct {
-	Version   string    `json:"version"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
 }
 
 // newJSONFileStore creates a new JSON file store
@@ -86,9 +73,9 @@ func newJSONFileStore(filePath string, config Config) (*jsonFileStore, error) {
 		lockManager:   storage.NewLockManager(),
 		fileLock:      fileLock,
 		timeFunc:      time.Now, // Default to time.Now
-		data: &storeData{
+		data: &storage.StoreData{
 			Documents: []Document{},
-			Metadata: storeMetadata{
+			Metadata: storage.Metadata{
 				Version:   "1.0",
 				CreatedAt: time.Now(),
 				UpdatedAt: time.Now(),
@@ -188,7 +175,7 @@ func (s *jsonFileStore) load() error {
 	}
 
 	// Parse JSON
-	var storeData storeData
+	var storeData storage.StoreData
 	if err := json.Unmarshal(data, &storeData); err != nil {
 		return fmt.Errorf("failed to parse JSON: %w", err)
 	}
