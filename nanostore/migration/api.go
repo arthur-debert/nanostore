@@ -124,12 +124,24 @@ func (a *API) TransformField(docs []types.Document, config types.Config, fieldNa
 
 // ValidateSchema validates that all documents conform to the current schema
 func (a *API) ValidateSchema(docs []types.Document, config types.Config, opts Options) ([]types.Document, *Result) {
-	// TODO: Implement
-	return docs, &Result{
-		Success: false,
-		Code:    CodeExecutionError,
-		Messages: []Message{
-			{Level: LevelError, Text: "ValidateSchema not implemented"},
-		},
+	// Make a deep copy of documents to avoid modifying the input slice
+	docsCopy := make([]types.Document, len(docs))
+	for i, doc := range docs {
+		docsCopy[i] = doc
+		docsCopy[i].Dimensions = make(map[string]interface{})
+		for k, v := range doc.Dimensions {
+			docsCopy[i].Dimensions[k] = v
+		}
 	}
+
+	ctx := &MigrationContext{
+		Documents: docsCopy,
+		Config:    config,
+		DryRun:    opts.DryRun,
+	}
+
+	cmd := &ValidateSchema{}
+
+	result := cmd.Execute(ctx)
+	return ctx.Documents, result
 }

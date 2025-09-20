@@ -309,3 +309,67 @@ func TestAPIAddField(t *testing.T) {
 		}
 	})
 }
+
+func TestAPIValidateSchema(t *testing.T) {
+	api := NewAPI()
+
+	t.Run("validation passes", func(t *testing.T) {
+		docs := []types.Document{
+			{
+				UUID: "1",
+				Dimensions: map[string]interface{}{
+					"status": "active",
+				},
+			},
+		}
+
+		config := types.Config{
+			Dimensions: []types.DimensionConfig{
+				{
+					Name:   "status",
+					Type:   types.Enumerated,
+					Values: []string{"active", "pending"},
+				},
+			},
+		}
+
+		modifiedDocs, result := api.ValidateSchema(docs, config, Options{})
+
+		if !result.Success {
+			t.Error("expected validation to pass")
+		}
+		if len(modifiedDocs) != len(docs) {
+			t.Error("documents should be returned unchanged")
+		}
+	})
+
+	t.Run("validation fails", func(t *testing.T) {
+		docs := []types.Document{
+			{
+				UUID: "1",
+				Dimensions: map[string]interface{}{
+					"status": "invalid",
+				},
+			},
+		}
+
+		config := types.Config{
+			Dimensions: []types.DimensionConfig{
+				{
+					Name:   "status",
+					Type:   types.Enumerated,
+					Values: []string{"active", "pending"},
+				},
+			},
+		}
+
+		_, result := api.ValidateSchema(docs, config, Options{})
+
+		if result.Success {
+			t.Error("expected validation to fail")
+		}
+		if result.Code != CodeValidationError {
+			t.Errorf("expected validation error code, got %d", result.Code)
+		}
+	})
+}
