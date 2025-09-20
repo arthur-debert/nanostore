@@ -1,4 +1,4 @@
-package nanostore
+package store
 
 // IMPORTANT: This test must follow the testing patterns established in:
 // nanostore/testutil/model_test.go
@@ -10,6 +10,8 @@ import (
 	"os"
 	"testing"
 	"time"
+
+	"github.com/arthur-debert/nanostore/types"
 )
 
 // Complex test structures to test nested resolution
@@ -251,17 +253,17 @@ func TestCommandPreprocessorComplexStructs(t *testing.T) {
 func createTestStoreWithDocuments(t *testing.T) *jsonFileStore {
 	t.Helper()
 
-	config := Config{
-		Dimensions: []DimensionConfig{
+	config := &testConfig{
+		dimensions: []types.DimensionConfig{
 			{
 				Name:         "status",
-				Type:         Enumerated,
+				Type:         types.Enumerated,
 				Values:       []string{"active", "inactive"},
 				DefaultValue: "active",
 			},
 			{
 				Name:     "location",
-				Type:     Hierarchical,
+				Type:     types.Hierarchical,
 				RefField: "parent_id",
 			},
 		},
@@ -297,10 +299,10 @@ func createTestStoreWithDocuments(t *testing.T) *jsonFileStore {
 }
 
 // Helper to get test documents
-func getTestDocuments(t *testing.T, store *jsonFileStore) []Document {
+func getTestDocuments(t *testing.T, store *jsonFileStore) []types.Document {
 	t.Helper()
 
-	docs, err := store.List(ListOptions{})
+	docs, err := store.List(types.ListOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}

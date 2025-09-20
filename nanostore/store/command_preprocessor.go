@@ -1,4 +1,4 @@
-package nanostore
+package store
 
 import (
 	"github.com/arthur-debert/nanostore/nanostore/ids"

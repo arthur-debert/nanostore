@@ -1,11 +1,13 @@
-package nanostore
+package store
+
+import "github.com/arthur-debert/nanostore/types"
 
 // Command types for preprocessing
 
 // UpdateCommand represents an update operation
 type UpdateCommand struct {
-	ID      string `id:"true"`
-	Request UpdateRequest
+	ID      string              `id:"true"`
+	Request types.UpdateRequest
 }
 
 // DeleteCommand represents a delete operation

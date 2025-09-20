@@ -1,4 +1,4 @@
-package nanostore
+package store
 
 // IMPORTANT: This test must follow the testing patterns established in:
 // nanostore/testutil/model_test.go
@@ -9,7 +9,18 @@ package nanostore
 import (
 	"os"
 	"testing"
+
+	"github.com/arthur-debert/nanostore/types"
 )
+
+// testConfig implements the Config interface for testing
+type testConfig struct {
+	dimensions []types.DimensionConfig
+}
+
+func (c *testConfig) GetDimensionSet() *types.DimensionSet {
+	return types.DimensionSetFromConfig(types.Config{Dimensions: c.dimensions})
+}
 
 func TestCommandPreprocessor(t *testing.T) {
 	// Setup test store
@@ -20,17 +31,17 @@ func TestCommandPreprocessor(t *testing.T) {
 	defer func() { _ = os.Remove(tmpfile.Name()) }()
 	_ = tmpfile.Close()
 
-	config := Config{
-		Dimensions: []DimensionConfig{
+	config := &testConfig{
+		dimensions: []types.DimensionConfig{
 			{
 				Name:         "status",
-				Type:         Enumerated,
+				Type:         types.Enumerated,
 				Values:       []string{"active", "done"},
 				DefaultValue: "active",
 			},
 			{
 				Name:     "location",
-				Type:     Hierarchical,
+				Type:     types.Hierarchical,
 				RefField: "parent_id",
 			},
 		},
@@ -59,7 +70,7 @@ func TestCommandPreprocessor(t *testing.T) {
 	}
 
 	// Get SimpleIDs
-	docs, err := store.List(ListOptions{})
+	docs, err := store.List(types.ListOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -79,7 +90,7 @@ func TestCommandPreprocessor(t *testing.T) {
 	t.Run("ResolveUpdateCommand", func(t *testing.T) {
 		cmd := &UpdateCommand{
 			ID: childSimpleID, // Use SimpleID
-			Request: UpdateRequest{
+			Request: types.UpdateRequest{
 				Dimensions: map[string]interface{}{
 					"status": "done",
 				},
@@ -137,7 +148,7 @@ func TestCommandPreprocessor(t *testing.T) {
 	t.Run("PreserveValidUUID", func(t *testing.T) {
 		cmd := &UpdateCommand{
 			ID: parentUUID, // Already a UUID
-			Request: UpdateRequest{
+			Request: types.UpdateRequest{
 				Dimensions: map[string]interface{}{
 					"status": "done",
 				},
@@ -158,7 +169,7 @@ func TestCommandPreprocessor(t *testing.T) {
 	t.Run("HandleInvalidSimpleID", func(t *testing.T) {
 		cmd := &UpdateCommand{
 			ID: "invalid-id", // Invalid SimpleID
-			Request: UpdateRequest{
+			Request: types.UpdateRequest{
 				Dimensions: map[string]interface{}{
 					"status": "done",
 				},
@@ -182,7 +193,7 @@ func TestCommandPreprocessor(t *testing.T) {
 		// Create a command with an ID that will fail to resolve
 		cmd := &UpdateCommand{
 			ID:      "nonexistent", // Will fail to resolve
-			Request: UpdateRequest{},
+			Request: types.UpdateRequest{},
 		}
 
 		// The preprocessor should not return an error for IDResolutionError
@@ -200,7 +211,7 @@ func TestCommandPreprocessor(t *testing.T) {
 	t.Run("ResolveNestedIDs", func(t *testing.T) {
 		cmd := &UpdateCommand{
 			ID: childSimpleID,
-			Request: UpdateRequest{
+			Request: types.UpdateRequest{
 				Dimensions: map[string]interface{}{
 					"status":    "done",
 					"parent_id": parentSimpleID, // Nested ID in dimensions

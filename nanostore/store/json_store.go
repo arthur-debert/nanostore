@@ -1,4 +1,4 @@
-package nanostore
+package store
 
 import (
 	"context"
@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/arthur-debert/nanostore/internal/validation"
 	"github.com/arthur-debert/nanostore/nanostore/ids"
 	"github.com/arthur-debert/nanostore/nanostore/query"
 	"github.com/arthur-debert/nanostore/nanostore/storage"
@@ -74,7 +75,7 @@ func newJSONFileStore(filePath string, config Config) (*jsonFileStore, error) {
 		fileLock:      fileLock,
 		timeFunc:      time.Now, // Default to time.Now
 		data: &storage.StoreData{
-			Documents: []Document{},
+			Documents: []types.Document{},
 			Metadata: storage.Metadata{
 				Version:   "1.0",
 				CreatedAt: time.Now(),
@@ -228,8 +229,8 @@ func (s *jsonFileStore) save() error {
 }
 
 // List returns documents based on the provided options
-func (s *jsonFileStore) List(opts ListOptions) ([]Document, error) {
-	var result []Document
+func (s *jsonFileStore) List(opts types.ListOptions) ([]types.Document, error) {
+	var result []types.Document
 	err := s.lockManager.Execute(storage.ReadOperation, func() error {
 		// Use query processor to execute the query
 		docs, err := s.queryProc.Execute(s.data.Documents, opts)
@@ -264,7 +265,7 @@ func (s *jsonFileStore) Add(title string, dimensions map[string]interface{}) (st
 
 		// Create document
 		now := s.timeFunc()
-		doc := Document{
+		doc := types.Document{
 			UUID:       docUUID,
 			Title:      cmd.Title,
 			Body:       "", // Empty body by default
@@ -279,7 +280,7 @@ func (s *jsonFileStore) Add(title string, dimensions map[string]interface{}) (st
 			if strings.HasPrefix(name, "_data.") {
 				continue
 			}
-			if err := ValidateSimpleType(value, name); err != nil {
+			if err := validation.ValidateSimpleType(value, name); err != nil {
 				return "", err
 			}
 		}
@@ -287,7 +288,7 @@ func (s *jsonFileStore) Add(title string, dimensions map[string]interface{}) (st
 		// Apply dimension values
 		for _, dimConfig := range s.dimensionSet.All() {
 			switch dimConfig.Type {
-			case Enumerated:
+			case types.Enumerated:
 				// Check if value was provided
 				if val, exists := cmd.Dimensions[dimConfig.Name]; exists {
 					// Validate the value
@@ -300,7 +301,7 @@ func (s *jsonFileStore) Add(title string, dimensions map[string]interface{}) (st
 					// Use default value
 					doc.Dimensions[dimConfig.Name] = dimConfig.DefaultValue
 				}
-			case Hierarchical:
+			case types.Hierarchical:
 				// Handle parent reference
 				// ID resolution already handled by preprocessor
 				if val, exists := cmd.Dimensions[dimConfig.RefField]; exists {
@@ -336,7 +337,7 @@ func (s *jsonFileStore) Add(title string, dimensions map[string]interface{}) (st
 }
 
 // Update modifies an existing document
-func (s *jsonFileStore) Update(id string, updates UpdateRequest) error {
+func (s *jsonFileStore) Update(id string, updates types.UpdateRequest) error {
 	// Preprocess command to resolve IDs
 	cmd := &UpdateCommand{
 		ID:      id,
@@ -385,7 +386,7 @@ func (s *jsonFileStore) Update(id string, updates UpdateRequest) error {
 					continue
 				}
 				if value != nil {
-					if err := ValidateSimpleType(value, name); err != nil {
+					if err := validation.ValidateSimpleType(value, name); err != nil {
 						return err
 					}
 				}
@@ -411,9 +412,9 @@ func (s *jsonFileStore) Update(id string, updates UpdateRequest) error {
 
 				// Find dimension config
 				dim, found := s.dimensionSet.Get(dimName)
-				var dimConfig *DimensionConfig
+				var dimConfig *types.DimensionConfig
 				if found {
-					dimConfig = &DimensionConfig{
+					dimConfig = &types.DimensionConfig{
 						Name:         dim.Name,
 						Type:         dim.Type,
 						Values:       dim.Values,
@@ -425,7 +426,7 @@ func (s *jsonFileStore) Update(id string, updates UpdateRequest) error {
 					// Try by RefField for hierarchical dimensions
 					for _, dc := range s.dimensionSet.Hierarchical() {
 						if dc.RefField == dimName {
-							dimConfig = &DimensionConfig{
+							dimConfig = &types.DimensionConfig{
 								Name:         dc.Name,
 								Type:         dc.Type,
 								Values:       dc.Values,
@@ -443,13 +444,13 @@ func (s *jsonFileStore) Update(id string, updates UpdateRequest) error {
 				}
 
 				// Validate enumerated dimension values
-				if dimConfig.Type == Enumerated && value != nil {
+				if dimConfig.Type == types.Enumerated && value != nil {
 					strVal := fmt.Sprintf("%v", value)
 					if !contains(dimConfig.Values, strVal) {
 						return fmt.Errorf("invalid value %q for dimension %q", strVal, dimName)
 					}
 					doc.Dimensions[dimName] = strVal
-				} else if dimConfig.Type == Hierarchical {
+				} else if dimConfig.Type == types.Hierarchical {
 					// Store hierarchical dimension value
 					// ID resolution already handled by preprocessor
 					if value != nil {
@@ -484,7 +485,7 @@ func (s *jsonFileStore) ResolveUUID(simpleID string) (string, error) {
 // resolveUUIDInternal is the internal version that doesn't take locks
 func (s *jsonFileStore) resolveUUIDInternal(simpleID string) (string, error) {
 	// Get all documents
-	allDocs := make([]Document, len(s.data.Documents))
+	allDocs := make([]types.Document, len(s.data.Documents))
 	copy(allDocs, s.data.Documents)
 
 	// Use the ID generator to resolve the ID
@@ -530,7 +531,7 @@ func (s *jsonFileStore) deleteInternal(id string, cascade bool) error {
 		// Find hierarchical dimension
 		hierDims := s.dimensionSet.Hierarchical()
 		if len(hierDims) > 0 {
-			hierDim := &DimensionConfig{
+			hierDim := &types.DimensionConfig{
 				Name:         hierDims[0].Name,
 				Type:         hierDims[0].Type,
 				Values:       hierDims[0].Values,
@@ -554,7 +555,7 @@ func (s *jsonFileStore) deleteInternal(id string, cascade bool) error {
 		// Find hierarchical dimension
 		hierDims := s.dimensionSet.Hierarchical()
 		if len(hierDims) > 0 {
-			hierDim := &DimensionConfig{
+			hierDim := &types.DimensionConfig{
 				Name:         hierDims[0].Name,
 				Type:         hierDims[0].Type,
 				Values:       hierDims[0].Values,
@@ -634,7 +635,7 @@ func (s *jsonFileStore) DeleteWhere(whereClause string, args ...interface{}) (in
 }
 
 // UpdateByDimension updates documents matching dimension filters
-func (s *jsonFileStore) UpdateByDimension(filters map[string]interface{}, updates UpdateRequest) (int, error) {
+func (s *jsonFileStore) UpdateByDimension(filters map[string]interface{}, updates types.UpdateRequest) (int, error) {
 	result, err := s.lockManager.ExecuteWithResult(storage.WriteOperation, func() (interface{}, error) {
 
 		// Validate update dimensions if provided
@@ -645,7 +646,7 @@ func (s *jsonFileStore) UpdateByDimension(filters map[string]interface{}, update
 					continue
 				}
 				if value != nil {
-					if err := ValidateSimpleType(value, name); err != nil {
+					if err := validation.ValidateSimpleType(value, name); err != nil {
 						return 0, err
 					}
 				}
@@ -693,9 +694,9 @@ func (s *jsonFileStore) UpdateByDimension(filters map[string]interface{}, update
 
 						// Find dimension config
 						dim, found := s.dimensionSet.Get(dimName)
-						var dimConfig *DimensionConfig
+						var dimConfig *types.DimensionConfig
 						if found {
-							dimConfig = &DimensionConfig{
+							dimConfig = &types.DimensionConfig{
 								Name:         dim.Name,
 								Type:         dim.Type,
 								Values:       dim.Values,
@@ -707,7 +708,7 @@ func (s *jsonFileStore) UpdateByDimension(filters map[string]interface{}, update
 							// Try by RefField for hierarchical dimensions
 							for _, dc := range s.dimensionSet.Hierarchical() {
 								if dc.RefField == dimName {
-									dimConfig = &DimensionConfig{
+									dimConfig = &types.DimensionConfig{
 										Name:         dc.Name,
 										Type:         dc.Type,
 										Values:       dc.Values,
@@ -725,13 +726,13 @@ func (s *jsonFileStore) UpdateByDimension(filters map[string]interface{}, update
 						}
 
 						// Validate enumerated dimension values
-						if dimConfig.Type == Enumerated && value != nil {
+						if dimConfig.Type == types.Enumerated && value != nil {
 							strVal := fmt.Sprintf("%v", value)
 							if !contains(dimConfig.Values, strVal) {
 								return 0, fmt.Errorf("invalid value %q for dimension %q", strVal, dimName)
 							}
 							doc.Dimensions[dimName] = strVal
-						} else if dimConfig.Type == Hierarchical {
+						} else if dimConfig.Type == types.Hierarchical {
 							// Store hierarchical dimension value
 							if value != nil {
 								parentID := fmt.Sprintf("%v", value)
@@ -771,7 +772,7 @@ func (s *jsonFileStore) UpdateByDimension(filters map[string]interface{}, update
 }
 
 // UpdateWhere updates documents matching a custom WHERE clause
-func (s *jsonFileStore) UpdateWhere(whereClause string, updates UpdateRequest, args ...interface{}) (int, error) {
+func (s *jsonFileStore) UpdateWhere(whereClause string, updates types.UpdateRequest, args ...interface{}) (int, error) {
 	// This method doesn't make sense for JSON store
 	return 0, errors.New("UpdateWhere not supported in JSON store")
 }

@@ -2,6 +2,7 @@ package validation
 
 import (
 	"fmt"
+	"reflect"
 	"strings"
 
 	"github.com/arthur-debert/nanostore/types"
@@ -162,4 +163,35 @@ func IsValidPrefix(prefix string) bool {
 		}
 	}
 	return true
+}
+
+// ValidateSimpleType ensures a dimension value is a simple type (string, number, bool)
+func ValidateSimpleType(value interface{}, dimensionName string) error {
+	if value == nil {
+		return nil
+	}
+
+	// Check the type using reflection
+	v := reflect.ValueOf(value)
+	switch v.Kind() {
+	case reflect.String, reflect.Bool,
+		reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64,
+		reflect.Float32, reflect.Float64:
+		return nil
+	case reflect.Slice, reflect.Array:
+		return fmt.Errorf("dimension '%s' cannot be an array/slice type, got %T", dimensionName, value)
+	case reflect.Map:
+		return fmt.Errorf("dimension '%s' cannot be a map type, got %T", dimensionName, value)
+	case reflect.Ptr:
+		// Dereference the pointer and check again
+		if v.IsNil() {
+			return nil // nil pointer is OK
+		}
+		return ValidateSimpleType(v.Elem().Interface(), dimensionName)
+	case reflect.Struct:
+		return fmt.Errorf("dimension '%s' cannot be a struct type, got %T", dimensionName, value)
+	default:
+		return fmt.Errorf("dimension '%s' must be a simple type (string, number, or bool), got %T", dimensionName, value)
+	}
 }
