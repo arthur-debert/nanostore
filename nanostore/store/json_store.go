@@ -14,7 +14,6 @@ import (
 	"github.com/arthur-debert/nanostore/nanostore/query"
 	"github.com/arthur-debert/nanostore/nanostore/storage"
 	"github.com/arthur-debert/nanostore/types"
-	"github.com/gofrs/flock"
 	"github.com/google/uuid"
 )
 
@@ -28,19 +27,19 @@ type jsonFileStore struct {
 	preprocessor  *commandPreprocessor
 	queryProc     query.Processor
 	lockManager   *storage.LockManager
-	fileLock      *flock.Flock // Cross-process file locking
-	data          *storage.StoreData
+	// File system abstractions
+	fs          FileSystem
+	lockFactory FileLockFactory
+	fileLock    FileLock // Cross-process file locking
+
+	data *storage.StoreData
 	// timeFunc is used to get the current time, defaults to time.Now
 	// Can be overridden for testing
 	timeFunc func() time.Time
 }
 
 // newJSONFileStore creates a new JSON file store
-func newJSONFileStore(filePath string, config Config) (*jsonFileStore, error) {
-	// Create a file lock for the data file
-	// Use a separate lock file to avoid issues with file replacement during save
-	lockPath := filePath + ".lock"
-	fileLock := flock.New(lockPath)
+func newJSONFileStore(filePath string, config Config, opts ...JSONFileStoreOption) (*jsonFileStore, error) {
 
 	// Create canonical view from config
 	// Default canonical view based on dimension defaults
@@ -72,7 +71,6 @@ func newJSONFileStore(filePath string, config Config) (*jsonFileStore, error) {
 		idGenerator:   idGen,
 		queryProc:     query.NewProcessor(config.GetDimensionSet(), idGen),
 		lockManager:   storage.NewLockManager(),
-		fileLock:      fileLock,
 		timeFunc:      time.Now, // Default to time.Now
 		data: &storage.StoreData{
 			Documents: []types.Document{},
@@ -83,6 +81,23 @@ func newJSONFileStore(filePath string, config Config) (*jsonFileStore, error) {
 			},
 		},
 	}
+
+	// Apply options
+	for _, opt := range opts {
+		opt(store)
+	}
+
+	// Set defaults for dependencies not provided via options
+	if store.fs == nil {
+		store.fs = &OSFileSystem{}
+	}
+	if store.lockFactory == nil {
+		store.lockFactory = &FlockFactory{}
+	}
+
+	// Create file lock using the factory
+	lockPath := filePath + ".lock"
+	store.fileLock = store.lockFactory.New(lockPath)
 
 	// Initialize preprocessor
 	store.preprocessor = newCommandPreprocessor(store)
@@ -159,13 +174,13 @@ func (s *jsonFileStore) load() error {
 	// No locking here - caller must handle locking
 
 	// Check if file exists
-	if _, err := os.Stat(s.filePath); os.IsNotExist(err) {
+	if _, err := s.fs.Stat(s.filePath); errors.Is(err, os.ErrNotExist) {
 		// File doesn't exist yet, that's OK
 		return nil
 	}
 
 	// Read the file
-	data, err := os.ReadFile(s.filePath)
+	data, err := s.fs.ReadFile(s.filePath)
 	if err != nil {
 		return fmt.Errorf("failed to read file: %w", err)
 	}
@@ -215,13 +230,13 @@ func (s *jsonFileStore) save() error {
 
 	// Write to file atomically (write to temp file, then rename)
 	tmpFile := s.filePath + ".tmp"
-	if err := os.WriteFile(tmpFile, data, 0644); err != nil {
+	if err := s.fs.WriteFile(tmpFile, data, 0644); err != nil {
 		return fmt.Errorf("failed to write temp file: %w", err)
 	}
 
 	// Rename temp file to actual file (atomic on most filesystems)
-	if err := os.Rename(tmpFile, s.filePath); err != nil {
-		_ = os.Remove(tmpFile) // Clean up temp file
+	if err := s.fs.Rename(tmpFile, s.filePath); err != nil {
+		_ = s.fs.Remove(tmpFile) // Clean up temp file
 		return fmt.Errorf("failed to rename file: %w", err)
 	}
 
@@ -783,7 +798,7 @@ func (s *jsonFileStore) Close() error {
 		// Don't need to save - data is saved on each operation
 		// Just ensure the lock file is cleaned up
 		lockPath := s.filePath + ".lock"
-		_ = os.Remove(lockPath)
+		_ = s.fs.Remove(lockPath)
 
 		return nil
 	})

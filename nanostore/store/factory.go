@@ -20,3 +20,13 @@ func New(filePath string, config Config) (Store, error) {
 	}
 	return newJSONFileStore(filePath, config)
 }
+
+// NewWithOptions creates a new Store instance with custom options
+// This is useful for testing with mock file systems and locks
+func NewWithOptions(filePath string, config Config, opts ...JSONFileStoreOption) (Store, error) {
+	// First validate the configuration
+	if err := validation.Validate(config.GetDimensionSet()); err != nil {
+		return nil, err
+	}
+	return newJSONFileStore(filePath, config, opts...)
+}
