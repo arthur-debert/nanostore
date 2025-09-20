@@ -1,12 +1,14 @@
-package types
+package validation
 
 import (
 	"fmt"
 	"strings"
+
+	"github.com/arthur-debert/nanostore/types"
 )
 
 // Validate checks the dimension set for consistency
-func (ds *DimensionSet) Validate() error {
+func Validate(ds *types.DimensionSet) error {
 	if ds.Count() == 0 {
 		return fmt.Errorf("at least one dimension must be configured")
 	}
@@ -19,7 +21,7 @@ func (ds *DimensionSet) Validate() error {
 
 	// Check for duplicate names
 	seen := make(map[string]bool)
-	for _, dim := range ds.dimensions {
+	for _, dim := range ds.All() {
 		if seen[dim.Name] {
 			return fmt.Errorf("duplicate dimension name: %s", dim.Name)
 		}
@@ -29,7 +31,7 @@ func (ds *DimensionSet) Validate() error {
 	// Track prefixes to check for conflicts
 	prefixesSeen := make(map[string]string)
 
-	for _, dim := range ds.dimensions {
+	for _, dim := range ds.All() {
 		// Validate dimension name
 		if dim.Name == "" {
 			return fmt.Errorf("dimension name cannot be empty")
@@ -42,11 +44,11 @@ func (ds *DimensionSet) Validate() error {
 
 		// Validate based on dimension type
 		switch dim.Type {
-		case Enumerated:
+		case types.Enumerated:
 			if err := validateEnumeratedDim(&dim, prefixesSeen); err != nil {
 				return err
 			}
-		case Hierarchical:
+		case types.Hierarchical:
 			if err := validateHierarchicalDim(&dim); err != nil {
 				return err
 			}
@@ -59,7 +61,7 @@ func (ds *DimensionSet) Validate() error {
 }
 
 // validateEnumeratedDim validates an enumerated dimension
-func validateEnumeratedDim(dim *Dimension, prefixesSeen map[string]string) error {
+func validateEnumeratedDim(dim *types.Dimension, prefixesSeen map[string]string) error {
 	// Must have at least one value
 	if len(dim.Values) == 0 {
 		return fmt.Errorf("dimension %s: enumerated dimensions must have at least one value", dim.Name)
@@ -109,7 +111,7 @@ func validateEnumeratedDim(dim *Dimension, prefixesSeen map[string]string) error
 }
 
 // validateHierarchicalDim validates a hierarchical dimension
-func validateHierarchicalDim(dim *Dimension) error {
+func validateHierarchicalDim(dim *types.Dimension) error {
 	// Must have RefField
 	if dim.RefField == "" {
 		return fmt.Errorf("dimension %s: hierarchical dimensions must specify RefField", dim.Name)

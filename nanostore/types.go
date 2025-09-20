@@ -5,6 +5,7 @@ import (
 	"reflect"
 	"time"
 
+	"github.com/arthur-debert/nanostore/internal/validation"
 	"github.com/arthur-debert/nanostore/types"
 )
 
@@ -287,7 +288,7 @@ func (c *Config) GetDimensionSet() *types.DimensionSet {
 
 // ValidateConfig validates a configuration
 func ValidateConfig(config Config) error {
-	return config.GetDimensionSet().Validate()
+	return validation.Validate(config.GetDimensionSet())
 }
 
 // Store defines the public interface for the document store
