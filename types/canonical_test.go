@@ -5,28 +5,6 @@ import (
 )
 
 func TestCanonicalView(t *testing.T) {
-	// Create test dimension set
-	dims := []Dimension{
-		{
-			Name:         "status",
-			Type:         Enumerated,
-			Values:       []string{"pending", "active", "done"},
-			DefaultValue: "pending",
-		},
-		{
-			Name:     "parent",
-			Type:     Hierarchical,
-			RefField: "parent_uuid",
-		},
-		{
-			Name:         "priority",
-			Type:         Enumerated,
-			Values:       []string{"low", "medium", "high"},
-			DefaultValue: "medium",
-		},
-	}
-	ds := NewDimensionSet(dims)
-
 	t.Run("String representation", func(t *testing.T) {
 		tests := []struct {
 			name     string

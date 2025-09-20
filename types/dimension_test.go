@@ -54,7 +54,7 @@ func TestDimensionHelpers(t *testing.T) {
 
 		// Verify they are all enumerated type
 		for _, dim := range enumerated {
-			if dim.Type != nanostore.Enumerated {
+			if dim.Type != types.Enumerated {
 				t.Errorf("expected enumerated type for %s, got %v", dim.Name, dim.Type)
 			}
 		}
@@ -91,7 +91,7 @@ func TestDimensionHelpers(t *testing.T) {
 			if hierarchical[0].Name != "parent_uuid" {
 				t.Errorf("expected parent_uuid, got %s", hierarchical[0].Name)
 			}
-			if hierarchical[0].Type != nanostore.Hierarchical {
+			if hierarchical[0].Type != types.Hierarchical {
 				t.Errorf("expected hierarchical type, got %v", hierarchical[0].Type)
 			}
 			if hierarchical[0].RefField != "parent_uuid" {
@@ -124,7 +124,7 @@ func TestDimensionHelpers(t *testing.T) {
 		if parentDim == nil {
 			t.Fatal("parent_uuid dimension is nil")
 		}
-		if parentDim.Type != nanostore.Hierarchical {
+		if parentDim.Type != types.Hierarchical {
 			t.Errorf("expected hierarchical type for parent_uuid, got %v", parentDim.Type)
 		}
 
