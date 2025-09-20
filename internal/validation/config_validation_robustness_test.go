@@ -1,4 +1,4 @@
-package nanostore_test
+package validation_test
 
 // IMPORTANT: This test must follow the testing patterns established in:
 // nanostore/testutil/model_test.go
@@ -12,6 +12,7 @@ import (
 
 	"github.com/arthur-debert/nanostore/nanostore"
 	"github.com/arthur-debert/nanostore/nanostore/api"
+	"github.com/arthur-debert/nanostore/types"
 )
 
 func TestConfigValidationRobustness(t *testing.T) {
@@ -19,17 +20,17 @@ func TestConfigValidationRobustness(t *testing.T) {
 	t.Run("DimensionConfigEdgeCases", func(t *testing.T) {
 		testCases := []struct {
 			name      string
-			config    nanostore.Config
+			config    types.Config
 			expectErr bool
 			errMsg    string
 		}{
 			{
 				name: "empty dimension name",
-				config: nanostore.Config{
-					Dimensions: []nanostore.DimensionConfig{
+				config: types.Config{
+					Dimensions: []types.DimensionConfig{
 						{
 							Name:   "",
-							Type:   nanostore.Enumerated,
+							Type:   types.Enumerated,
 							Values: []string{"a", "b"},
 						},
 					},
@@ -39,16 +40,16 @@ func TestConfigValidationRobustness(t *testing.T) {
 			},
 			{
 				name: "duplicate dimension names",
-				config: nanostore.Config{
-					Dimensions: []nanostore.DimensionConfig{
+				config: types.Config{
+					Dimensions: []types.DimensionConfig{
 						{
 							Name:   "status",
-							Type:   nanostore.Enumerated,
+							Type:   types.Enumerated,
 							Values: []string{"a", "b"},
 						},
 						{
 							Name:   "status",
-							Type:   nanostore.Enumerated,
+							Type:   types.Enumerated,
 							Values: []string{"c", "d"},
 						},
 					},
@@ -58,11 +59,11 @@ func TestConfigValidationRobustness(t *testing.T) {
 			},
 			{
 				name: "empty values for enumerated",
-				config: nanostore.Config{
-					Dimensions: []nanostore.DimensionConfig{
+				config: types.Config{
+					Dimensions: []types.DimensionConfig{
 						{
 							Name:   "empty_enum",
-							Type:   nanostore.Enumerated,
+							Type:   types.Enumerated,
 							Values: []string{},
 						},
 					},
@@ -72,11 +73,11 @@ func TestConfigValidationRobustness(t *testing.T) {
 			},
 			{
 				name: "duplicate values in enumerated",
-				config: nanostore.Config{
-					Dimensions: []nanostore.DimensionConfig{
+				config: types.Config{
+					Dimensions: []types.DimensionConfig{
 						{
 							Name:   "dup_values",
-							Type:   nanostore.Enumerated,
+							Type:   types.Enumerated,
 							Values: []string{"a", "b", "a"},
 						},
 					},
@@ -86,11 +87,11 @@ func TestConfigValidationRobustness(t *testing.T) {
 			},
 			{
 				name: "invalid prefix characters",
-				config: nanostore.Config{
-					Dimensions: []nanostore.DimensionConfig{
+				config: types.Config{
+					Dimensions: []types.DimensionConfig{
 						{
 							Name:   "bad_prefix",
-							Type:   nanostore.Enumerated,
+							Type:   types.Enumerated,
 							Values: []string{"val1", "val2"},
 							Prefixes: map[string]string{
 								"val1": "1!", // Invalid character
@@ -103,11 +104,11 @@ func TestConfigValidationRobustness(t *testing.T) {
 			},
 			{
 				name: "prefix for non-existent value",
-				config: nanostore.Config{
-					Dimensions: []nanostore.DimensionConfig{
+				config: types.Config{
+					Dimensions: []types.DimensionConfig{
 						{
 							Name:   "bad_prefix_value",
-							Type:   nanostore.Enumerated,
+							Type:   types.Enumerated,
 							Values: []string{"val1", "val2"},
 							Prefixes: map[string]string{
 								"val3": "x", // val3 not in values
@@ -120,11 +121,11 @@ func TestConfigValidationRobustness(t *testing.T) {
 			},
 			{
 				name: "hierarchical with values",
-				config: nanostore.Config{
-					Dimensions: []nanostore.DimensionConfig{
+				config: types.Config{
+					Dimensions: []types.DimensionConfig{
 						{
 							Name:     "parent_id",
-							Type:     nanostore.Hierarchical,
+							Type:     types.Hierarchical,
 							Values:   []string{"should", "not", "have"},
 							RefField: "parent_uuid",
 						},
@@ -134,11 +135,11 @@ func TestConfigValidationRobustness(t *testing.T) {
 			},
 			{
 				name: "very long dimension name",
-				config: nanostore.Config{
-					Dimensions: []nanostore.DimensionConfig{
+				config: types.Config{
+					Dimensions: []types.DimensionConfig{
 						{
 							Name:   strings.Repeat("x", 1000),
-							Type:   nanostore.Enumerated,
+							Type:   types.Enumerated,
 							Values: []string{"a"},
 						},
 					},
@@ -208,11 +209,11 @@ func TestConfigValidationRobustness(t *testing.T) {
 
 		for _, tc := range testCases {
 			t.Run(tc.name, func(t *testing.T) {
-				config := nanostore.Config{
-					Dimensions: []nanostore.DimensionConfig{
+				config := types.Config{
+					Dimensions: []types.DimensionConfig{
 						{
 							Name:     "test",
-							Type:     nanostore.Enumerated,
+							Type:     types.Enumerated,
 							Values:   getKeys(tc.prefixes),
 							Prefixes: tc.prefixes,
 						},
@@ -265,11 +266,11 @@ func TestConfigValidationRobustness(t *testing.T) {
 
 		for _, tc := range testCases {
 			t.Run(tc.name, func(t *testing.T) {
-				config := nanostore.Config{
-					Dimensions: []nanostore.DimensionConfig{
+				config := types.Config{
+					Dimensions: []types.DimensionConfig{
 						{
 							Name:         "test",
-							Type:         nanostore.Enumerated,
+							Type:         types.Enumerated,
 							Values:       tc.values,
 							DefaultValue: tc.defaultValue,
 						},
@@ -290,22 +291,22 @@ func TestConfigValidationRobustness(t *testing.T) {
 	t.Run("MultiDimensionInteractions", func(t *testing.T) {
 		testCases := []struct {
 			name      string
-			dims      []nanostore.DimensionConfig
+			dims      []types.DimensionConfig
 			expectErr bool
 			errMsg    string
 		}{
 			{
 				name: "prefix collision across dimensions",
-				dims: []nanostore.DimensionConfig{
+				dims: []types.DimensionConfig{
 					{
 						Name:     "dim1",
-						Type:     nanostore.Enumerated,
+						Type:     types.Enumerated,
 						Values:   []string{"a", "b"},
 						Prefixes: map[string]string{"a": "x"},
 					},
 					{
 						Name:     "dim2",
-						Type:     nanostore.Enumerated,
+						Type:     types.Enumerated,
 						Values:   []string{"c", "d"},
 						Prefixes: map[string]string{"c": "x"}, // Same prefix as dim1
 					},
@@ -314,15 +315,15 @@ func TestConfigValidationRobustness(t *testing.T) {
 			},
 			{
 				name: "mixed valid and invalid dimensions",
-				dims: []nanostore.DimensionConfig{
+				dims: []types.DimensionConfig{
 					{
 						Name:   "valid",
-						Type:   nanostore.Enumerated,
+						Type:   types.Enumerated,
 						Values: []string{"a", "b"},
 					},
 					{
 						Name:   "", // Invalid
-						Type:   nanostore.Enumerated,
+						Type:   types.Enumerated,
 						Values: []string{"c", "d"},
 					},
 				},
@@ -331,12 +332,12 @@ func TestConfigValidationRobustness(t *testing.T) {
 			},
 			{
 				name: "maximum dimensions stress test",
-				dims: func() []nanostore.DimensionConfig {
-					dims := make([]nanostore.DimensionConfig, 100)
+				dims: func() []types.DimensionConfig {
+					dims := make([]types.DimensionConfig, 100)
 					for i := 0; i < 100; i++ {
-						dims[i] = nanostore.DimensionConfig{
+						dims[i] = types.DimensionConfig{
 							Name:   string(rune('a' + i)),
-							Type:   nanostore.Enumerated,
+							Type:   types.Enumerated,
 							Values: []string{"val1", "val2"},
 						}
 					}
@@ -348,7 +349,7 @@ func TestConfigValidationRobustness(t *testing.T) {
 
 		for _, tc := range testCases {
 			t.Run(tc.name, func(t *testing.T) {
-				config := nanostore.Config{Dimensions: tc.dims}
+				config := types.Config{Dimensions: tc.dims}
 				err := validateConfig(config)
 
 				if tc.expectErr && err == nil {
@@ -438,7 +439,7 @@ func TestConfigValidationRobustness(t *testing.T) {
 }
 
 // Helper functions
-func validateConfig(config nanostore.Config) error {
+func validateConfig(config types.Config) error {
 	// Simulate config validation logic
 	seen := make(map[string]bool)
 
@@ -455,7 +456,7 @@ func validateConfig(config nanostore.Config) error {
 		seen[dim.Name] = true
 
 		// Enumerated-specific validations
-		if dim.Type == nanostore.Enumerated {
+		if dim.Type == types.Enumerated {
 			// Empty values check
 			if len(dim.Values) == 0 {
 				return errorf("dimension %d (%s): no values specified", i, dim.Name)
