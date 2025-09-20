@@ -8,8 +8,9 @@ import (
 
 // RenameField renames a field across all documents
 type RenameField struct {
-	OldName string
-	NewName string
+	OldName   string
+	NewName   string
+	FieldType FieldType
 }
 
 // Description returns a human-readable description of the command
@@ -48,21 +49,40 @@ func (r *RenameField) Validate(ctx *MigrationContext) []Message {
 	found := false
 	fieldType := ""
 	count := 0
+	dimensionCount := 0
+	dataCount := 0
+
+	// Determine which fields to check based on FieldType
+	checkDimension := r.FieldType == FieldTypeAuto || r.FieldType == FieldTypeDimension || r.FieldType == FieldTypeBoth
+	checkData := r.FieldType == FieldTypeAuto || r.FieldType == FieldTypeData || r.FieldType == FieldTypeBoth
 
 	for _, doc := range ctx.Documents {
-		// Check dimensions
-		if _, exists := doc.Dimensions[r.OldName]; exists {
-			found = true
-			fieldType = "dimension"
-			count++
+		// Check dimensions if applicable
+		if checkDimension {
+			if _, exists := doc.Dimensions[r.OldName]; exists {
+				found = true
+				dimensionCount++
+				count++
+			}
 		}
-		// Check data fields (_data. prefix)
-		dataKey := "_data." + r.OldName
-		if _, exists := doc.Dimensions[dataKey]; exists {
-			found = true
-			fieldType = "data"
-			count++
+		// Check data fields if applicable
+		if checkData {
+			dataKey := "_data." + r.OldName
+			if _, exists := doc.Dimensions[dataKey]; exists {
+				found = true
+				dataCount++
+				count++
+			}
 		}
+	}
+
+	// Determine field type for message
+	if dimensionCount > 0 && dataCount > 0 {
+		fieldType = "mixed (both dimension and data)"
+	} else if dimensionCount > 0 {
+		fieldType = "dimension"
+	} else if dataCount > 0 {
+		fieldType = "data"
 	}
 
 	if !found {
@@ -142,51 +162,71 @@ func (r *RenameField) Execute(ctx *MigrationContext) *Result {
 	}
 
 	// Perform the rename
-	isDataField := false
+	dimensionRenames := 0
+	dataRenames := 0
+	modifiedDocs := make(map[string]bool)
+
+	// Determine which fields to rename based on FieldType
+	renameDimension := r.FieldType == FieldTypeAuto || r.FieldType == FieldTypeDimension || r.FieldType == FieldTypeBoth
+	renameData := r.FieldType == FieldTypeAuto || r.FieldType == FieldTypeData || r.FieldType == FieldTypeBoth
+
 	for i := range ctx.Documents {
 		doc := &ctx.Documents[i]
 		modified := false
 
-		// Check if it's a regular dimension
-		if val, exists := doc.Dimensions[r.OldName]; exists {
-			if !ctx.DryRun {
-				doc.Dimensions[r.NewName] = val
-				delete(doc.Dimensions, r.OldName)
+		// Rename dimension field if applicable
+		if renameDimension {
+			if val, exists := doc.Dimensions[r.OldName]; exists {
+				if !ctx.DryRun {
+					doc.Dimensions[r.NewName] = val
+					delete(doc.Dimensions, r.OldName)
+				}
+				dimensionRenames++
+				modified = true
 			}
-			modified = true
 		}
 
-		// Check if it's a data field
-		oldDataKey := "_data." + r.OldName
-		newDataKey := "_data." + r.NewName
-		if val, exists := doc.Dimensions[oldDataKey]; exists {
-			if !ctx.DryRun {
-				doc.Dimensions[newDataKey] = val
-				delete(doc.Dimensions, oldDataKey)
+		// Rename data field if applicable
+		if renameData {
+			oldDataKey := "_data." + r.OldName
+			newDataKey := "_data." + r.NewName
+			if val, exists := doc.Dimensions[oldDataKey]; exists {
+				if !ctx.DryRun {
+					doc.Dimensions[newDataKey] = val
+					delete(doc.Dimensions, oldDataKey)
+				}
+				dataRenames++
+				modified = true
 			}
-			modified = true
-			isDataField = true
 		}
 
 		if modified {
-			result.ModifiedDocs = append(result.ModifiedDocs, doc.UUID)
-			result.Stats.ModifiedDocs++
+			modifiedDocs[doc.UUID] = true
 		}
+	}
+
+	// Convert map to slice
+	for uuid := range modifiedDocs {
+		result.ModifiedDocs = append(result.ModifiedDocs, uuid)
+		result.Stats.ModifiedDocs++
 	}
 
 	result.Stats.Duration = time.Since(startTime)
 
 	// Success message
-	fieldTypeStr := "dimension"
-	if isDataField {
-		fieldTypeStr = "data"
-	}
-
 	if result.Stats.ModifiedDocs > 0 {
+		details := ""
+		if dimensionRenames > 0 && dataRenames > 0 {
+			details = fmt.Sprintf(" (%d dimension, %d data)", dimensionRenames, dataRenames)
+		} else if dimensionRenames > 0 {
+			details = " (dimension field)"
+		} else if dataRenames > 0 {
+			details = " (data field)"
+		}
+
 		result.Messages = append(result.Messages, Message{
 			Level: LevelInfo,
-			Text: fmt.Sprintf("Renamed %s field '%s' to '%s' in %d documents",
-				fieldTypeStr, r.OldName, r.NewName, result.Stats.ModifiedDocs),
+			Text:  fmt.Sprintf("Renamed field '%s' to '%s' in %d documents%s", r.OldName, r.NewName, result.Stats.ModifiedDocs, details),
 		})
 	}
 

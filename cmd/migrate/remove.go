@@ -11,12 +11,24 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var (
+	removeDimensionOnly bool
+	removeDataOnly      bool
+	removeBoth          bool
+)
+
 var removeFieldCmd = &cobra.Command{
 	Use:   "remove-field <field-name>",
 	Short: "Remove a field from all documents",
 	Long:  "Remove a field from all documents. The field can be either a dimension or a data field.",
 	Args:  cobra.ExactArgs(1),
 	RunE:  runRemoveField,
+}
+
+func init() {
+	removeFieldCmd.Flags().BoolVar(&removeDimensionOnly, "dimension-only", false, "only remove dimension fields")
+	removeFieldCmd.Flags().BoolVar(&removeDataOnly, "data-only", false, "only remove data fields")
+	removeFieldCmd.Flags().BoolVar(&removeBoth, "both", false, "explicitly remove both dimension and data fields")
 }
 
 func runRemoveField(cmd *cobra.Command, args []string) error {
@@ -38,11 +50,22 @@ func runRemoveField(cmd *cobra.Command, args []string) error {
 	// TODO: Get actual config from store
 	config := nanostore.Config{}
 
+	// Determine field type based on flags
+	fieldType := migration.FieldTypeAuto
+	if removeDimensionOnly {
+		fieldType = migration.FieldTypeDimension
+	} else if removeDataOnly {
+		fieldType = migration.FieldTypeData
+	} else if removeBoth {
+		fieldType = migration.FieldTypeBoth
+	}
+
 	// Run migration
 	api := migration.NewAPI()
 	result := api.RemoveField(docs, config, fieldName, migration.Options{
-		DryRun:  dryRun,
-		Verbose: verbose,
+		DryRun:    dryRun,
+		Verbose:   verbose,
+		FieldType: fieldType,
 	})
 
 	handleResult(result)

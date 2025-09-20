@@ -21,8 +21,9 @@ func (a *API) RenameField(docs []types.Document, config types.Config, oldName, n
 	}
 
 	cmd := &RenameField{
-		OldName: oldName,
-		NewName: newName,
+		OldName:   oldName,
+		NewName:   newName,
+		FieldType: opts.FieldType,
 	}
 
 	return cmd.Execute(ctx)
@@ -38,6 +39,7 @@ func (a *API) RemoveField(docs []types.Document, config types.Config, fieldName 
 
 	cmd := &RemoveField{
 		FieldName: fieldName,
+		FieldType: opts.FieldType,
 	}
 
 	return cmd.Execute(ctx)

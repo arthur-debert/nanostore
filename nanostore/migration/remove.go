@@ -9,6 +9,7 @@ import (
 // RemoveField removes a field from all documents
 type RemoveField struct {
 	FieldName string
+	FieldType FieldType
 }
 
 // Description returns a human-readable description of the command
@@ -36,19 +37,27 @@ func (r *RemoveField) Validate(ctx *MigrationContext) []Message {
 	dimensionCount := 0
 	dataCount := 0
 
+	// Determine which fields to check based on FieldType
+	checkDimension := r.FieldType == FieldTypeAuto || r.FieldType == FieldTypeDimension || r.FieldType == FieldTypeBoth
+	checkData := r.FieldType == FieldTypeAuto || r.FieldType == FieldTypeData || r.FieldType == FieldTypeBoth
+
 	for _, doc := range ctx.Documents {
-		// Check dimensions
-		if _, exists := doc.Dimensions[r.FieldName]; exists {
-			found = true
-			dimensionCount++
-			count++
+		// Check dimensions if applicable
+		if checkDimension {
+			if _, exists := doc.Dimensions[r.FieldName]; exists {
+				found = true
+				dimensionCount++
+				count++
+			}
 		}
-		// Check data fields (_data. prefix)
-		dataKey := "_data." + r.FieldName
-		if _, exists := doc.Dimensions[dataKey]; exists {
-			found = true
-			dataCount++
-			count++
+		// Check data fields if applicable
+		if checkData {
+			dataKey := "_data." + r.FieldName
+			if _, exists := doc.Dimensions[dataKey]; exists {
+				found = true
+				dataCount++
+				count++
+			}
 		}
 	}
 
@@ -128,23 +137,29 @@ func (r *RemoveField) Execute(ctx *MigrationContext) *Result {
 		doc := &ctx.Documents[i]
 		modified := false
 
-		// Check if it's a regular dimension
-		if _, exists := doc.Dimensions[r.FieldName]; exists {
-			if !ctx.DryRun {
-				delete(doc.Dimensions, r.FieldName)
+		// Check dimension field if applicable
+		shouldRemoveDimension := r.FieldType == FieldTypeAuto || r.FieldType == FieldTypeDimension || r.FieldType == FieldTypeBoth
+		if shouldRemoveDimension {
+			if _, exists := doc.Dimensions[r.FieldName]; exists {
+				if !ctx.DryRun {
+					delete(doc.Dimensions, r.FieldName)
+				}
+				dimensionRemovals++
+				modified = true
 			}
-			dimensionRemovals++
-			modified = true
 		}
 
-		// Check if it's a data field
-		dataKey := "_data." + r.FieldName
-		if _, exists := doc.Dimensions[dataKey]; exists {
-			if !ctx.DryRun {
-				delete(doc.Dimensions, dataKey)
+		// Check data field if applicable
+		shouldRemoveData := r.FieldType == FieldTypeAuto || r.FieldType == FieldTypeData || r.FieldType == FieldTypeBoth
+		if shouldRemoveData {
+			dataKey := "_data." + r.FieldName
+			if _, exists := doc.Dimensions[dataKey]; exists {
+				if !ctx.DryRun {
+					delete(doc.Dimensions, dataKey)
+				}
+				dataRemovals++
+				modified = true
 			}
-			dataRemovals++
-			modified = true
 		}
 
 		if modified {

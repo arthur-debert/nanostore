@@ -278,6 +278,117 @@ func TestRemoveField(t *testing.T) {
 			t.Errorf("expected validation error code, got %d", result.Code)
 		}
 	})
+
+	t.Run("remove dimension only", func(t *testing.T) {
+		docs := []types.Document{
+			{
+				UUID: "doc1",
+				Dimensions: map[string]interface{}{
+					"field":       "value",      // dimension
+					"_data.field": "data value", // data field with same name
+				},
+			},
+		}
+
+		ctx := &MigrationContext{
+			Documents: docs,
+			Config:    types.Config{},
+			DryRun:    false,
+		}
+
+		cmd := &RemoveField{
+			FieldName: "field",
+			FieldType: FieldTypeDimension,
+		}
+
+		result := cmd.Execute(ctx)
+
+		if !result.Success {
+			t.Errorf("expected success, got failure: %v", result.Messages)
+		}
+
+		// Only dimension should be removed
+		if _, exists := ctx.Documents[0].Dimensions["field"]; exists {
+			t.Error("dimension field was not removed")
+		}
+		if _, exists := ctx.Documents[0].Dimensions["_data.field"]; !exists {
+			t.Error("data field was incorrectly removed")
+		}
+	})
+
+	t.Run("remove data only", func(t *testing.T) {
+		docs := []types.Document{
+			{
+				UUID: "doc1",
+				Dimensions: map[string]interface{}{
+					"field":       "value",      // dimension
+					"_data.field": "data value", // data field with same name
+				},
+			},
+		}
+
+		ctx := &MigrationContext{
+			Documents: docs,
+			Config:    types.Config{},
+			DryRun:    false,
+		}
+
+		cmd := &RemoveField{
+			FieldName: "field",
+			FieldType: FieldTypeData,
+		}
+
+		result := cmd.Execute(ctx)
+
+		if !result.Success {
+			t.Errorf("expected success, got failure: %v", result.Messages)
+		}
+
+		// Only data field should be removed
+		if _, exists := ctx.Documents[0].Dimensions["field"]; !exists {
+			t.Error("dimension field was incorrectly removed")
+		}
+		if _, exists := ctx.Documents[0].Dimensions["_data.field"]; exists {
+			t.Error("data field was not removed")
+		}
+	})
+
+	t.Run("remove both explicitly", func(t *testing.T) {
+		docs := []types.Document{
+			{
+				UUID: "doc1",
+				Dimensions: map[string]interface{}{
+					"field":       "value",      // dimension
+					"_data.field": "data value", // data field with same name
+				},
+			},
+		}
+
+		ctx := &MigrationContext{
+			Documents: docs,
+			Config:    types.Config{},
+			DryRun:    false,
+		}
+
+		cmd := &RemoveField{
+			FieldName: "field",
+			FieldType: FieldTypeBoth,
+		}
+
+		result := cmd.Execute(ctx)
+
+		if !result.Success {
+			t.Errorf("expected success, got failure: %v", result.Messages)
+		}
+
+		// Both fields should be removed
+		if _, exists := ctx.Documents[0].Dimensions["field"]; exists {
+			t.Error("dimension field was not removed")
+		}
+		if _, exists := ctx.Documents[0].Dimensions["_data.field"]; exists {
+			t.Error("data field was not removed")
+		}
+	})
 }
 
 func TestRemoveFieldValidation(t *testing.T) {

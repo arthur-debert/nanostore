@@ -51,8 +51,19 @@ type MigrationContext struct {
 type Options struct {
 	DryRun      bool
 	Verbose     bool
-	IsDataField bool // For add field operation
+	IsDataField bool      // For add field operation
+	FieldType   FieldType // Specifies which field type to operate on
 }
+
+// FieldType specifies which type of field to operate on
+type FieldType int
+
+const (
+	FieldTypeAuto      FieldType = iota // Default: operate on field found (dimension or data)
+	FieldTypeDimension                  // Only operate on dimension fields
+	FieldTypeData                       // Only operate on data fields
+	FieldTypeBoth                       // Explicitly operate on both dimension and data fields
+)
 
 // Error codes
 const (

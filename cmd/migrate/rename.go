@@ -11,12 +11,24 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var (
+	renameDimensionOnly bool
+	renameDataOnly      bool
+	renameBoth          bool
+)
+
 var renameFieldCmd = &cobra.Command{
 	Use:   "rename-field <old-name> <new-name>",
 	Short: "Rename a field across all documents",
 	Long:  "Rename a field from old-name to new-name in all documents. The field can be either a dimension or a data field.",
 	Args:  cobra.ExactArgs(2),
 	RunE:  runRenameField,
+}
+
+func init() {
+	renameFieldCmd.Flags().BoolVar(&renameDimensionOnly, "dimension-only", false, "only rename dimension fields")
+	renameFieldCmd.Flags().BoolVar(&renameDataOnly, "data-only", false, "only rename data fields")
+	renameFieldCmd.Flags().BoolVar(&renameBoth, "both", false, "explicitly rename both dimension and data fields")
 }
 
 func runRenameField(cmd *cobra.Command, args []string) error {
@@ -38,11 +50,22 @@ func runRenameField(cmd *cobra.Command, args []string) error {
 	// TODO: Get actual config from store
 	config := nanostore.Config{}
 
+	// Determine field type based on flags
+	fieldType := migration.FieldTypeAuto
+	if renameDimensionOnly {
+		fieldType = migration.FieldTypeDimension
+	} else if renameDataOnly {
+		fieldType = migration.FieldTypeData
+	} else if renameBoth {
+		fieldType = migration.FieldTypeBoth
+	}
+
 	// Run migration
 	api := migration.NewAPI()
 	result := api.RenameField(docs, config, oldName, newName, migration.Options{
-		DryRun:  dryRun,
-		Verbose: verbose,
+		DryRun:    dryRun,
+		Verbose:   verbose,
+		FieldType: fieldType,
 	})
 
 	handleResult(result)

@@ -273,6 +273,96 @@ func TestRenameField(t *testing.T) {
 			t.Errorf("expected validation error code, got %d", result.Code)
 		}
 	})
+
+	t.Run("rename dimension only", func(t *testing.T) {
+		docs := []types.Document{
+			{
+				UUID: "doc1",
+				Dimensions: map[string]interface{}{
+					"oldfield":       "value",      // dimension
+					"_data.oldfield": "data value", // data field with same name
+				},
+			},
+		}
+
+		ctx := &MigrationContext{
+			Documents: docs,
+			Config:    types.Config{},
+			DryRun:    false,
+		}
+
+		cmd := &RenameField{
+			OldName:   "oldfield",
+			NewName:   "newfield",
+			FieldType: FieldTypeDimension,
+		}
+
+		result := cmd.Execute(ctx)
+
+		if !result.Success {
+			t.Errorf("expected success, got failure: %v", result.Messages)
+		}
+
+		// Only dimension should be renamed
+		if _, exists := ctx.Documents[0].Dimensions["oldfield"]; exists {
+			t.Error("old dimension field still exists")
+		}
+		if _, exists := ctx.Documents[0].Dimensions["newfield"]; !exists {
+			t.Error("new dimension field does not exist")
+		}
+		// Data field should be unchanged
+		if _, exists := ctx.Documents[0].Dimensions["_data.oldfield"]; !exists {
+			t.Error("data field was incorrectly renamed")
+		}
+		if _, exists := ctx.Documents[0].Dimensions["_data.newfield"]; exists {
+			t.Error("data field was incorrectly created")
+		}
+	})
+
+	t.Run("rename data only", func(t *testing.T) {
+		docs := []types.Document{
+			{
+				UUID: "doc1",
+				Dimensions: map[string]interface{}{
+					"oldfield":       "value",      // dimension
+					"_data.oldfield": "data value", // data field with same name
+				},
+			},
+		}
+
+		ctx := &MigrationContext{
+			Documents: docs,
+			Config:    types.Config{},
+			DryRun:    false,
+		}
+
+		cmd := &RenameField{
+			OldName:   "oldfield",
+			NewName:   "newfield",
+			FieldType: FieldTypeData,
+		}
+
+		result := cmd.Execute(ctx)
+
+		if !result.Success {
+			t.Errorf("expected success, got failure: %v", result.Messages)
+		}
+
+		// Only data field should be renamed
+		if _, exists := ctx.Documents[0].Dimensions["_data.oldfield"]; exists {
+			t.Error("old data field still exists")
+		}
+		if _, exists := ctx.Documents[0].Dimensions["_data.newfield"]; !exists {
+			t.Error("new data field does not exist")
+		}
+		// Dimension field should be unchanged
+		if _, exists := ctx.Documents[0].Dimensions["oldfield"]; !exists {
+			t.Error("dimension field was incorrectly renamed")
+		}
+		if _, exists := ctx.Documents[0].Dimensions["newfield"]; exists {
+			t.Error("dimension field was incorrectly created")
+		}
+	})
 }
 
 func TestRenameFieldValidation(t *testing.T) {
