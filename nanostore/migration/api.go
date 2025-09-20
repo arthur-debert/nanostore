@@ -62,14 +62,18 @@ func (a *API) AddField(docs []types.Document, config types.Config, fieldName str
 
 // TransformField applies a transformation to a field across all documents
 func (a *API) TransformField(docs []types.Document, config types.Config, fieldName string, transformer string, opts Options) *Result {
-	// TODO: Implement
-	return &Result{
-		Success: false,
-		Code:    CodeExecutionError,
-		Messages: []Message{
-			{Level: LevelError, Text: "TransformField not implemented"},
-		},
+	ctx := &MigrationContext{
+		Documents: docs,
+		Config:    config,
+		DryRun:    opts.DryRun,
 	}
+
+	cmd := &TransformField{
+		FieldName:       fieldName,
+		TransformerName: transformer,
+	}
+
+	return cmd.Execute(ctx)
 }
 
 // ValidateSchema validates that all documents conform to the current schema
