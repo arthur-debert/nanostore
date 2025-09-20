@@ -269,12 +269,7 @@ func (s *jsonFileStore) List(opts ListOptions) ([]Document, error) {
 		// Generate SimpleIDs using the new ID generator
 		// Get all documents for ID generation (not just the filtered ones)
 		// GenerateIDs now handles copying internally, so we can pass the slice directly
-		// Convert local Documents to types.Document
-		typesDocuments := make([]types.Document, len(s.data.Documents))
-		for i, doc := range s.data.Documents {
-			typesDocuments[i] = ToTypesDocument(doc)
-		}
-		idMap := s.idGenerator.GenerateIDs(typesDocuments)
+		idMap := s.idGenerator.GenerateIDs(s.data.Documents)
 
 		// Create reverse mapping (SimpleID -> UUID)
 		uuidToID := make(map[string]string)
@@ -662,11 +657,7 @@ func (s *jsonFileStore) resolveUUIDInternal(simpleID string) (string, error) {
 
 	// Use the ID generator to resolve the ID
 	// Convert to types.Document
-	typesDocuments := make([]types.Document, len(allDocs))
-	for i, doc := range allDocs {
-		typesDocuments[i] = ToTypesDocument(doc)
-	}
-	return s.idGenerator.ResolveID(simpleID, typesDocuments)
+	return s.idGenerator.ResolveID(simpleID, allDocs)
 }
 
 // Delete removes a document

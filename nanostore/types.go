@@ -17,19 +17,8 @@ const (
 	Hierarchical = types.Hierarchical
 )
 
-// Document represents a document in the store with its generated ID
-type Document struct {
-	// These are default fields stored for every dodument
-	UUID      string    // Stable internal identifier
-	SimpleID  string    // Generated ID like "1", "c2", "1.2.c3"
-	Title     string    // Document title
-	Body      string    // Optional document body
-	CreatedAt time.Time // Creation timestamp
-	UpdatedAt time.Time // Last update timestamp
-	// these are user defined dimensions (fields that define the partition)
-	Dimensions map[string]interface{} // All dimension values and data (data prefixed with "_data.")
-	// Users can add arbitrary extra fields here as needed, these are not used by nanostore itself but the api will work with them
-}
+// Document is an alias for the types.Document
+type Document = types.Document
 
 // ListOptions configures how documents are listed
 type ListOptions struct {
@@ -344,19 +333,6 @@ type Store interface {
 
 	// Close releases any resources held by the store
 	Close() error
-}
-
-// ToTypesDocument converts a local Document to types.Document
-func ToTypesDocument(doc Document) types.Document {
-	return types.Document{
-		UUID:       doc.UUID,
-		SimpleID:   doc.SimpleID,
-		Title:      doc.Title,
-		Body:       doc.Body,
-		Dimensions: doc.Dimensions,
-		CreatedAt:  doc.CreatedAt,
-		UpdatedAt:  doc.UpdatedAt,
-	}
 }
 
 // ValidateSimpleType ensures a dimension value is a simple type (string, number, bool)
