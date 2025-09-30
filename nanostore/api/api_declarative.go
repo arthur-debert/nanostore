@@ -554,6 +554,29 @@ func (ts *TypedStore[T]) AddRaw(title string, dimensions map[string]interface{})
 	return ts.store.Add(title, dimensions)
 }
 
+// GetDimensions returns the raw dimensions map for a document
+// This provides access to all dimension values and custom _data fields, useful for:
+// - Accessing fields not defined in the struct schema
+// - Debugging dimension values and configuration
+// - Working with documents that have additional custom fields
+// - Introspecting the full dimension structure
+// Accepts both UUID and SimpleID for maximum flexibility
+// Returns a copy of the dimensions map to prevent accidental modifications
+func (ts *TypedStore[T]) GetDimensions(id string) (map[string]interface{}, error) {
+	doc, err := ts.GetRaw(id)
+	if err != nil {
+		return nil, err
+	}
+
+	// Return a copy of the dimensions to prevent modifications
+	result := make(map[string]interface{})
+	for key, value := range doc.Dimensions {
+		result[key] = value
+	}
+
+	return result, nil
+}
+
 // TypedQuery provides a fluent interface for building type-safe queries.
 //
 // This query builder implements the "fluent interface" pattern, allowing users to chain
