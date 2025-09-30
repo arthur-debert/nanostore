@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/arthur-debert/nanostore/formats"
 	"github.com/arthur-debert/nanostore/nanostore/storage"
 	"github.com/arthur-debert/nanostore/types"
 )
@@ -12,6 +13,10 @@ import (
 // This function generates the complete JSON representation that describes the export,
 // including all database content and individual object files
 func GenerateExportData(store types.Store, options ExportOptions) (*ExportData, error) {
+	// Set default format if not specified
+	if options.DocumentFormat == nil {
+		options.DocumentFormat = formats.PlainText
+	}
 	// Get the documents to export based on options
 	documents, err := getDocumentsToExport(store, options)
 	if err != nil {
@@ -38,12 +43,14 @@ func GenerateExportData(store types.Store, options ExportOptions) (*ExportData, 
 	// Create object files for each document
 	objectFiles := make([]ObjectFile, 0, len(documents))
 	for _, doc := range documents {
-		filename := generateFilename(doc)
+		filename := generateFilename(doc, options.DocumentFormat)
+		// Serialize document using the specified format
+		content := options.DocumentFormat.Serialize(doc.Title, doc.Body)
 		objectFile := ObjectFile{
 			Filename: filename,
 			Modified: doc.UpdatedAt,
 			Created:  doc.CreatedAt,
-			Content:  doc.Body,
+			Content:  content,
 		}
 		objectFiles = append(objectFiles, objectFile)
 	}

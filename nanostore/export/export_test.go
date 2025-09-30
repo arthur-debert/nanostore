@@ -3,9 +3,11 @@ package export
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/arthur-debert/nanostore/formats"
 	"github.com/arthur-debert/nanostore/types"
 )
 
@@ -320,5 +322,68 @@ func TestGetStoreData(t *testing.T) {
 
 	if storeData.Metadata.Version != "1.0" {
 		t.Errorf("expected version '1.0', got %s", storeData.Metadata.Version)
+	}
+}
+
+func TestExportWithDocumentFormats(t *testing.T) {
+	documents := []types.Document{
+		{
+			UUID:      "test-uuid",
+			SimpleID:  "1",
+			Title:     "Test Document",
+			Body:      "This is the document content.",
+			CreatedAt: time.Now(),
+			UpdatedAt: time.Now(),
+		},
+	}
+	store := &MockStore{documents: documents}
+
+	tests := []struct {
+		name           string
+		format         *formats.DocumentFormat
+		expectedExt    string
+		expectedSerial string
+	}{
+		{
+			name:           "plaintext format",
+			format:         formats.PlainText,
+			expectedExt:    ".txt",
+			expectedSerial: "Test Document\n\nThis is the document content.",
+		},
+		{
+			name:           "markdown format",
+			format:         formats.Markdown,
+			expectedExt:    ".md",
+			expectedSerial: "# Test Document\n\nThis is the document content.",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			options := ExportOptions{
+				DocumentFormat: tt.format,
+			}
+
+			exportData, err := GenerateExportData(store, options)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			if len(exportData.Contents.Objects) != 1 {
+				t.Fatalf("expected 1 object, got %d", len(exportData.Contents.Objects))
+			}
+
+			obj := exportData.Contents.Objects[0]
+
+			// Check filename extension
+			if !strings.HasSuffix(obj.Filename, tt.expectedExt) {
+				t.Errorf("expected filename to end with %s, got %s", tt.expectedExt, obj.Filename)
+			}
+
+			// Check serialized content
+			if obj.Content != tt.expectedSerial {
+				t.Errorf("expected content %q, got %q", tt.expectedSerial, obj.Content)
+			}
+		})
 	}
 }

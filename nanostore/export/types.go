@@ -1,6 +1,10 @@
 package export
 
-import "time"
+import (
+	"time"
+
+	"github.com/arthur-debert/nanostore/formats"
+)
 
 // ExportData represents the complete export structure with all information
 // needed to recreate the full export including database and file contents
@@ -45,4 +49,8 @@ type ExportOptions struct {
 	// DimensionFilters allows filtering by dimension values
 	// Multiple filters are combined with AND
 	DimensionFilters map[string]interface{} `json:"dimension_filters,omitempty"`
+
+	// DocumentFormat specifies the format to use when serializing documents
+	// If nil, defaults to formats.PlainText
+	DocumentFormat *formats.DocumentFormat `json:"-"`
 }

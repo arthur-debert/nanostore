@@ -3,6 +3,7 @@ package export
 import (
 	"testing"
 
+	"github.com/arthur-debert/nanostore/formats"
 	"github.com/arthur-debert/nanostore/types"
 )
 
@@ -86,7 +87,7 @@ func TestGenerateFilename(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := generateFilename(tt.doc)
+			result := generateFilename(tt.doc, formats.PlainText)
 			if result != tt.expected {
 				t.Errorf("generateFilename() = %v, want %v", result, tt.expected)
 			}
@@ -157,6 +158,41 @@ func TestSanitizeTitle(t *testing.T) {
 			result := sanitizeTitle(tt.input)
 			if result != tt.expected {
 				t.Errorf("sanitizeTitle() = %v, want %v", result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestGenerateFilenameWithFormats(t *testing.T) {
+	doc := types.Document{
+		UUID:     "test123",
+		SimpleID: "1",
+		Title:    "Test Document",
+		Body:     "Some content",
+	}
+
+	tests := []struct {
+		name     string
+		format   *formats.DocumentFormat
+		expected string
+	}{
+		{
+			name:     "plaintext format",
+			format:   formats.PlainText,
+			expected: "test123-1-test-document.txt",
+		},
+		{
+			name:     "markdown format",
+			format:   formats.Markdown,
+			expected: "test123-1-test-document.md",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := generateFilename(doc, tt.format)
+			if result != tt.expected {
+				t.Errorf("generateFilename() = %v, want %v", result, tt.expected)
 			}
 		})
 	}
