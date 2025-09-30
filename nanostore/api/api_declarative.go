@@ -4,10 +4,21 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
+	"time"
 
 	"github.com/arthur-debert/nanostore/nanostore"
 	"github.com/arthur-debert/nanostore/types"
 )
+
+// DocumentMetadata contains the metadata fields of a document
+// This provides structured access to document metadata without the full document content
+type DocumentMetadata struct {
+	UUID      string    // Stable internal identifier
+	SimpleID  string    // Generated ID like "1", "c2", "1.2.c3"
+	Title     string    // Document title
+	CreatedAt time.Time // Creation timestamp
+	UpdatedAt time.Time // Last update timestamp
+}
 
 // TypedStore wraps a Store with type-safe operations for a specific document type T.
 //
@@ -575,6 +586,29 @@ func (ts *TypedStore[T]) GetDimensions(id string) (map[string]interface{}, error
 	}
 
 	return result, nil
+}
+
+// GetMetadata returns the metadata fields of a document
+// This provides access to document metadata (UUID, SimpleID, Title, timestamps) without
+// loading the full document content or dimensions, useful for:
+// - Quick metadata inspection without full document overhead
+// - Accessing metadata when document content is not in struct format
+// - Building document lists with metadata-only information
+// - Debugging and administrative operations
+// Accepts both UUID and SimpleID for maximum flexibility
+func (ts *TypedStore[T]) GetMetadata(id string) (*DocumentMetadata, error) {
+	doc, err := ts.GetRaw(id)
+	if err != nil {
+		return nil, err
+	}
+
+	return &DocumentMetadata{
+		UUID:      doc.UUID,
+		SimpleID:  doc.SimpleID,
+		Title:     doc.Title,
+		CreatedAt: doc.CreatedAt,
+		UpdatedAt: doc.UpdatedAt,
+	}, nil
 }
 
 // TypedQuery provides a fluent interface for building type-safe queries.
