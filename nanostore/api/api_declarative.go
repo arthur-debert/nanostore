@@ -438,6 +438,12 @@ func (ts *TypedStore[T]) Close() error {
 	return ts.store.Close()
 }
 
+// Store returns the underlying nanostore.Store for operations that need direct access
+// This is useful for operations like export that work with the raw Store interface
+func (ts *TypedStore[T]) Store() nanostore.Store {
+	return ts.store
+}
+
 // TypedQuery provides a fluent interface for building type-safe queries.
 //
 // This query builder implements the "fluent interface" pattern, allowing users to chain
