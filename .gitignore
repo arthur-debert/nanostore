@@ -27,6 +27,7 @@ nanostore-*
 
 # Build directories
 /bin/
+/.bin/
 /dist/
 /completions/
 /man/
