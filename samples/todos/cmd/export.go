@@ -5,12 +5,14 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/arthur-debert/nanostore/formats"
 	"github.com/arthur-debert/nanostore/nanostore"
 	"github.com/spf13/cobra"
 )
 
 var (
 	exportOutput string
+	exportFormat string
 )
 
 var exportCmd = &cobra.Command{
@@ -26,9 +28,15 @@ You can export specific todos by providing their IDs, or export all todos
 if no IDs are specified.
 
 Examples:
-  todos export                    # Export all todos
-  todos export 1 h2.1            # Export specific todos by ID
-  todos export --output backup.zip # Export all to specific file`,
+  todos export                            # Export all todos as plaintext
+  todos export --format markdown          # Export all todos as markdown
+  todos export 1 h2.1                    # Export specific todos by ID
+  todos export --output backup.zip        # Export all to specific file
+  todos export --format md --output my.zip # Export as markdown to specific file
+
+Available formats:
+  plaintext: Simple text format with title on first line (.txt)
+  markdown: Markdown format with # Title header (.md)`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		app, err := NewTodoApp(storePath)
 		if err != nil {
@@ -36,14 +44,23 @@ Examples:
 		}
 		defer app.Close()
 
+		// Get the document format
+		format, err := formats.Get(exportFormat)
+		if err != nil {
+			return fmt.Errorf("invalid format %q: %w", exportFormat, err)
+		}
+
 		// Create export options
-		options := nanostore.ExportOptions{}
+		options := nanostore.ExportOptions{
+			DocumentFormat: format,
+		}
 		if len(args) > 0 {
 			options.IDs = args
 			fmt.Printf("Exporting %d specific todos: %v\n", len(args), args)
 		} else {
 			fmt.Println("Exporting all todos...")
 		}
+		fmt.Printf("Format: %s\n", format.Name)
 
 		// Get metadata to show what will be exported
 		metadata, err := nanostore.GetExportMetadata(app.store.Store(), options)
@@ -117,5 +134,6 @@ Examples:
 
 func init() {
 	exportCmd.Flags().StringVarP(&exportOutput, "output", "o", "", "Output path for the export archive")
+	exportCmd.Flags().StringVarP(&exportFormat, "format", "f", "plaintext", "Document format (plaintext or markdown)")
 	rootCmd.AddCommand(exportCmd)
 }
