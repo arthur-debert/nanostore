@@ -488,6 +488,24 @@ func (ts *TypedStore[T]) ResolveUUID(simpleID string) (string, error) {
 	return ts.store.ResolveUUID(simpleID)
 }
 
+// List returns documents based on the provided ListOptions, converted to typed structs
+// This provides direct access to the underlying store's List functionality while maintaining type safety
+func (ts *TypedStore[T]) List(opts nanostore.ListOptions) ([]T, error) {
+	docs, err := ts.store.List(opts)
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]T, len(docs))
+	for i, doc := range docs {
+		if err := UnmarshalDimensions(doc, &result[i]); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal document %s: %w", doc.UUID, err)
+		}
+	}
+
+	return result, nil
+}
+
 // TypedQuery provides a fluent interface for building type-safe queries.
 //
 // This query builder implements the "fluent interface" pattern, allowing users to chain
