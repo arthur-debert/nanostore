@@ -1,0 +1,45 @@
+{
+  "documents": [
+    {
+      "UUID": "440bca88-950b-46a9-94dc-f8666ef2d752",
+      "SimpleID": "",
+      "Title": "Shopping list",
+      "Body": "Buy milk and bread",
+      "Dimensions": {
+        "_data.Pinned": false,
+        "status": "active"
+      },
+      "CreatedAt": "2025-09-30T13:36:36.436769-03:00",
+      "UpdatedAt": "2025-09-30T13:37:22.572136-03:00"
+    },
+    {
+      "UUID": "686cc288-670f-41dc-8b44-85046ba71ba7",
+      "SimpleID": "",
+      "Title": "Test 1",
+      "Body": "",
+      "Dimensions": {
+        "_data.Pinned": false,
+        "status": "active"
+      },
+      "CreatedAt": "2025-09-30T14:52:54.12189-03:00",
+      "UpdatedAt": "2025-09-30T14:52:54.12189-03:00"
+    },
+    {
+      "UUID": "6040e281-f8fa-4111-979d-7ab4b9e9d3a4",
+      "SimpleID": "",
+      "Title": "Test 2",
+      "Body": "",
+      "Dimensions": {
+        "_data.Pinned": false,
+        "status": "active"
+      },
+      "CreatedAt": "2025-09-30T14:52:54.126296-03:00",
+      "UpdatedAt": "2025-09-30T14:52:54.126296-03:00"
+    }
+  ],
+  "metadata": {
+    "version": "1.0",
+    "created_at": "2025-09-30T13:36:32.310007-03:00",
+    "updated_at": "2025-09-30T14:52:54.133807-03:00"
+  }
+}

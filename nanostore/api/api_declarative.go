@@ -482,6 +482,12 @@ func (ts *TypedStore[T]) Store() nanostore.Store {
 	return ts.store
 }
 
+// ResolveUUID converts a simple ID (e.g., "1.2.c3") to a UUID
+// This provides direct access to ID resolution without needing to access the underlying store
+func (ts *TypedStore[T]) ResolveUUID(simpleID string) (string, error) {
+	return ts.store.ResolveUUID(simpleID)
+}
+
 // TypedQuery provides a fluent interface for building type-safe queries.
 //
 // This query builder implements the "fluent interface" pattern, allowing users to chain
