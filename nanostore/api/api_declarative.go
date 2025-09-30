@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/arthur-debert/nanostore/nanostore"
+	"github.com/arthur-debert/nanostore/types"
 )
 
 // TypedStore wraps a Store with type-safe operations for a specific document type T.
@@ -490,7 +491,7 @@ func (ts *TypedStore[T]) ResolveUUID(simpleID string) (string, error) {
 
 // List returns documents based on the provided ListOptions, converted to typed structs
 // This provides direct access to the underlying store's List functionality while maintaining type safety
-func (ts *TypedStore[T]) List(opts nanostore.ListOptions) ([]T, error) {
+func (ts *TypedStore[T]) List(opts types.ListOptions) ([]T, error) {
 	docs, err := ts.store.List(opts)
 	if err != nil {
 		return nil, err
@@ -504,6 +505,42 @@ func (ts *TypedStore[T]) List(opts nanostore.ListOptions) ([]T, error) {
 	}
 
 	return result, nil
+}
+
+// GetRaw returns the raw document without type conversion
+// This provides direct access to the underlying document structure, useful for:
+// - Accessing dimensions not defined in the struct
+// - Inspecting metadata (CreatedAt, UpdatedAt, etc.)
+// - Working with documents that partially match the struct schema
+// - Debugging and introspection
+// Accepts both UUID and SimpleID for maximum flexibility
+func (ts *TypedStore[T]) GetRaw(id string) (*types.Document, error) {
+	// First try to resolve as SimpleID to UUID
+	uuid, err := ts.store.ResolveUUID(id)
+	if err != nil {
+		// If resolution fails, try using the ID directly as UUID
+		uuid = id
+	}
+
+	// Use List with UUID filter to get the raw document
+	docs, err := ts.store.List(types.ListOptions{
+		Filters: map[string]interface{}{
+			"uuid": uuid,
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	if len(docs) == 0 {
+		return nil, fmt.Errorf("document with ID %s not found", id)
+	}
+
+	if len(docs) > 1 {
+		return nil, fmt.Errorf("multiple documents found for ID %s", id)
+	}
+
+	return &docs[0], nil
 }
 
 // TypedQuery provides a fluent interface for building type-safe queries.
