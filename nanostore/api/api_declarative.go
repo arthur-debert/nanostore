@@ -708,6 +708,19 @@ func (tq *TypedQuery[T]) Activity(value string) *TypedQuery[T] {
 	return tq
 }
 
+// ActivityIn filters by multiple activity values.
+// This allows OR-style filtering for activity values - documents matching ANY
+// of the provided values will be included in results.
+//
+// Example:
+//
+//	// Find documents that are either active or archived
+//	results, err := store.Query().ActivityIn("active", "archived").Find()
+func (tq *TypedQuery[T]) ActivityIn(values ...string) *TypedQuery[T] {
+	tq.options.Filters["activity"] = values
+	return tq
+}
+
 // Status filters by status value.
 // Status is a common enumerated dimension in many applications.
 // The value must be one of the values configured in the dimension's Values list.
@@ -772,6 +785,19 @@ func (tq *TypedQuery[T]) Priority(value string) *TypedQuery[T] {
 	return tq
 }
 
+// PriorityIn filters by multiple priority values.
+// This allows OR-style filtering for priority values - documents matching ANY
+// of the provided values will be included in results.
+//
+// Example:
+//
+//	// Find documents that are either high or medium priority
+//	results, err := store.Query().PriorityIn("high", "medium").Find()
+func (tq *TypedQuery[T]) PriorityIn(values ...string) *TypedQuery[T] {
+	tq.options.Filters["priority"] = values
+	return tq
+}
+
 // Data filters by custom data fields not defined in the struct schema.
 // This method enables querying documents by _data.* fields that were added via AddRaw
 // or other means outside the typed struct definition.
@@ -796,6 +822,24 @@ func (tq *TypedQuery[T]) Priority(value string) *TypedQuery[T] {
 // since they typically cannot leverage specialized indexes.
 func (tq *TypedQuery[T]) Data(field string, value interface{}) *TypedQuery[T] {
 	tq.options.Filters["_data."+field] = value
+	return tq
+}
+
+// DataIn filters by multiple values for a custom data field.
+// This allows OR-style filtering for data field values - documents matching ANY
+// of the provided values will be included in results.
+//
+// The field name should NOT include the "_data." prefix - it will be added automatically.
+//
+// Examples:
+//
+//	// Find documents with multiple possible assignees
+//	results, err := store.Query().DataIn("assignee", "alice", "bob").Find()
+//
+//	// Find documents with multiple possible tags
+//	results, err := store.Query().DataIn("category", "urgent", "important").Find()
+func (tq *TypedQuery[T]) DataIn(field string, values ...interface{}) *TypedQuery[T] {
+	tq.options.Filters["_data."+field] = values
 	return tq
 }
 
