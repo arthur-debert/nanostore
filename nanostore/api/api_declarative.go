@@ -543,6 +543,17 @@ func (ts *TypedStore[T]) GetRaw(id string) (*types.Document, error) {
 	return &docs[0], nil
 }
 
+// AddRaw creates a new document with raw dimension values
+// This provides direct access to the underlying store's Add functionality for cases where:
+// - The document doesn't fully match the struct schema
+// - You need to set custom _data fields not defined in the struct
+// - You want to bypass struct tag validation
+// - You're migrating data that has different dimension names
+// Returns the UUID of the created document
+func (ts *TypedStore[T]) AddRaw(title string, dimensions map[string]interface{}) (string, error) {
+	return ts.store.Add(title, dimensions)
+}
+
 // TypedQuery provides a fluent interface for building type-safe queries.
 //
 // This query builder implements the "fluent interface" pattern, allowing users to chain
