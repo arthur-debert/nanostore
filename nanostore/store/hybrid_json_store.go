@@ -727,3 +727,13 @@ func (s *hybridJSONFileStore) DeleteWhere(whereClause string, args ...interface{
 func (s *hybridJSONFileStore) UpdateWhere(whereClause string, updates types.UpdateRequest, args ...interface{}) (int, error) {
 	return 0, errors.New("UpdateWhere not supported in hybrid JSON store")
 }
+
+// UpdateByUUIDs updates multiple documents by their UUIDs in a single operation
+func (s *hybridJSONFileStore) UpdateByUUIDs(uuids []string, updates types.UpdateRequest) (int, error) {
+	return 0, errors.New("UpdateByUUIDs not implemented in hybrid store")
+}
+
+// DeleteByUUIDs deletes multiple documents by their UUIDs in a single operation
+func (s *hybridJSONFileStore) DeleteByUUIDs(uuids []string) (int, error) {
+	return 0, errors.New("DeleteByUUIDs not implemented in hybrid store")
+}

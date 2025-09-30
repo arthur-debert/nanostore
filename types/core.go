@@ -110,6 +110,16 @@ type Store interface {
 	// Returns the number of documents updated
 	UpdateWhere(whereClause string, updates UpdateRequest, args ...interface{}) (int, error)
 
+	// UpdateByUUIDs updates multiple documents by their UUIDs in a single operation
+	// For example: UpdateByUUIDs([]string{"uuid1", "uuid2"}, UpdateRequest{Title: &newTitle})
+	// Returns the number of documents successfully updated
+	UpdateByUUIDs(uuids []string, updates UpdateRequest) (int, error)
+
+	// DeleteByUUIDs deletes multiple documents by their UUIDs in a single operation
+	// For example: DeleteByUUIDs([]string{"uuid1", "uuid2"})
+	// Returns the number of documents successfully deleted
+	DeleteByUUIDs(uuids []string) (int, error)
+
 	// Close releases any resources held by the store
 	Close() error
 }

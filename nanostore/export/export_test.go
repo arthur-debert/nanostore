@@ -76,6 +76,14 @@ func (m *MockStore) UpdateWhere(whereClause string, updates types.UpdateRequest,
 	return 0, fmt.Errorf("not implemented")
 }
 
+func (m *MockStore) UpdateByUUIDs(uuids []string, updates types.UpdateRequest) (int, error) {
+	return 0, fmt.Errorf("not implemented")
+}
+
+func (m *MockStore) DeleteByUUIDs(uuids []string) (int, error) {
+	return 0, fmt.Errorf("not implemented")
+}
+
 func (m *MockStore) Close() error {
 	return nil
 }

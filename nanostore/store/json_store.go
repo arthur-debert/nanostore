@@ -649,6 +649,51 @@ func (s *jsonFileStore) DeleteWhere(whereClause string, args ...interface{}) (in
 	return 0, errors.New("DeleteWhere not supported in JSON store")
 }
 
+// DeleteByUUIDs deletes multiple documents by their UUIDs in a single operation
+func (s *jsonFileStore) DeleteByUUIDs(uuids []string) (int, error) {
+	if len(uuids) == 0 {
+		return 0, nil
+	}
+
+	result, err := s.lockManager.ExecuteWithResult(storage.WriteOperation, func() (interface{}, error) {
+		// Create a map of UUIDs for faster lookup
+		uuidMap := make(map[string]bool, len(uuids))
+		for _, uuid := range uuids {
+			uuidMap[uuid] = true
+		}
+
+		// Find all documents to delete (collect indices in reverse order)
+		toDelete := []int{}
+		for i, doc := range s.data.Documents {
+			if uuidMap[doc.UUID] {
+				toDelete = append(toDelete, i)
+			}
+		}
+
+		// Delete in reverse order to preserve indices
+		deletedCount := 0
+		for i := len(toDelete) - 1; i >= 0; i-- {
+			idx := toDelete[i]
+			s.data.Documents = append(s.data.Documents[:idx], s.data.Documents[idx+1:]...)
+			deletedCount++
+		}
+
+		// Save changes if any documents were deleted
+		if deletedCount > 0 {
+			if err := s.saveWithLock(); err != nil {
+				return 0, fmt.Errorf("failed to save after deletion: %w", err)
+			}
+		}
+
+		return deletedCount, nil
+	})
+
+	if err != nil {
+		return 0, err
+	}
+	return result.(int), nil
+}
+
 // UpdateByDimension updates documents matching dimension filters
 func (s *jsonFileStore) UpdateByDimension(filters map[string]interface{}, updates types.UpdateRequest) (int, error) {
 	result, err := s.lockManager.ExecuteWithResult(storage.WriteOperation, func() (interface{}, error) {
@@ -790,6 +835,149 @@ func (s *jsonFileStore) UpdateByDimension(filters map[string]interface{}, update
 func (s *jsonFileStore) UpdateWhere(whereClause string, updates types.UpdateRequest, args ...interface{}) (int, error) {
 	// This method doesn't make sense for JSON store
 	return 0, errors.New("UpdateWhere not supported in JSON store")
+}
+
+// UpdateByUUIDs updates multiple documents by their UUIDs in a single operation
+func (s *jsonFileStore) UpdateByUUIDs(uuids []string, updates types.UpdateRequest) (int, error) {
+	if len(uuids) == 0 {
+		return 0, nil
+	}
+
+	result, err := s.lockManager.ExecuteWithResult(storage.WriteOperation, func() (interface{}, error) {
+		// Validate update dimensions if provided
+		if updates.Dimensions != nil {
+			for name, value := range updates.Dimensions {
+				// Skip validation for _data fields - they can be any type
+				if strings.HasPrefix(name, "_data.") {
+					continue
+				}
+				if value != nil {
+					if err := validation.ValidateSimpleType(value, name); err != nil {
+						return 0, err
+					}
+				}
+			}
+		}
+
+		// Create a map of UUIDs for faster lookup
+		uuidMap := make(map[string]bool, len(uuids))
+		for _, uuid := range uuids {
+			uuidMap[uuid] = true
+		}
+
+		// Find and update all matching documents
+		updatedCount := 0
+		now := s.timeFunc()
+
+		for i := range s.data.Documents {
+			doc := &s.data.Documents[i]
+			if uuidMap[doc.UUID] {
+				doc.UpdatedAt = now
+
+				// Update title if provided
+				if updates.Title != nil {
+					doc.Title = *updates.Title
+				}
+
+				// Update body if provided
+				if updates.Body != nil {
+					doc.Body = *updates.Body
+				}
+
+				// Update dimensions if provided
+				if updates.Dimensions != nil {
+					// First handle _data prefixed values (no validation needed)
+					for dimName, value := range updates.Dimensions {
+						if strings.HasPrefix(dimName, "_data.") {
+							if value != nil {
+								doc.Dimensions[dimName] = value
+							} else {
+								delete(doc.Dimensions, dimName)
+							}
+						}
+					}
+
+					// Then validate and process dimension updates
+					for dimName, value := range updates.Dimensions {
+						// Skip _data prefixed fields (already handled)
+						if strings.HasPrefix(dimName, "_data.") {
+							continue
+						}
+
+						// Find dimension config
+						dim, found := s.dimensionSet.Get(dimName)
+						var dimConfig *types.DimensionConfig
+						if found {
+							dimConfig = &types.DimensionConfig{
+								Name:         dim.Name,
+								Type:         dim.Type,
+								Values:       dim.Values,
+								Prefixes:     dim.Prefixes,
+								DefaultValue: dim.DefaultValue,
+								RefField:     dim.RefField,
+							}
+						} else {
+							// Try by RefField for hierarchical dimensions
+							for _, dc := range s.dimensionSet.Hierarchical() {
+								if dc.RefField == dimName {
+									dimConfig = &types.DimensionConfig{
+										Name:         dc.Name,
+										Type:         dc.Type,
+										Values:       dc.Values,
+										Prefixes:     dc.Prefixes,
+										DefaultValue: dc.DefaultValue,
+										RefField:     dc.RefField,
+									}
+									break
+								}
+							}
+						}
+
+						// Update the dimension value
+						if dimConfig != nil && dimConfig.Type == types.Enumerated {
+							// Store enumerated dimension value
+							if value != nil {
+								doc.Dimensions[dimName] = value
+							} else {
+								delete(doc.Dimensions, dimName)
+							}
+						} else if dimConfig != nil && dimConfig.Type == types.Hierarchical {
+							// Store hierarchical dimension value
+							if value != nil {
+								parentID := fmt.Sprintf("%v", value)
+								// Try to resolve if it's a SimpleID
+								if !ids.IsValidUUID(parentID) {
+									if resolvedUUID, err := s.resolveUUIDInternal(parentID); err == nil {
+										parentID = resolvedUUID
+									}
+									// If resolution fails, store the value as-is
+								}
+								doc.Dimensions[dimConfig.RefField] = parentID
+							} else {
+								delete(doc.Dimensions, dimConfig.RefField)
+							}
+						}
+					}
+				}
+
+				updatedCount++
+			}
+		}
+
+		// Save changes if any documents were updated
+		if updatedCount > 0 {
+			if err := s.saveWithLock(); err != nil {
+				return 0, fmt.Errorf("failed to save after update: %w", err)
+			}
+		}
+
+		return updatedCount, nil
+	})
+
+	if err != nil {
+		return 0, err
+	}
+	return result.(int), nil
 }
 
 // GetByID retrieves a single document by ID
