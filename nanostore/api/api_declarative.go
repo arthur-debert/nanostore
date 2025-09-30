@@ -423,6 +423,44 @@ func (ts *TypedStore[T]) UpdateWhere(whereClause string, data *T, args ...interf
 	return ts.store.UpdateWhere(whereClause, req, args...)
 }
 
+// UpdateByUUIDs updates multiple documents by their UUIDs in a single operation
+// Returns the number of documents updated.
+func (ts *TypedStore[T]) UpdateByUUIDs(uuids []string, data *T) (int, error) {
+	dimensions, extraData, err := MarshalDimensions(data)
+	if err != nil {
+		return 0, fmt.Errorf("failed to marshal dimensions: %w", err)
+	}
+
+	// Store extra data in dimensions with a special prefix
+	for key, value := range extraData {
+		dimensions["_data."+key] = value
+	}
+
+	// Extract title and body if they're set
+	var req nanostore.UpdateRequest
+	req.Dimensions = dimensions
+
+	// Use reflection to check if Title or Body fields are set
+	val := reflect.ValueOf(data).Elem()
+	if docField := val.FieldByName("Document"); docField.IsValid() {
+		doc := docField.Interface().(nanostore.Document)
+		if doc.Title != "" {
+			req.Title = &doc.Title
+		}
+		if doc.Body != "" {
+			req.Body = &doc.Body
+		}
+	}
+
+	return ts.store.UpdateByUUIDs(uuids, req)
+}
+
+// DeleteByUUIDs deletes multiple documents by their UUIDs in a single operation
+// Returns the number of documents deleted.
+func (ts *TypedStore[T]) DeleteByUUIDs(uuids []string) (int, error) {
+	return ts.store.DeleteByUUIDs(uuids)
+}
+
 // Query returns a new typed query builder
 func (ts *TypedStore[T]) Query() *TypedQuery[T] {
 	return &TypedQuery[T]{
