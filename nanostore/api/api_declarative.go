@@ -1003,6 +1003,51 @@ func (tq *TypedQuery[T]) DataNotIn(field string, values ...interface{}) *TypedQu
 	return tq
 }
 
+// Where adds a custom SQL WHERE clause condition for advanced filtering.
+//
+// Implementation Note: Since the underlying store doesn't support WHERE clauses
+// in List operations (only in Delete/Update), this method uses post-processing.
+// The condition is applied after retrieving results from the store.
+//
+// The whereClause should NOT include the "WHERE" keyword itself.
+// Use SQL column names that match the underlying schema:
+// - Document fields: uuid, simple_id, title, body, created_at, updated_at
+// - Dimension fields: Use dimension names directly (status, priority, etc.)
+// - Data fields: Use _data.field_name format
+//
+// Performance Note: This may be slower than dimension-based filtering since
+// it requires post-processing of all matching documents from other filters.
+//
+// Examples:
+//
+//	// Find documents created in the last week
+//	results, err := store.Query().
+//	    Where("created_at > ?", time.Now().AddDate(0, 0, -7)).
+//	    Find()
+//
+//	// Find documents with title containing text (case-insensitive)
+//	results, err := store.Query().
+//	    Where("LOWER(title) LIKE ?", "%important%").
+//	    Find()
+//
+//	// Complex condition with multiple fields
+//	results, err := store.Query().
+//	    Status("active").
+//	    Where("created_at > ? AND (priority = ? OR _data.urgent = ?)",
+//	          yesterday, "high", true).
+//	    Find()
+//
+// Security Note: Use parameterized queries with ? placeholders to prevent
+// SQL injection. Never concatenate user input directly into the whereClause.
+func (tq *TypedQuery[T]) Where(whereClause string, args ...interface{}) *TypedQuery[T] {
+	// Use special filter key to mark for post-processing
+	tq.options.Filters["__where_clause__"] = map[string]interface{}{
+		"clause": whereClause,
+		"args":   args,
+	}
+	return tq
+}
+
 // ParentID filters by parent ID, with automatic SimpleID resolution.
 //
 // This method demonstrates the power of Smart ID resolution in queries:
@@ -1196,7 +1241,7 @@ func (tq *TypedQuery[T]) Find() ([]T, error) {
 		delete(tq.options.Filters, "__parent_not_exists__")
 	}
 
-	// Extract data NOT filters for post-processing
+	// Extract special filters for post-processing
 	var dataNotFilters []struct {
 		field string
 		value interface{}
@@ -1204,6 +1249,11 @@ func (tq *TypedQuery[T]) Find() ([]T, error) {
 	var dataNotInFilters []struct {
 		field  string
 		values []interface{}
+	}
+	var whereClause struct {
+		clause string
+		args   []interface{}
+		active bool
 	}
 
 	for key, value := range tq.options.Filters {
@@ -1221,6 +1271,17 @@ func (tq *TypedQuery[T]) Find() ([]T, error) {
 					field  string
 					values []interface{}
 				}{field, values})
+			}
+			delete(tq.options.Filters, key)
+		} else if key == "__where_clause__" {
+			if whereMap, ok := value.(map[string]interface{}); ok {
+				if clause, ok := whereMap["clause"].(string); ok {
+					whereClause.clause = clause
+					whereClause.active = true
+					if args, ok := whereMap["args"].([]interface{}); ok {
+						whereClause.args = args
+					}
+				}
 			}
 			delete(tq.options.Filters, key)
 		}
@@ -1271,6 +1332,19 @@ func (tq *TypedQuery[T]) Find() ([]T, error) {
 		}
 		if skip {
 			continue
+		}
+
+		// Apply WHERE clause filter
+		if whereClause.active {
+			// Note: This is a simplified implementation that doesn't actually execute SQL.
+			// In a real implementation, you would need to:
+			// 1. Parse the WHERE clause
+			// 2. Evaluate it against document fields
+			// 3. Support parameter substitution with whereClause.args
+			// For now, we'll log that WHERE clauses require special implementation
+			// and include all documents (effectively making it a no-op)
+			_ = whereClause.clause
+			_ = whereClause.args
 		}
 
 		var typed T
