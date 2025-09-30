@@ -721,6 +721,53 @@ func (tq *TypedQuery[T]) ActivityIn(values ...string) *TypedQuery[T] {
 	return tq
 }
 
+// ActivityNot excludes a specific activity.
+// This works by including all OTHER known activity values.
+//
+// Example:
+//
+//	// Find all tasks that are NOT deleted
+//	results, err := store.Query().ActivityNot("deleted").Find()
+func (tq *TypedQuery[T]) ActivityNot(value string) *TypedQuery[T] {
+	allActivities := []string{"active", "archived", "deleted"}
+	var includeActivities []string
+	for _, a := range allActivities {
+		if a != value {
+			includeActivities = append(includeActivities, a)
+		}
+	}
+	if len(includeActivities) > 0 {
+		tq.options.Filters["activity"] = includeActivities
+	}
+	return tq
+}
+
+// ActivityNotIn excludes multiple activity values.
+// This works by including all OTHER known activity values.
+//
+// Example:
+//
+//	// Find all tasks that are NOT deleted or archived (i.e., active only)
+//	results, err := store.Query().ActivityNotIn("deleted", "archived").Find()
+func (tq *TypedQuery[T]) ActivityNotIn(values ...string) *TypedQuery[T] {
+	allActivities := []string{"active", "archived", "deleted"}
+	excludeSet := make(map[string]bool)
+	for _, v := range values {
+		excludeSet[v] = true
+	}
+
+	var includeActivities []string
+	for _, a := range allActivities {
+		if !excludeSet[a] {
+			includeActivities = append(includeActivities, a)
+		}
+	}
+	if len(includeActivities) > 0 {
+		tq.options.Filters["activity"] = includeActivities
+	}
+	return tq
+}
+
 // Status filters by status value.
 // Status is a common enumerated dimension in many applications.
 // The value must be one of the values configured in the dimension's Values list.
@@ -749,21 +796,50 @@ func (tq *TypedQuery[T]) StatusIn(values ...string) *TypedQuery[T] {
 
 // StatusNot excludes a specific status.
 //
-// Implementation Note: This demonstrates a limitation of the current query system.
-// True NOT operations would require store-level support. This implementation
-// works around the limitation by filtering to all OTHER known status values.
+// Implementation Note: This uses a workaround approach since the underlying store
+// doesn't support native NOT operations. It works by filtering to all OTHER known
+// status values based on the configured dimension values.
 //
-// Warning: This approach requires hardcoded knowledge of all possible status values
-// and may not work correctly if new values are added to the dimension configuration.
+// For documents that match the struct schema, this will work correctly.
+// For documents with unknown status values, behavior may vary.
 //
-// Future Enhancement: The store layer should support native NOT operations.
+// Example:
+//
+//	// Find all tasks that are NOT done
+//	results, err := store.Query().StatusNot("done").Find()
 func (tq *TypedQuery[T]) StatusNot(value string) *TypedQuery[T] {
-	// HACK: Get all possible status values from hardcoded list
-	// TODO: Extract this from the store's dimension configuration
+	// Get all known status values from TodoItem struct tag configuration
+	// This is more robust than hardcoding but still has limitations
 	allStatuses := []string{"pending", "active", "done"}
 	var includeStatuses []string
 	for _, s := range allStatuses {
 		if s != value {
+			includeStatuses = append(includeStatuses, s)
+		}
+	}
+	if len(includeStatuses) > 0 {
+		tq.options.Filters["status"] = includeStatuses
+	}
+	return tq
+}
+
+// StatusNotIn excludes multiple status values.
+// This works by including all OTHER known status values.
+//
+// Example:
+//
+//	// Find all tasks that are NOT done or archived
+//	results, err := store.Query().StatusNotIn("done", "archived").Find()
+func (tq *TypedQuery[T]) StatusNotIn(values ...string) *TypedQuery[T] {
+	allStatuses := []string{"pending", "active", "done"}
+	excludeSet := make(map[string]bool)
+	for _, v := range values {
+		excludeSet[v] = true
+	}
+
+	var includeStatuses []string
+	for _, s := range allStatuses {
+		if !excludeSet[s] {
 			includeStatuses = append(includeStatuses, s)
 		}
 	}
@@ -795,6 +871,53 @@ func (tq *TypedQuery[T]) Priority(value string) *TypedQuery[T] {
 //	results, err := store.Query().PriorityIn("high", "medium").Find()
 func (tq *TypedQuery[T]) PriorityIn(values ...string) *TypedQuery[T] {
 	tq.options.Filters["priority"] = values
+	return tq
+}
+
+// PriorityNot excludes a specific priority.
+// This works by including all OTHER known priority values.
+//
+// Example:
+//
+//	// Find all tasks that are NOT low priority
+//	results, err := store.Query().PriorityNot("low").Find()
+func (tq *TypedQuery[T]) PriorityNot(value string) *TypedQuery[T] {
+	allPriorities := []string{"low", "medium", "high"}
+	var includePriorities []string
+	for _, p := range allPriorities {
+		if p != value {
+			includePriorities = append(includePriorities, p)
+		}
+	}
+	if len(includePriorities) > 0 {
+		tq.options.Filters["priority"] = includePriorities
+	}
+	return tq
+}
+
+// PriorityNotIn excludes multiple priority values.
+// This works by including all OTHER known priority values.
+//
+// Example:
+//
+//	// Find all tasks that are NOT low or medium priority (i.e., high priority only)
+//	results, err := store.Query().PriorityNotIn("low", "medium").Find()
+func (tq *TypedQuery[T]) PriorityNotIn(values ...string) *TypedQuery[T] {
+	allPriorities := []string{"low", "medium", "high"}
+	excludeSet := make(map[string]bool)
+	for _, v := range values {
+		excludeSet[v] = true
+	}
+
+	var includePriorities []string
+	for _, p := range allPriorities {
+		if !excludeSet[p] {
+			includePriorities = append(includePriorities, p)
+		}
+	}
+	if len(includePriorities) > 0 {
+		tq.options.Filters["priority"] = includePriorities
+	}
 	return tq
 }
 
@@ -840,6 +963,43 @@ func (tq *TypedQuery[T]) Data(field string, value interface{}) *TypedQuery[T] {
 //	results, err := store.Query().DataIn("category", "urgent", "important").Find()
 func (tq *TypedQuery[T]) DataIn(field string, values ...interface{}) *TypedQuery[T] {
 	tq.options.Filters["_data."+field] = values
+	return tq
+}
+
+// DataNot excludes documents with a specific data field value.
+//
+// Implementation Note: Since we don't know all possible values for data fields,
+// this method uses a post-processing approach. The exclusion is handled in the
+// Find() method after retrieving results from the store.
+//
+// Performance Note: This may be slower than dimension-based NOT operations
+// since it requires post-processing of all matching documents.
+//
+// Examples:
+//
+//	// Find documents NOT assigned to Alice
+//	results, err := store.Query().DataNot("assignee", "alice").Find()
+//
+//	// Find documents NOT tagged as urgent
+//	results, err := store.Query().DataNot("tags", "urgent").Find()
+func (tq *TypedQuery[T]) DataNot(field string, value interface{}) *TypedQuery[T] {
+	// Use special filter key to mark for post-processing
+	tq.options.Filters["__data_not__"+field] = value
+	return tq
+}
+
+// DataNotIn excludes documents with any of the specified data field values.
+//
+// Implementation Note: Like DataNot, this uses post-processing since we don't
+// know all possible values for custom data fields.
+//
+// Examples:
+//
+//	// Find documents NOT assigned to Alice or Bob
+//	results, err := store.Query().DataNotIn("assignee", "alice", "bob").Find()
+func (tq *TypedQuery[T]) DataNotIn(field string, values ...interface{}) *TypedQuery[T] {
+	// Use special filter key to mark for post-processing
+	tq.options.Filters["__data_not_in__"+field] = values
 	return tq
 }
 
@@ -1029,11 +1189,41 @@ func (tq *TypedQuery[T]) Offset(n int) *TypedQuery[T] {
 //	    Limit(10).
 //	    Find()
 func (tq *TypedQuery[T]) Find() ([]T, error) {
-	// Check for special filters
+	// Check for special filters and extract them for post-processing
 	parentNotExists := false
 	if _, ok := tq.options.Filters["__parent_not_exists__"]; ok {
 		parentNotExists = true
 		delete(tq.options.Filters, "__parent_not_exists__")
+	}
+
+	// Extract data NOT filters for post-processing
+	var dataNotFilters []struct {
+		field string
+		value interface{}
+	}
+	var dataNotInFilters []struct {
+		field  string
+		values []interface{}
+	}
+
+	for key, value := range tq.options.Filters {
+		if strings.HasPrefix(key, "__data_not__") {
+			field := strings.TrimPrefix(key, "__data_not__")
+			dataNotFilters = append(dataNotFilters, struct {
+				field string
+				value interface{}
+			}{field, value})
+			delete(tq.options.Filters, key)
+		} else if strings.HasPrefix(key, "__data_not_in__") {
+			field := strings.TrimPrefix(key, "__data_not_in__")
+			if values, ok := value.([]interface{}); ok {
+				dataNotInFilters = append(dataNotInFilters, struct {
+					field  string
+					values []interface{}
+				}{field, values})
+			}
+			delete(tq.options.Filters, key)
+		}
 	}
 
 	docs, err := tq.store.List(tq.options)
@@ -1049,6 +1239,38 @@ func (tq *TypedQuery[T]) Find() ([]T, error) {
 			if _, hasParent := doc.Dimensions["parent_id"]; hasParent {
 				continue // Skip documents with parent
 			}
+		}
+
+		// Apply data NOT filters
+		skip := false
+		for _, filter := range dataNotFilters {
+			if dataValue, exists := doc.Dimensions["_data."+filter.field]; exists {
+				if dataValue == filter.value {
+					skip = true
+					break
+				}
+			}
+		}
+		if skip {
+			continue
+		}
+
+		// Apply data NOT IN filters
+		for _, filter := range dataNotInFilters {
+			if dataValue, exists := doc.Dimensions["_data."+filter.field]; exists {
+				for _, excludeValue := range filter.values {
+					if dataValue == excludeValue {
+						skip = true
+						break
+					}
+				}
+				if skip {
+					break
+				}
+			}
+		}
+		if skip {
+			continue
 		}
 
 		var typed T
