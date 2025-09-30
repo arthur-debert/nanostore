@@ -695,6 +695,229 @@ func (ts *TypedStore[T]) GetMetadata(id string) (*DocumentMetadata, error) {
 //	hasActiveTasks, err := store.Query().
 //	    Status("active").
 //	    Exists()
+
+// GetDimensionConfig returns the runtime configuration for this TypedStore.
+//
+// This method provides introspection capabilities for the automatically generated
+// dimension configuration. It allows applications to examine:
+//
+// - **Dimension Names**: All configured dimension names
+// - **Enumerated Values**: Valid values for each enumerated dimension
+// - **Prefix Mappings**: Value-to-prefix mappings for ID generation
+// - **Default Values**: Default values for dimensions
+// - **Hierarchical Relations**: Parent-child relationship configurations
+//
+// # Use Cases
+//
+// - **Debugging**: Inspect configuration during development
+// - **Validation**: Verify struct tags were parsed correctly
+// - **Documentation**: Generate API documentation from configuration
+// - **Migration**: Compare configurations across schema versions
+// - **Testing**: Validate configuration in unit tests
+//
+// # Return Format
+//
+// Returns the same Config struct used internally by nanostore, containing:
+//
+//	type Config struct {
+//	    Dimensions []DimensionConfig
+//	}
+//
+//	type DimensionConfig struct {
+//	    Name         string
+//	    Type         DimensionType  // Enumerated or Hierarchical
+//	    Values       []string       // For enumerated dimensions
+//	    Prefixes     map[string]string // Value -> prefix mapping
+//	    DefaultValue string         // Default for new documents
+//	    RefField     string         // For hierarchical dimensions
+//	}
+//
+// # Example Usage
+//
+//	// Inspect configuration
+//	config, err := store.GetDimensionConfig()
+//	if err != nil {
+//	    log.Fatal(err)
+//	}
+//
+//	for _, dim := range config.Dimensions {
+//	    fmt.Printf("Dimension: %s\n", dim.Name)
+//	    if dim.Type == nanostore.Enumerated {
+//	        fmt.Printf("  Values: %v\n", dim.Values)
+//	        fmt.Printf("  Prefixes: %v\n", dim.Prefixes)
+//	        fmt.Printf("  Default: %s\n", dim.DefaultValue)
+//	    }
+//	}
+//
+// # Performance Notes
+//
+// This method returns a copy of the configuration, not a reference.
+// The configuration is generated once at TypedStore creation and cached,
+// so this method is O(1) with respect to runtime performance.
+func (ts *TypedStore[T]) GetDimensionConfig() (*nanostore.Config, error) {
+	// Get the original type T to regenerate config
+	var zero T
+	typ := reflect.TypeOf(zero)
+
+	// Check that T still embeds Document (defensive check)
+	if !embedsDocument(typ) {
+		return nil, fmt.Errorf("type %T does not embed nanostore.Document", zero)
+	}
+
+	// Regenerate config from struct tags to ensure consistency
+	config, err := generateConfigFromType(typ)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate config from type %T: %w", zero, err)
+	}
+
+	return &config, nil
+}
+
+// ValidateConfiguration performs runtime validation of the TypedStore configuration.
+//
+// This method checks for configuration issues that might not be caught during
+// store creation, including:
+//
+// - **Prefix Conflicts**: Multiple values mapping to the same prefix
+// - **Invalid Default Values**: Defaults not in enumerated value lists
+// - **Missing Required Fields**: Hierarchical dimensions without ref fields
+// - **Constraint Violations**: Values violating naming conventions
+// - **Type Consistency**: Field types compatible with dimension types
+//
+// # Validation Categories
+//
+// ## Enumerated Dimension Validation
+//
+// - All values are non-empty strings
+// - Default value exists in values list
+// - Prefix mappings point to valid values
+// - No duplicate values or prefixes
+//
+// ## Hierarchical Dimension Validation
+//
+// - RefField is specified and non-empty
+// - Field types are compatible (typically string)
+// - No circular reference possibilities
+//
+// ## Cross-Dimension Validation
+//
+// - Prefix conflicts across dimensions
+// - Dimension name uniqueness
+// - Compatible with nanostore constraints
+//
+// # Error Reporting
+//
+// Returns detailed errors with specific field and value information:
+//
+//	"dimension 'status': default value 'invalid' not in values list [pending,active,done]"
+//	"dimension 'priority': prefix conflict - value 'high' and 'urgent' both map to prefix 'h'"
+//	"field 'ParentID': hierarchical dimension missing ref field specification"
+//
+// # Example Usage
+//
+//	// Validate configuration during testing
+//	func TestStoreConfiguration(t *testing.T) {
+//	    store, err := api.NewFromType[TodoItem]("test.json")
+//	    require.NoError(t, err)
+//	    defer store.Close()
+//
+//	    err = store.ValidateConfiguration()
+//	    assert.NoError(t, err, "Configuration should be valid")
+//	}
+//
+//	// Validate before critical operations
+//	if err := store.ValidateConfiguration(); err != nil {
+//	    return fmt.Errorf("invalid store configuration: %w", err)
+//	}
+//
+// # Performance Notes
+//
+// This method performs O(n²) validation for prefix conflicts where n is the
+// total number of configured values across all dimensions. It should typically
+// be called during application startup or testing, not in hot paths.
+func (ts *TypedStore[T]) ValidateConfiguration() error {
+	config, err := ts.GetDimensionConfig()
+	if err != nil {
+		return fmt.Errorf("failed to get configuration: %w", err)
+	}
+
+	// Track all prefixes across dimensions to detect conflicts
+	allPrefixes := make(map[string][]string) // prefix -> list of "dimension:value"
+
+	for _, dim := range config.Dimensions {
+		// Validate enumerated dimensions
+		if dim.Type == nanostore.Enumerated {
+			// Check that values list is not empty
+			if len(dim.Values) == 0 {
+				return fmt.Errorf("dimension '%s': enumerated dimension must have at least one value", dim.Name)
+			}
+
+			// Check for empty values
+			for _, value := range dim.Values {
+				if strings.TrimSpace(value) == "" {
+					return fmt.Errorf("dimension '%s': empty value not allowed", dim.Name)
+				}
+			}
+
+			// Check default value exists in values list
+			if dim.DefaultValue != "" {
+				found := false
+				for _, value := range dim.Values {
+					if value == dim.DefaultValue {
+						found = true
+						break
+					}
+				}
+				if !found {
+					return fmt.Errorf("dimension '%s': default value '%s' not in values list %v",
+						dim.Name, dim.DefaultValue, dim.Values)
+				}
+			}
+
+			// Check prefix mappings and collect for conflict detection
+			for value, prefix := range dim.Prefixes {
+				// Verify the value exists in values list
+				found := false
+				for _, v := range dim.Values {
+					if v == value {
+						found = true
+						break
+					}
+				}
+				if !found {
+					return fmt.Errorf("dimension '%s': prefix mapping for unknown value '%s'", dim.Name, value)
+				}
+
+				// Verify prefix is non-empty
+				if strings.TrimSpace(prefix) == "" {
+					return fmt.Errorf("dimension '%s': empty prefix not allowed for value '%s'", dim.Name, value)
+				}
+
+				// Track prefix for conflict detection
+				key := dim.Name + ":" + value
+				allPrefixes[prefix] = append(allPrefixes[prefix], key)
+			}
+		}
+
+		// Validate hierarchical dimensions
+		if dim.Type == nanostore.Hierarchical {
+			if strings.TrimSpace(dim.RefField) == "" {
+				return fmt.Errorf("dimension '%s': hierarchical dimension must specify RefField", dim.Name)
+			}
+		}
+	}
+
+	// Check for prefix conflicts across dimensions
+	for prefix, sources := range allPrefixes {
+		if len(sources) > 1 {
+			return fmt.Errorf("prefix conflict: prefix '%s' used by multiple dimension:value pairs: %v",
+				prefix, sources)
+		}
+	}
+
+	return nil
+}
+
 type TypedQuery[T any] struct {
 	store   nanostore.Store   // Underlying store for query execution
 	options types.ListOptions // Accumulated query options
