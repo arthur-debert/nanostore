@@ -477,7 +477,7 @@ func (ts *TypedStore[T]) DeleteByUUIDs(uuids []string) (int, error) {
 func (ts *TypedStore[T]) Query() *TypedQuery[T] {
 	return &TypedQuery[T]{
 		store: ts.store,
-		options: nanostore.ListOptions{
+		options: types.ListOptions{
 			Filters: make(map[string]interface{}),
 		},
 	}
@@ -696,8 +696,8 @@ func (ts *TypedStore[T]) GetMetadata(id string) (*DocumentMetadata, error) {
 //	    Status("active").
 //	    Exists()
 type TypedQuery[T any] struct {
-	store   nanostore.Store       // Underlying store for query execution
-	options nanostore.ListOptions // Accumulated query options
+	store   nanostore.Store   // Underlying store for query execution
+	options types.ListOptions // Accumulated query options
 }
 
 // Activity filters by activity value.
@@ -772,6 +772,33 @@ func (tq *TypedQuery[T]) Priority(value string) *TypedQuery[T] {
 	return tq
 }
 
+// Data filters by custom data fields not defined in the struct schema.
+// This method enables querying documents by _data.* fields that were added via AddRaw
+// or other means outside the typed struct definition.
+//
+// The field name should NOT include the "_data." prefix - it will be added automatically.
+//
+// Examples:
+//
+//	// Find documents with specific assignee
+//	results, err := store.Query().Data("assignee", "alice").Find()
+//
+//	// Find documents with specific tags
+//	results, err := store.Query().Data("tags", "urgent").Find()
+//
+//	// Chain with other filters
+//	results, err := store.Query().
+//	    Status("active").
+//	    Data("assignee", "alice").
+//	    Find()
+//
+// Performance Note: Data field queries may be slower than dimension queries
+// since they typically cannot leverage specialized indexes.
+func (tq *TypedQuery[T]) Data(field string, value interface{}) *TypedQuery[T] {
+	tq.options.Filters["_data."+field] = value
+	return tq
+}
+
 // ParentID filters by parent ID, with automatic SimpleID resolution.
 //
 // This method demonstrates the power of Smart ID resolution in queries:
@@ -828,7 +855,7 @@ func (tq *TypedQuery[T]) Search(text string) *TypedQuery[T] {
 
 // OrderBy adds ordering
 func (tq *TypedQuery[T]) OrderBy(column string) *TypedQuery[T] {
-	tq.options.OrderBy = append(tq.options.OrderBy, nanostore.OrderClause{
+	tq.options.OrderBy = append(tq.options.OrderBy, types.OrderClause{
 		Column:     column,
 		Descending: false,
 	})
@@ -837,8 +864,59 @@ func (tq *TypedQuery[T]) OrderBy(column string) *TypedQuery[T] {
 
 // OrderByDesc adds descending ordering
 func (tq *TypedQuery[T]) OrderByDesc(column string) *TypedQuery[T] {
-	tq.options.OrderBy = append(tq.options.OrderBy, nanostore.OrderClause{
+	tq.options.OrderBy = append(tq.options.OrderBy, types.OrderClause{
 		Column:     column,
+		Descending: true,
+	})
+	return tq
+}
+
+// OrderByData adds ascending ordering by custom data field.
+// This method enables ordering documents by _data.* fields that were added via AddRaw
+// or other means outside the typed struct definition.
+//
+// The field name should NOT include the "_data." prefix - it will be added automatically.
+//
+// Examples:
+//
+//	// Order by assignee name
+//	results, err := store.Query().OrderByData("assignee").Find()
+//
+//	// Order by creation timestamp in custom data
+//	results, err := store.Query().OrderByData("created_by_user").Find()
+//
+//	// Combine with filters and other ordering
+//	results, err := store.Query().
+//	    Status("active").
+//	    OrderByData("priority_score").
+//	    OrderByDesc("created_at").
+//	    Find()
+//
+// Performance Note: Ordering by data fields may be slower than dimension ordering
+// since they typically cannot leverage specialized indexes.
+func (tq *TypedQuery[T]) OrderByData(field string) *TypedQuery[T] {
+	tq.options.OrderBy = append(tq.options.OrderBy, types.OrderClause{
+		Column:     "_data." + field,
+		Descending: false,
+	})
+	return tq
+}
+
+// OrderByDataDesc adds descending ordering by custom data field.
+// This method enables ordering documents by _data.* fields in descending order.
+//
+// The field name should NOT include the "_data." prefix - it will be added automatically.
+//
+// Examples:
+//
+//	// Order by priority score (highest first)
+//	results, err := store.Query().OrderByDataDesc("priority_score").Find()
+//
+//	// Order by last update timestamp (most recent first)
+//	results, err := store.Query().OrderByDataDesc("last_updated").Find()
+func (tq *TypedQuery[T]) OrderByDataDesc(field string) *TypedQuery[T] {
+	tq.options.OrderBy = append(tq.options.OrderBy, types.OrderClause{
+		Column:     "_data." + field,
 		Descending: true,
 	})
 	return tq
