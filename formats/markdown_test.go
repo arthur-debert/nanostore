@@ -39,7 +39,7 @@ func TestMarkdownSerialize(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := Markdown.Serialize(tt.title, tt.content)
+			got := serializeWithoutMetadata(Markdown, tt.title, tt.content)
 			if got != tt.want {
 				t.Errorf("Serialize() = %q, want %q", got, tt.want)
 			}
@@ -136,7 +136,7 @@ func TestMarkdownDeserialize(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			title, content, err := Markdown.Deserialize(tt.document)
+			title, content, err := deserializeWithoutMetadata(Markdown, tt.document)
 
 			if tt.wantError {
 				if err == nil {
@@ -188,10 +188,10 @@ func TestMarkdownRoundTrip(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Serialize
-			serialized := Markdown.Serialize(tt.title, tt.content)
+			serialized := serializeWithoutMetadata(Markdown, tt.title, tt.content)
 
 			// Deserialize
-			gotTitle, gotContent, err := Markdown.Deserialize(serialized)
+			gotTitle, gotContent, err := deserializeWithoutMetadata(Markdown, serialized)
 			if err != nil {
 				t.Fatalf("round-trip deserialization failed: %v", err)
 			}

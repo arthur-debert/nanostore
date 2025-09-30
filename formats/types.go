@@ -13,12 +13,14 @@ type DocumentFormat struct {
 	// Extension is the file extension including the dot (e.g., ".txt", ".md")
 	Extension string
 
-	// Serialize converts title and content into the formatted document string
-	Serialize func(title, content string) string
+	// Serialize converts title, content, and metadata into the formatted document string
+	// Metadata can be nil if no metadata is provided
+	Serialize func(title, content string, metadata map[string]interface{}) string
 
-	// Deserialize extracts title and content from the formatted document string
+	// Deserialize extracts title, content, and metadata from the formatted document string
 	// Returns empty title if none found, error if both title and content are empty
-	Deserialize func(document string) (title string, content string, err error)
+	// Metadata will be nil if no metadata is found in the document
+	Deserialize func(document string) (title string, content string, metadata map[string]interface{}, err error)
 }
 
 // registry holds all available document formats

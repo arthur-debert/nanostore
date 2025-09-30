@@ -23,8 +23,8 @@ func TestRegister(t *testing.T) {
 			format: &DocumentFormat{
 				Name:        "test-format",
 				Extension:   ".test",
-				Serialize:   func(t, c string) string { return t + c },
-				Deserialize: func(d string) (string, string, error) { return "", d, nil },
+				Serialize:   func(t, c string, m map[string]interface{}) string { return t + c },
+				Deserialize: func(d string) (string, string, map[string]interface{}, error) { return "", d, nil, nil },
 			},
 			wantError: false,
 		},
@@ -60,7 +60,7 @@ func TestRegister(t *testing.T) {
 			format: &DocumentFormat{
 				Name:      "test-format-2",
 				Extension: "test",
-				Serialize: func(t, c string) string { return t + c },
+				Serialize: func(t, c string, m map[string]interface{}) string { return t + c },
 			},
 			wantError: false,
 		},

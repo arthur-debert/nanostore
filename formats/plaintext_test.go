@@ -39,7 +39,7 @@ func TestPlainTextSerialize(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := PlainText.Serialize(tt.title, tt.content)
+			got := serializeWithoutMetadata(PlainText, tt.title, tt.content)
 			if got != tt.want {
 				t.Errorf("Serialize() = %q, want %q", got, tt.want)
 			}
@@ -115,7 +115,7 @@ func TestPlainTextDeserialize(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			title, content, err := PlainText.Deserialize(tt.document)
+			title, content, err := deserializeWithoutMetadata(PlainText, tt.document)
 
 			if tt.wantError {
 				if err == nil {
@@ -167,10 +167,10 @@ func TestPlainTextRoundTrip(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Serialize
-			serialized := PlainText.Serialize(tt.title, tt.content)
+			serialized := serializeWithoutMetadata(PlainText, tt.title, tt.content)
 
 			// Deserialize
-			gotTitle, gotContent, err := PlainText.Deserialize(serialized)
+			gotTitle, gotContent, err := deserializeWithoutMetadata(PlainText, serialized)
 			if err != nil {
 				t.Fatalf("round-trip deserialization failed: %v", err)
 			}

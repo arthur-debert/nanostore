@@ -44,8 +44,12 @@ func GenerateExportData(store types.Store, options ExportOptions) (*ExportData, 
 	objectFiles := make([]ObjectFile, 0, len(documents))
 	for _, doc := range documents {
 		filename := generateFilename(doc, options.DocumentFormat)
+
+		// Extract metadata (all fields except title and body)
+		metadata := extractMetadata(doc)
+
 		// Serialize document using the specified format
-		content := options.DocumentFormat.Serialize(doc.Title, doc.Body)
+		content := options.DocumentFormat.Serialize(doc.Title, doc.Body, metadata)
 		objectFile := ObjectFile{
 			Filename: filename,
 			Modified: doc.UpdatedAt,
@@ -144,4 +148,22 @@ func getStoreData(store types.Store) (*storage.StoreData, error) {
 	}
 
 	return storeData, nil
+}
+
+// extractMetadata extracts all metadata from a document (everything except title and body)
+func extractMetadata(doc types.Document) map[string]interface{} {
+	metadata := make(map[string]interface{})
+
+	// Add standard fields
+	metadata["uuid"] = doc.UUID
+	metadata["simple_id"] = doc.SimpleID
+	metadata["created_at"] = doc.CreatedAt
+	metadata["updated_at"] = doc.UpdatedAt
+
+	// Add all dimensions
+	for key, value := range doc.Dimensions {
+		metadata[key] = value
+	}
+
+	return metadata
 }
