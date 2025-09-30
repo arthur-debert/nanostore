@@ -12,6 +12,7 @@ package export
 import (
 	"fmt"
 
+	"github.com/arthur-debert/nanostore/formats"
 	"github.com/arthur-debert/nanostore/types"
 )
 
@@ -87,6 +88,11 @@ func GetExportMetadata(store types.Store, options ExportOptions) (*ExportMetadat
 		return nil, fmt.Errorf("failed to get documents to export: %w", err)
 	}
 
+	// Set default format if not specified
+	if options.DocumentFormat == nil {
+		options.DocumentFormat = formats.PlainText
+	}
+
 	metadata := &ExportMetadata{
 		DocumentCount: len(documents),
 		Documents:     make([]DocumentInfo, 0, len(documents)),
@@ -98,7 +104,7 @@ func GetExportMetadata(store types.Store, options ExportOptions) (*ExportMetadat
 			UUID:     doc.UUID,
 			SimpleID: doc.SimpleID,
 			Title:    doc.Title,
-			Filename: generateFilename(doc),
+			Filename: generateFilename(doc, options.DocumentFormat),
 		}
 		metadata.Documents = append(metadata.Documents, docInfo)
 		totalContentSize += int64(len(doc.Body))

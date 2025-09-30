@@ -3,9 +3,11 @@ package export
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/arthur-debert/nanostore/formats"
 	"github.com/arthur-debert/nanostore/types"
 )
 
@@ -320,5 +322,89 @@ func TestGetStoreData(t *testing.T) {
 
 	if storeData.Metadata.Version != "1.0" {
 		t.Errorf("expected version '1.0', got %s", storeData.Metadata.Version)
+	}
+}
+
+func TestExportWithDocumentFormats(t *testing.T) {
+	testTime := time.Date(2024, 1, 15, 10, 30, 0, 0, time.UTC)
+	documents := []types.Document{
+		{
+			UUID:      "test-uuid",
+			SimpleID:  "1",
+			Title:     "Test Document",
+			Body:      "This is the document content.",
+			CreatedAt: testTime,
+			UpdatedAt: testTime,
+			Dimensions: map[string]interface{}{
+				"status":   "active",
+				"priority": "high",
+			},
+		},
+	}
+	store := &MockStore{documents: documents}
+
+	tests := []struct {
+		name             string
+		format           *formats.DocumentFormat
+		expectedExt      string
+		expectedContains []string
+	}{
+		{
+			name:        "plaintext format",
+			format:      formats.PlainText,
+			expectedExt: ".txt",
+			expectedContains: []string{
+				"uuid: test-uuid",
+				"simple_id: 1",
+				"created_at: 2024-01-15T10:30:00Z",
+				"status: active",
+				"priority: high",
+				"---",
+				"Test Document",
+				"This is the document content.",
+			},
+		},
+		{
+			name:        "markdown format",
+			format:      formats.Markdown,
+			expectedExt: ".md",
+			expectedContains: []string{
+				"---",
+				"uuid: test-uuid",
+				"# Test Document",
+				"This is the document content.",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			options := ExportOptions{
+				DocumentFormat: tt.format,
+			}
+
+			exportData, err := GenerateExportData(store, options)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			if len(exportData.Contents.Objects) != 1 {
+				t.Fatalf("expected 1 object, got %d", len(exportData.Contents.Objects))
+			}
+
+			obj := exportData.Contents.Objects[0]
+
+			// Check filename extension
+			if !strings.HasSuffix(obj.Filename, tt.expectedExt) {
+				t.Errorf("expected filename to end with %s, got %s", tt.expectedExt, obj.Filename)
+			}
+
+			// Check serialized content contains expected strings
+			for _, expected := range tt.expectedContains {
+				if !strings.Contains(obj.Content, expected) {
+					t.Errorf("expected content to contain %q\nGot:\n%s", expected, obj.Content)
+				}
+			}
+		})
 	}
 }

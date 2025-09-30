@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/arthur-debert/nanostore/formats"
 	"github.com/spf13/cobra"
 )
 
@@ -23,6 +24,7 @@ import (
 // all documents will be exported.
 func CreateExportCommand(storePath string, config Config) *cobra.Command {
 	var outputPath string
+	var formatName string
 
 	cmd := &cobra.Command{
 		Use:   "export [id1 id2 ...]",
@@ -44,19 +46,29 @@ Examples:
   myapp export --output /path/to/export.zip
 
 The exported archive contains the database and individual text files for each document,
-with filenames in the format: <uuid>-<order>-<title>.txt`,
+with filenames in the format: <uuid>-<order>-<title>.<ext>
+
+Available formats:
+  plaintext: Simple text format with title on first line (.txt)
+  markdown: Markdown format with # Title header (.md)`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runExportCommand(storePath, config, args, outputPath)
+			return runExportCommand(storePath, config, args, outputPath, formatName)
 		},
 	}
 
 	cmd.Flags().StringVarP(&outputPath, "output", "o", "", "Output path for the export archive (default: creates in temp directory)")
+	cmd.Flags().StringVarP(&formatName, "format", "f", "plaintext", "Document format (plaintext or markdown)")
 
 	return cmd
 }
 
 // runExportCommand executes the export operation
-func runExportCommand(storePath string, config Config, ids []string, outputPath string) error {
+func runExportCommand(storePath string, config Config, ids []string, outputPath string, formatName string) error {
+	// Get the document format
+	format, err := formats.Get(formatName)
+	if err != nil {
+		return fmt.Errorf("invalid format %q: %w", formatName, err)
+	}
 	// Open the store
 	store, err := New(storePath, config)
 	if err != nil {
@@ -69,13 +81,16 @@ func runExportCommand(storePath string, config Config, ids []string, outputPath 
 	}()
 
 	// Prepare export options
-	options := ExportOptions{}
+	options := ExportOptions{
+		DocumentFormat: format,
+	}
 	if len(ids) > 0 {
 		options.IDs = ids
 		fmt.Printf("Exporting %d specific documents: %s\n", len(ids), strings.Join(ids, ", "))
 	} else {
 		fmt.Println("Exporting all documents...")
 	}
+	fmt.Printf("Using format: %s\n", format.Name)
 
 	// Get metadata to show what will be exported
 	metadata, err := GetExportMetadata(store, options)

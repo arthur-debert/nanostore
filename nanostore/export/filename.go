@@ -5,18 +5,19 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/arthur-debert/nanostore/formats"
 	"github.com/arthur-debert/nanostore/types"
 )
 
 // generateFilename creates a filename for an object using the format:
-// <uuid>-<order>-<title>.txt or <uuid>-<title>.txt
+// <uuid>-<order>-<title>.<ext> or <uuid>-<title>.<ext>
 // where title is sanitized according to the rules:
 // 1. Only alphanumeric, dash, underscore
 // 2. Spaces replaced with dash
 // 3. Order (in canonical) is prefixed if object has order
 // 4. Truncated to 40 chars
 // 5. If no title, use first 40 chars of content with same rules
-func generateFilename(doc types.Document) string {
+func generateFilename(doc types.Document, format *formats.DocumentFormat) string {
 	uuid := doc.UUID
 	title := doc.Title
 	content := doc.Body
@@ -41,12 +42,18 @@ func generateFilename(doc types.Document) string {
 	// Check if document has canonical order (SimpleID contains numbers/letters indicating order)
 	orderPrefix := extractOrderFromSimpleID(doc.SimpleID)
 
-	// Build filename: <uuid>-[<order>-]<sanitized_title>.txt
+	// Build filename: <uuid>-[<order>-]<sanitized_title>.<ext>
+	// Use format's extension or default to .txt
+	ext := format.Extension
+	if ext == "" {
+		ext = ".txt"
+	}
+
 	var filename string
 	if orderPrefix != "" {
-		filename = uuid + "-" + orderPrefix + "-" + sanitized + ".txt"
+		filename = uuid + "-" + orderPrefix + "-" + sanitized + ext
 	} else {
-		filename = uuid + "-" + sanitized + ".txt"
+		filename = uuid + "-" + sanitized + ext
 	}
 
 	return filename
