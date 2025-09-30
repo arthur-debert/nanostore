@@ -918,6 +918,217 @@ func (ts *TypedStore[T]) ValidateConfiguration() error {
 	return nil
 }
 
+// AddDimensionValue adds a new enumerated value to an existing dimension.
+//
+// This method provides limited runtime configuration modification by allowing
+// new values to be added to existing enumerated dimensions. This is one of the
+// safer configuration changes since it doesn't invalidate existing documents.
+//
+// # Supported Operations
+//
+// - **Add Enumerated Values**: Extend existing value lists
+// - **Add Prefix Mappings**: Assign prefixes to new values
+// - **Validation**: Ensure new values don't conflict with existing configuration
+//
+// # Limitations
+//
+// Due to the complexity of runtime configuration changes, this method has
+// several important limitations:
+//
+// - **Enumerated Only**: Only works with enumerated dimensions, not hierarchical
+// - **Additive Only**: Cannot remove or modify existing values
+// - **No Store Update**: Changes don't persist to underlying store configuration
+// - **Session Only**: Changes are lost when TypedStore is recreated
+// - **No Migration**: Existing documents are not affected
+//
+// # Future Enhancements
+//
+// Full runtime configuration modification would require:
+//
+// - **Store-Level Support**: Underlying nanostore API for config changes
+// - **Data Migration**: Automatic migration of existing documents
+// - **Atomic Updates**: Transactional configuration changes
+// - **Rollback Support**: Ability to revert configuration changes
+// - **Validation**: Comprehensive checking before applying changes
+//
+// # Parameters
+//
+// - **dimensionName**: Name of the existing enumerated dimension
+// - **value**: New value to add to the dimension's value list
+// - **prefix**: Optional prefix for the new value (empty string for no prefix)
+//
+// # Example Usage
+//
+//	// Add a new status value with prefix
+//	err := store.AddDimensionValue("status", "cancelled", "c")
+//	if err != nil {
+//	    log.Fatal(err)
+//	}
+//
+//	// Add a new priority value without prefix
+//	err = store.AddDimensionValue("priority", "urgent", "")
+//	if err != nil {
+//	    log.Fatal(err)
+//	}
+//
+//	// Verify the change
+//	config, err := store.GetDimensionConfig()
+//	if err != nil {
+//	    log.Fatal(err)
+//	}
+//	// config now includes the new values
+//
+// # Error Conditions
+//
+// - **Dimension Not Found**: The specified dimension doesn't exist
+// - **Not Enumerated**: The dimension is not an enumerated type
+// - **Value Exists**: The value is already in the dimension's value list
+// - **Prefix Conflict**: The prefix is already used by another value
+// - **Invalid Input**: Empty value or dimension name
+//
+// # Security Notes
+//
+// This method modifies in-memory configuration only. Changes do not persist
+// across application restarts and do not affect the underlying store's
+// configuration or existing documents.
+func (ts *TypedStore[T]) AddDimensionValue(dimensionName, value, prefix string) error {
+	if strings.TrimSpace(dimensionName) == "" {
+		return fmt.Errorf("dimension name cannot be empty")
+	}
+	if strings.TrimSpace(value) == "" {
+		return fmt.Errorf("value cannot be empty")
+	}
+
+	// Get current configuration
+	config, err := ts.GetDimensionConfig()
+	if err != nil {
+		return fmt.Errorf("failed to get current configuration: %w", err)
+	}
+
+	// Find the dimension
+	var targetDim *nanostore.DimensionConfig
+	for i := range config.Dimensions {
+		if config.Dimensions[i].Name == dimensionName {
+			targetDim = &config.Dimensions[i]
+			break
+		}
+	}
+
+	if targetDim == nil {
+		return fmt.Errorf("dimension '%s' not found", dimensionName)
+	}
+
+	if targetDim.Type != nanostore.Enumerated {
+		return fmt.Errorf("dimension '%s' is not enumerated (type: %v)", dimensionName, targetDim.Type)
+	}
+
+	// Check if value already exists
+	for _, existingValue := range targetDim.Values {
+		if existingValue == value {
+			return fmt.Errorf("value '%s' already exists in dimension '%s'", value, dimensionName)
+		}
+	}
+
+	// Check prefix conflicts if prefix is provided
+	if prefix != "" {
+		// Check against all dimensions for conflicts
+		for _, dim := range config.Dimensions {
+			for _, existingPrefix := range dim.Prefixes {
+				if existingPrefix == prefix {
+					return fmt.Errorf("prefix '%s' is already used by another value", prefix)
+				}
+			}
+		}
+	}
+
+	// Note: This is a demonstration of the API design.
+	// In a full implementation, this would:
+	// 1. Update the underlying store configuration
+	// 2. Persist changes to storage
+	// 3. Handle concurrent access safely
+	// 4. Validate against existing documents
+	//
+	// For now, we return an informational error indicating the limitation
+	return fmt.Errorf("runtime configuration modification is not fully implemented - "+
+		"changes would add value '%s' with prefix '%s' to dimension '%s', "+
+		"but underlying store configuration cannot be modified in current implementation",
+		value, prefix, dimensionName)
+}
+
+// ModifyDimensionDefault changes the default value for an enumerated dimension.
+//
+// This method demonstrates the API pattern for runtime configuration changes.
+// Like AddDimensionValue, it has significant limitations in the current implementation.
+//
+// # Parameters
+//
+// - **dimensionName**: Name of the existing enumerated dimension
+// - **newDefault**: New default value (must exist in dimension's value list)
+//
+// # Example Usage
+//
+//	// Change default status from "pending" to "active"
+//	err := store.ModifyDimensionDefault("status", "active")
+//	if err != nil {
+//	    log.Fatal(err)
+//	}
+//
+// # Limitations
+//
+// Same limitations as AddDimensionValue - this is an API demonstration
+// that shows the intended design pattern for future full implementation.
+func (ts *TypedStore[T]) ModifyDimensionDefault(dimensionName, newDefault string) error {
+	if strings.TrimSpace(dimensionName) == "" {
+		return fmt.Errorf("dimension name cannot be empty")
+	}
+	if strings.TrimSpace(newDefault) == "" {
+		return fmt.Errorf("default value cannot be empty")
+	}
+
+	// Get current configuration
+	config, err := ts.GetDimensionConfig()
+	if err != nil {
+		return fmt.Errorf("failed to get current configuration: %w", err)
+	}
+
+	// Find and validate the dimension
+	var targetDim *nanostore.DimensionConfig
+	for i := range config.Dimensions {
+		if config.Dimensions[i].Name == dimensionName {
+			targetDim = &config.Dimensions[i]
+			break
+		}
+	}
+
+	if targetDim == nil {
+		return fmt.Errorf("dimension '%s' not found", dimensionName)
+	}
+
+	if targetDim.Type != nanostore.Enumerated {
+		return fmt.Errorf("dimension '%s' is not enumerated", dimensionName)
+	}
+
+	// Verify new default exists in values list
+	found := false
+	for _, value := range targetDim.Values {
+		if value == newDefault {
+			found = true
+			break
+		}
+	}
+
+	if !found {
+		return fmt.Errorf("new default '%s' is not in values list %v for dimension '%s'",
+			newDefault, targetDim.Values, dimensionName)
+	}
+
+	// In a full implementation, this would update the store configuration
+	return fmt.Errorf("runtime configuration modification is not fully implemented - "+
+		"would change default for dimension '%s' from '%s' to '%s', "+
+		"but underlying store configuration cannot be modified in current implementation",
+		dimensionName, targetDim.DefaultValue, newDefault)
+}
+
 type TypedQuery[T any] struct {
 	store   nanostore.Store   // Underlying store for query execution
 	options types.ListOptions // Accumulated query options

@@ -51,11 +51,12 @@ func TestTypedStoreConfiguration(t *testing.T) {
 
 			t.Logf("Found dimension: %s (type: %v)", dim.Name, dim.Type)
 
-			if dim.Type == nanostore.Enumerated {
+			switch dim.Type {
+			case nanostore.Enumerated:
 				t.Logf("  Values: %v", dim.Values)
 				t.Logf("  Prefixes: %v", dim.Prefixes)
 				t.Logf("  Default: %s", dim.DefaultValue)
-			} else if dim.Type == nanostore.Hierarchical {
+			case nanostore.Hierarchical:
 				t.Logf("  RefField: %s", dim.RefField)
 			}
 		}
@@ -353,6 +354,147 @@ func TestConfigurationIntrospection(t *testing.T) {
 		// ComplexPrefixItem should have defaults for status and priority
 		if defaultCount < 2 {
 			t.Errorf("expected at least 2 defaults, got %d", defaultCount)
+		}
+	})
+}
+
+func TestRuntimeConfigurationModification(t *testing.T) {
+	tmpfile, err := os.CreateTemp("", "test*.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = os.Remove(tmpfile.Name()) }()
+	_ = tmpfile.Close()
+
+	store, err := api.NewFromType[ValidConfigItem](tmpfile.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = store.Close() }()
+
+	t.Run("AddDimensionValueValidation", func(t *testing.T) {
+		// Test adding a new value - should fail with implementation limitation message
+		err := store.AddDimensionValue("status", "cancelled", "c")
+		if err == nil {
+			t.Error("expected error for unimplemented feature, got none")
+		} else if !strings.Contains(err.Error(), "not fully implemented") {
+			t.Errorf("expected implementation limitation message, got: %v", err)
+		} else {
+			t.Logf("Correctly indicated implementation limitation: %v", err)
+		}
+	})
+
+	t.Run("AddDimensionValueValidationLogic", func(t *testing.T) {
+		// Test validation logic (should validate before hitting implementation limitation)
+
+		// Test empty dimension name
+		err := store.AddDimensionValue("", "test", "")
+		if err == nil || !strings.Contains(err.Error(), "dimension name cannot be empty") {
+			t.Errorf("expected empty dimension name error, got: %v", err)
+		}
+
+		// Test empty value
+		err = store.AddDimensionValue("status", "", "")
+		if err == nil || !strings.Contains(err.Error(), "value cannot be empty") {
+			t.Errorf("expected empty value error, got: %v", err)
+		}
+
+		// Test non-existent dimension
+		err = store.AddDimensionValue("nonexistent", "test", "")
+		if err == nil || !strings.Contains(err.Error(), "not found") {
+			t.Errorf("expected dimension not found error, got: %v", err)
+		}
+
+		// Test adding existing value
+		err = store.AddDimensionValue("status", "pending", "")
+		if err == nil || !strings.Contains(err.Error(), "already exists") {
+			t.Errorf("expected value exists error, got: %v", err)
+		}
+
+		// Test prefix conflict
+		err = store.AddDimensionValue("status", "cancelled", "h") // "h" is used by priority=high
+		if err == nil || !strings.Contains(err.Error(), "already used") {
+			t.Errorf("expected prefix conflict error, got: %v", err)
+		}
+	})
+
+	t.Run("ModifyDimensionDefaultValidation", func(t *testing.T) {
+		// Test modifying default - should fail with implementation limitation
+		err := store.ModifyDimensionDefault("status", "active")
+		if err == nil {
+			t.Error("expected error for unimplemented feature, got none")
+		} else if !strings.Contains(err.Error(), "not fully implemented") {
+			t.Errorf("expected implementation limitation message, got: %v", err)
+		} else {
+			t.Logf("Correctly indicated implementation limitation: %v", err)
+		}
+	})
+
+	t.Run("ModifyDimensionDefaultValidationLogic", func(t *testing.T) {
+		// Test validation logic
+
+		// Test empty dimension name
+		err := store.ModifyDimensionDefault("", "test")
+		if err == nil || !strings.Contains(err.Error(), "dimension name cannot be empty") {
+			t.Errorf("expected empty dimension name error, got: %v", err)
+		}
+
+		// Test empty default value
+		err = store.ModifyDimensionDefault("status", "")
+		if err == nil || !strings.Contains(err.Error(), "default value cannot be empty") {
+			t.Errorf("expected empty default error, got: %v", err)
+		}
+
+		// Test non-existent dimension
+		err = store.ModifyDimensionDefault("nonexistent", "test")
+		if err == nil || !strings.Contains(err.Error(), "not found") {
+			t.Errorf("expected dimension not found error, got: %v", err)
+		}
+
+		// Test invalid default value
+		err = store.ModifyDimensionDefault("status", "invalid")
+		if err == nil || !strings.Contains(err.Error(), "not in values list") {
+			t.Errorf("expected invalid default error, got: %v", err)
+		}
+	})
+
+	t.Run("RuntimeModificationAPIDesign", func(t *testing.T) {
+		// Demonstrate the intended API design pattern
+
+		// These operations would work in a full implementation:
+		operations := []struct {
+			desc string
+			op   func() error
+		}{
+			{
+				desc: "Add new status value",
+				op:   func() error { return store.AddDimensionValue("status", "cancelled", "c") },
+			},
+			{
+				desc: "Add priority without prefix",
+				op:   func() error { return store.AddDimensionValue("priority", "urgent", "") },
+			},
+			{
+				desc: "Change default status",
+				op:   func() error { return store.ModifyDimensionDefault("status", "active") },
+			},
+			{
+				desc: "Change default priority",
+				op:   func() error { return store.ModifyDimensionDefault("priority", "high") },
+			},
+		}
+
+		for _, operation := range operations {
+			t.Run(operation.desc, func(t *testing.T) {
+				err := operation.op()
+				if err == nil {
+					t.Error("expected implementation limitation error")
+				} else if !strings.Contains(err.Error(), "not fully implemented") {
+					t.Errorf("expected implementation limitation, got: %v", err)
+				} else {
+					t.Logf("API design validated: %s - %v", operation.desc, err)
+				}
+			})
 		}
 	})
 }
