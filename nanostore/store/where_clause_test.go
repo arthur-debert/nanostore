@@ -179,6 +179,36 @@ func TestWhereEvaluator(t *testing.T) {
 			// Since we're using parameterized queries, this should be safe
 			t.Logf("Clause '%s' handled safely: %v", clause, err)
 		}
+
+		// Test the specific injection vulnerability that was fixed
+		// This would have been vulnerable in the original implementation
+		t.Run("ParameterInjectionPrevention", func(t *testing.T) {
+			// This malicious parameter would have caused the original implementation
+			// to evaluate "status = 'active' OR 1=1" (always true)
+			maliciousParam := "active' OR 1=1"
+
+			evaluator := NewWhereEvaluator("status = ?", maliciousParam)
+			result, err := evaluator.EvaluateDocument(doc)
+
+			// Should not error and should return false (since doc.status is "active", not "active' OR 1=1")
+			if err != nil {
+				t.Errorf("Expected no error, got: %v", err)
+			}
+			if result {
+				t.Error("Injection attack succeeded - should have returned false")
+			}
+
+			// Test with our actual document status to verify normal operation
+			evaluator2 := NewWhereEvaluator("status = ?", "active")
+			result2, err2 := evaluator2.EvaluateDocument(doc)
+
+			if err2 != nil {
+				t.Errorf("Expected no error for normal operation, got: %v", err2)
+			}
+			if !result2 {
+				t.Error("Normal operation failed - should have returned true")
+			}
+		})
 	})
 }
 

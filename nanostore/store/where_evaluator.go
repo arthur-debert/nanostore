@@ -10,12 +10,24 @@ import (
 	"github.com/arthur-debert/nanostore/types"
 )
 
-// WhereEvaluator provides safe evaluation of WHERE clauses against documents
-// This implementation focuses on security by using parameterized queries
-// and avoiding arbitrary code execution
+// WhereEvaluator provides safe evaluation of WHERE clauses against documents.
+//
+// This implementation focuses on security by:
+// 1. Parsing WHERE clauses BEFORE parameter substitution to prevent injection attacks
+// 2. Using parameterized queries with safe parameter binding
+// 3. Avoiding arbitrary code execution or SQL evaluation
+// 4. Supporting only a limited, safe set of operators
+//
+// Security Design:
+// - The clause structure is parsed first, establishing the query plan
+// - Parameters are bound safely during evaluation, not during parsing
+// - This prevents injection attacks where malicious parameters could alter the query structure
+//
+// Supported operators: =, !=, >, >=, <, <=, LIKE, NOT LIKE, IS NULL, IS NOT NULL
+// Supported logic: AND (OR is not supported for security simplicity)
 type WhereEvaluator struct {
-	whereClause string
-	args        []interface{}
+	whereClause string        // The WHERE clause template with ? placeholders
+	args        []interface{} // Parameter values to bind to ? placeholders
 }
 
 // NewWhereEvaluator creates a new WHERE clause evaluator
@@ -36,62 +48,25 @@ func (we *WhereEvaluator) EvaluateDocument(doc *types.Document) (bool, error) {
 	return we.evaluateClause(doc)
 }
 
-// evaluateClause safely evaluates a WHERE clause against a document
+// evaluateClause safely evaluates a WHERE clause against a document.
+//
+// Security-first approach:
+// 1. Parse the clause structure first to establish the query plan
+// 2. Validate parameter count matches placeholder count
+// 3. Evaluate conditions with safe parameter binding
+//
+// This prevents injection attacks by ensuring the query structure
+// cannot be modified by parameter values.
 func (we *WhereEvaluator) evaluateClause(doc *types.Document) (bool, error) {
-	// Replace parameters with actual values first
-	processedClause, err := we.substituteParameters()
-	if err != nil {
-		return false, fmt.Errorf("parameter substitution failed: %w", err)
-	}
-
-	// Parse the clause into conditions
-	conditions, err := we.parseConditions(processedClause)
+	// Parse the clause into conditions FIRST, before parameter substitution
+	// This prevents injection attacks where parameters could modify the clause structure
+	conditions, err := we.parseConditions(we.whereClause)
 	if err != nil {
 		return false, fmt.Errorf("clause parsing failed: %w", err)
 	}
 
-	// Evaluate all conditions
+	// Evaluate all conditions with safe parameter binding
 	return we.evaluateConditions(doc, conditions)
-}
-
-// substituteParameters safely replaces ? placeholders with actual values
-func (we *WhereEvaluator) substituteParameters() (string, error) {
-	if len(we.args) == 0 {
-		return we.whereClause, nil
-	}
-
-	// Count placeholders
-	placeholderCount := strings.Count(we.whereClause, "?")
-
-	// If no placeholders, ignore the arguments (they might be nil or unused)
-	if placeholderCount == 0 {
-		return we.whereClause, nil
-	}
-
-	// Filter out nil arguments at the end (common pattern when people add nil as safety)
-	filteredArgs := we.args
-	for len(filteredArgs) > 0 && filteredArgs[len(filteredArgs)-1] == nil && placeholderCount < len(filteredArgs) {
-		filteredArgs = filteredArgs[:len(filteredArgs)-1]
-	}
-
-	if placeholderCount != len(filteredArgs) {
-		return "", fmt.Errorf("placeholder count (%d) doesn't match argument count (%d)",
-			placeholderCount, len(filteredArgs))
-	}
-
-	clause := we.whereClause
-	for i, arg := range filteredArgs {
-		// Convert argument to safe string representation
-		value, err := we.formatArgument(arg)
-		if err != nil {
-			return "", fmt.Errorf("formatting argument %d failed: %w", i, err)
-		}
-
-		// Replace first occurrence of ?
-		clause = strings.Replace(clause, "?", value, 1)
-	}
-
-	return clause, nil
 }
 
 // formatArgument safely formats an argument for inclusion in the clause
@@ -124,15 +99,29 @@ func (we *WhereEvaluator) formatArgument(arg interface{}) (string, error) {
 	}
 }
 
-// Condition represents a single condition in the WHERE clause
+// Condition represents a single condition in the WHERE clause.
+//
+// Each condition represents one comparison operation like "status = ?" or "priority = 'high'".
+// Conditions are connected by AND operations (OR is not supported for security simplicity).
 type Condition struct {
-	Field    string
-	Operator string
-	Value    string
-	IsData   bool // true if this is a _data.* field
+	Field       string // Document field name (e.g., "status", "_data.assignee")
+	Operator    string // Comparison operator (=, !=, >, >=, <, <=, like, not like, etc.)
+	Value       string // Expected value (literal) or placeholder for parameter binding
+	IsData      bool   // true if this is a _data.* field (custom user data)
+	IsParameter bool   // true if value is a ? parameter that needs binding
+	ParamIndex  int    // index into args array if IsParameter is true
 }
 
-// parseConditions parses a WHERE clause into individual conditions
+// parseConditions parses a WHERE clause into individual conditions.
+//
+// Parsing Strategy:
+// 1. Normalize whitespace while preserving field name case
+// 2. Validate parameter count matches placeholder count (security check)
+// 3. Split by AND keywords (case-insensitive)
+// 4. Parse each condition individually with parameter tracking
+//
+// This approach ensures the query structure is established before any parameter
+// values are considered, preventing injection attacks.
 func (we *WhereEvaluator) parseConditions(clause string) ([]Condition, error) {
 	// This is a simplified parser that handles basic conditions
 	// Supports: field = value, field != value, field > value, etc.
@@ -142,17 +131,35 @@ func (we *WhereEvaluator) parseConditions(clause string) ([]Condition, error) {
 	clause = regexp.MustCompile(`\s+`).ReplaceAllString(clause, " ")
 	clause = strings.TrimSpace(clause)
 
+	// Validate parameter count first
+	placeholderCount := strings.Count(clause, "?")
+
+	// Filter out nil arguments at the end (common pattern when people add nil as safety)
+	filteredArgs := we.args
+	for len(filteredArgs) > 0 && filteredArgs[len(filteredArgs)-1] == nil && placeholderCount < len(filteredArgs) {
+		filteredArgs = filteredArgs[:len(filteredArgs)-1]
+	}
+
+	if placeholderCount != len(filteredArgs) {
+		return nil, fmt.Errorf("placeholder count (%d) doesn't match argument count (%d)", placeholderCount, len(filteredArgs))
+	}
+
+	// Update args to the filtered version
+	we.args = filteredArgs
+
 	// Split by AND (case insensitive)
 	// We need to handle this carefully to preserve field name case
 	parts := we.splitByAND(clause)
 	conditions := make([]Condition, 0, len(parts))
+	currentParamIndex := 0
 
 	for _, part := range parts {
-		condition, err := we.parseCondition(strings.TrimSpace(part))
+		condition, paramCount, err := we.parseConditionWithParamTracking(strings.TrimSpace(part), currentParamIndex)
 		if err != nil {
 			return nil, fmt.Errorf("parsing condition '%s': %w", part, err)
 		}
 		conditions = append(conditions, condition)
+		currentParamIndex += paramCount
 	}
 
 	return conditions, nil
@@ -165,8 +172,8 @@ func (we *WhereEvaluator) splitByAND(clause string) []string {
 	return re.Split(clause, -1)
 }
 
-// parseCondition parses a single condition
-func (we *WhereEvaluator) parseCondition(condition string) (Condition, error) {
+// parseConditionWithParamTracking parses a single condition and tracks parameter usage
+func (we *WhereEvaluator) parseConditionWithParamTracking(condition string, startParamIndex int) (Condition, int, error) {
 	// Supported operators in order of precedence (longest first)
 	// We need to handle case insensitive operators
 	operators := []struct {
@@ -185,6 +192,8 @@ func (we *WhereEvaluator) parseCondition(condition string) (Condition, error) {
 		{" LIKE ", " like "},
 	}
 
+	paramCount := 0 // Track how many parameters this condition uses
+
 	for _, opInfo := range operators {
 		// Search for operator case-insensitively
 		lowerCondition := strings.ToLower(condition)
@@ -192,23 +201,34 @@ func (we *WhereEvaluator) parseCondition(condition string) (Condition, error) {
 			field := strings.TrimSpace(condition[:idx])
 			value := strings.TrimSpace(condition[idx+len(opInfo.searchOp):])
 
-			// Remove quotes from value if present
-			if len(value) >= 2 && value[0] == '\'' && value[len(value)-1] == '\'' {
-				value = value[1 : len(value)-1]
+			isParameter := false
+			paramIndex := startParamIndex
+
+			// Check if value is a parameter placeholder
+			if value == "?" {
+				isParameter = true
+				paramCount = 1
+			} else {
+				// Remove quotes from literal value if present
+				if len(value) >= 2 && value[0] == '\'' && value[len(value)-1] == '\'' {
+					value = value[1 : len(value)-1]
+				}
 			}
 
 			isData := strings.HasPrefix(field, "_data.")
 
 			return Condition{
-				Field:    field,
-				Operator: strings.TrimSpace(opInfo.searchOp), // Use lowercase operator for consistency
-				Value:    value,
-				IsData:   isData,
-			}, nil
+				Field:       field,
+				Operator:    strings.TrimSpace(opInfo.searchOp), // Use lowercase operator for consistency
+				Value:       value,
+				IsData:      isData,
+				IsParameter: isParameter,
+				ParamIndex:  paramIndex,
+			}, paramCount, nil
 		}
 	}
 
-	return Condition{}, fmt.Errorf("no valid operator found in condition: %s", condition)
+	return Condition{}, 0, fmt.Errorf("no valid operator found in condition: %s", condition)
 }
 
 // evaluateConditions evaluates all conditions against a document
@@ -233,8 +253,30 @@ func (we *WhereEvaluator) evaluateCondition(doc *types.Document, condition Condi
 		return false, err
 	}
 
+	// Get the expected value (either literal or from parameters)
+	expectedValue := condition.Value
+	if condition.IsParameter {
+		// Safely bind parameter value
+		if condition.ParamIndex >= len(we.args) {
+			return false, fmt.Errorf("parameter index %d out of range (have %d args)", condition.ParamIndex, len(we.args))
+		}
+
+		// Format the parameter value safely
+		formattedValue, err := we.formatArgument(we.args[condition.ParamIndex])
+		if err != nil {
+			return false, fmt.Errorf("failed to format parameter %d: %w", condition.ParamIndex, err)
+		}
+
+		// Remove quotes that formatArgument adds for string comparison
+		if strings.HasPrefix(formattedValue, "'") && strings.HasSuffix(formattedValue, "'") {
+			expectedValue = formattedValue[1 : len(formattedValue)-1]
+		} else {
+			expectedValue = formattedValue
+		}
+	}
+
 	// Compare based on operator
-	return we.compareValues(actualValue, condition.Operator, condition.Value)
+	return we.compareValues(actualValue, condition.Operator, expectedValue)
 }
 
 // getDocumentValue extracts a field value from a document
@@ -318,32 +360,51 @@ func (we *WhereEvaluator) compareStrings(actual, expected string) bool {
 	return actual == expected
 }
 
-// compareNumerically attempts numeric comparison, falls back to string comparison
+// compareNumerically attempts numeric comparison, falls back to lexicographic string comparison
 func (we *WhereEvaluator) compareNumerically(actual, expected string, cmp func(float64, float64) bool) (bool, error) {
 	actualNum, err1 := strconv.ParseFloat(actual, 64)
 	expectedNum, err2 := strconv.ParseFloat(expected, 64)
 
+	// If both values can be parsed as numbers, do numeric comparison
 	if err1 == nil && err2 == nil {
 		return cmp(actualNum, expectedNum), nil
 	}
 
-	// Fall back to string comparison
-	if actual > expected {
-		return cmp(1, 0), nil
-	} else if actual < expected {
-		return cmp(-1, 0), nil
-	} else {
-		return cmp(0, 0), nil
+	// Fall back to lexicographic string comparison
+	// Convert string comparison result to numeric form for the comparison function
+	stringCmp := strings.Compare(actual, expected)
+
+	// Map string comparison result to float values that make sense for the comparison
+	switch {
+	case stringCmp > 0:
+		// actual > expected in lexicographic order
+		return cmp(1.0, 0.0), nil
+	case stringCmp < 0:
+		// actual < expected in lexicographic order
+		return cmp(-1.0, 0.0), nil
+	default:
+		// actual == expected
+		return cmp(0.0, 0.0), nil
 	}
 }
 
-// matchLike implements simple LIKE pattern matching
+// matchLike implements simple LIKE pattern matching with proper regex escaping
 func (we *WhereEvaluator) matchLike(actual, pattern string) (bool, error) {
 	// Convert SQL LIKE pattern to regex
 	// % matches any sequence of characters
 	// _ matches any single character
-	regexPattern := strings.ReplaceAll(pattern, "%", ".*")
-	regexPattern = strings.ReplaceAll(regexPattern, "_", ".")
+	// We need to escape all regex special characters except % and _
+
+	// Replace % and _ with temporary placeholders first
+	tempPattern := strings.ReplaceAll(pattern, "%", "\x00PERCENT\x00")
+	tempPattern = strings.ReplaceAll(tempPattern, "_", "\x00UNDERSCORE\x00")
+
+	// Escape all regex special characters
+	escaped := regexp.QuoteMeta(tempPattern)
+
+	// Replace our placeholders with the correct regex equivalents
+	regexPattern := strings.ReplaceAll(escaped, "\x00PERCENT\x00", ".*")
+	regexPattern = strings.ReplaceAll(regexPattern, "\x00UNDERSCORE\x00", ".")
 	regexPattern = "^" + regexPattern + "$"
 
 	matched, err := regexp.MatchString(regexPattern, actual)
