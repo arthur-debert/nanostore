@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/arthur-debert/nanostore/nanostore"
+	"github.com/arthur-debert/nanostore/nanostore/store"
 	"github.com/arthur-debert/nanostore/types"
 )
 
@@ -771,6 +772,75 @@ func (ts *TypedStore[T]) GetDimensionConfig() (*nanostore.Config, error) {
 	}
 
 	return &config, nil
+}
+
+// SetTimeFunc sets a custom time function for deterministic timestamps in testing.
+//
+// This method enables deterministic testing by allowing tests to control the timestamps
+// used for document creation and updates. This is essential for reliable test scenarios
+// where predictable timestamps are needed for assertions and ordering.
+//
+// # Use Cases
+//
+// - **Deterministic Testing**: Control timestamps for reproducible test results
+// - **Time-Based Assertions**: Test documents with specific creation/update times
+// - **Ordering Tests**: Verify correct ordering behavior with known timestamps
+// - **Migration Testing**: Simulate documents created at different times
+// - **Performance Testing**: Measure operations without time variations
+//
+// # Parameters
+//
+// - **timeFunc**: Function that returns the desired time.Time value
+//   - If nil, reverts to using the system time (time.Now)
+//   - Function is called each time a timestamp is needed
+//   - Should be deterministic for testing purposes
+//
+// # Example Usage
+//
+//	// Set fixed time for all operations
+//	fixedTime := time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC)
+//	store.SetTimeFunc(func() time.Time { return fixedTime })
+//
+//	// Create document with predictable timestamp
+//	id, err := store.Create("Test Document", &TodoItem{Status: "pending"})
+//
+//	// Reset to system time when done
+//	store.SetTimeFunc(nil)
+//
+//	// Use with time sequences for testing ordering
+//	baseTime := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+//	counter := 0
+//	store.SetTimeFunc(func() time.Time {
+//	    counter++
+//	    return baseTime.Add(time.Duration(counter) * time.Hour)
+//	})
+//
+// # Implementation Notes
+//
+// This method attempts to cast the underlying store to the TestStore interface.
+// If the cast fails (e.g., in production builds without test support), the method
+// returns an error indicating the limitation.
+//
+// # Error Conditions
+//
+// - **No Test Support**: The underlying store doesn't implement TestStore interface
+// - **Store Type Mismatch**: Store implementation doesn't support time function setting
+//
+// # Production vs Testing
+//
+// This method is primarily intended for testing scenarios. Production code typically
+// should not need to override system time, though the capability exists if needed
+// for specific use cases like migration or data import.
+func (ts *TypedStore[T]) SetTimeFunc(timeFunc func() time.Time) error {
+	// Attempt to cast underlying store to TestStore interface
+	testStore, ok := ts.store.(store.TestStore)
+	if !ok {
+		return fmt.Errorf("underlying store does not support SetTimeFunc - store type %T does not implement TestStore interface", ts.store)
+	}
+
+	// Delegate to underlying store's SetTimeFunc
+	testStore.SetTimeFunc(timeFunc)
+	return nil
 }
 
 // ValidateConfiguration performs runtime validation of the TypedStore configuration.
