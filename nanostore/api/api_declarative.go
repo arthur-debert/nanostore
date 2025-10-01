@@ -1698,6 +1698,43 @@ type TypedQuery[T any] struct {
 	options types.ListOptions // Accumulated query options
 }
 
+// getDimensionConfig returns the dimension configuration for type T
+// This is used internally by NOT methods to get valid values dynamically
+func (tq *TypedQuery[T]) getDimensionConfig() (*nanostore.Config, error) {
+	var zero T
+	typ := reflect.TypeOf(zero)
+
+	// Check that T embeds Document
+	if !embedsDocument(typ) {
+		return nil, fmt.Errorf("type %T does not embed nanostore.Document", zero)
+	}
+
+	// Generate dimension configuration from struct tags
+	config, err := generateConfigFromType(typ)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate config for type %T: %w", zero, err)
+	}
+
+	return &config, nil
+}
+
+// getEnumeratedValues returns the valid values for an enumerated dimension
+// Returns nil if the dimension doesn't exist or isn't enumerated
+func (tq *TypedQuery[T]) getEnumeratedValues(dimensionName string) ([]string, error) {
+	config, err := tq.getDimensionConfig()
+	if err != nil {
+		return nil, err
+	}
+
+	for _, dim := range config.Dimensions {
+		if dim.Name == dimensionName && dim.Type == nanostore.Enumerated {
+			return dim.Values, nil
+		}
+	}
+
+	return nil, fmt.Errorf("dimension '%s' not found or not enumerated", dimensionName)
+}
+
 // Activity filters by activity value.
 // This is a domain-specific filter method - applications should define their own
 // filter methods based on their configured dimensions.
@@ -1727,7 +1764,14 @@ func (tq *TypedQuery[T]) ActivityIn(values ...string) *TypedQuery[T] {
 //	// Find all tasks that are NOT deleted
 //	results, err := store.Query().ActivityNot("deleted").Find()
 func (tq *TypedQuery[T]) ActivityNot(value string) *TypedQuery[T] {
-	allActivities := []string{"active", "archived", "deleted"}
+	// Dynamically get all known activity values from type configuration
+	allActivities, err := tq.getEnumeratedValues("activity")
+	if err != nil {
+		// If we can't get values, fall back to no filtering
+		// This maintains backward compatibility
+		return tq
+	}
+
 	var includeActivities []string
 	for _, a := range allActivities {
 		if a != value {
@@ -1748,7 +1792,14 @@ func (tq *TypedQuery[T]) ActivityNot(value string) *TypedQuery[T] {
 //	// Find all tasks that are NOT deleted or archived (i.e., active only)
 //	results, err := store.Query().ActivityNotIn("deleted", "archived").Find()
 func (tq *TypedQuery[T]) ActivityNotIn(values ...string) *TypedQuery[T] {
-	allActivities := []string{"active", "archived", "deleted"}
+	// Dynamically get all known activity values from type configuration
+	allActivities, err := tq.getEnumeratedValues("activity")
+	if err != nil {
+		// If we can't get values, fall back to no filtering
+		// This maintains backward compatibility
+		return tq
+	}
+
 	excludeSet := make(map[string]bool)
 	for _, v := range values {
 		excludeSet[v] = true
@@ -1806,9 +1857,14 @@ func (tq *TypedQuery[T]) StatusIn(values ...string) *TypedQuery[T] {
 //	// Find all tasks that are NOT done
 //	results, err := store.Query().StatusNot("done").Find()
 func (tq *TypedQuery[T]) StatusNot(value string) *TypedQuery[T] {
-	// Get all known status values from TodoItem struct tag configuration
-	// This is more robust than hardcoding but still has limitations
-	allStatuses := []string{"pending", "active", "done"}
+	// Dynamically get all known status values from type configuration
+	allStatuses, err := tq.getEnumeratedValues("status")
+	if err != nil {
+		// If we can't get values, fall back to no filtering
+		// This maintains backward compatibility
+		return tq
+	}
+
 	var includeStatuses []string
 	for _, s := range allStatuses {
 		if s != value {
@@ -1829,7 +1885,14 @@ func (tq *TypedQuery[T]) StatusNot(value string) *TypedQuery[T] {
 //	// Find all tasks that are NOT done or archived
 //	results, err := store.Query().StatusNotIn("done", "archived").Find()
 func (tq *TypedQuery[T]) StatusNotIn(values ...string) *TypedQuery[T] {
-	allStatuses := []string{"pending", "active", "done"}
+	// Dynamically get all known status values from type configuration
+	allStatuses, err := tq.getEnumeratedValues("status")
+	if err != nil {
+		// If we can't get values, fall back to no filtering
+		// This maintains backward compatibility
+		return tq
+	}
+
 	excludeSet := make(map[string]bool)
 	for _, v := range values {
 		excludeSet[v] = true
@@ -1880,7 +1943,14 @@ func (tq *TypedQuery[T]) PriorityIn(values ...string) *TypedQuery[T] {
 //	// Find all tasks that are NOT low priority
 //	results, err := store.Query().PriorityNot("low").Find()
 func (tq *TypedQuery[T]) PriorityNot(value string) *TypedQuery[T] {
-	allPriorities := []string{"low", "medium", "high"}
+	// Dynamically get all known priority values from type configuration
+	allPriorities, err := tq.getEnumeratedValues("priority")
+	if err != nil {
+		// If we can't get values, fall back to no filtering
+		// This maintains backward compatibility
+		return tq
+	}
+
 	var includePriorities []string
 	for _, p := range allPriorities {
 		if p != value {
@@ -1901,7 +1971,14 @@ func (tq *TypedQuery[T]) PriorityNot(value string) *TypedQuery[T] {
 //	// Find all tasks that are NOT low or medium priority (i.e., high priority only)
 //	results, err := store.Query().PriorityNotIn("low", "medium").Find()
 func (tq *TypedQuery[T]) PriorityNotIn(values ...string) *TypedQuery[T] {
-	allPriorities := []string{"low", "medium", "high"}
+	// Dynamically get all known priority values from type configuration
+	allPriorities, err := tq.getEnumeratedValues("priority")
+	if err != nil {
+		// If we can't get values, fall back to no filtering
+		// This maintains backward compatibility
+		return tq
+	}
+
 	excludeSet := make(map[string]bool)
 	for _, v := range values {
 		excludeSet[v] = true
