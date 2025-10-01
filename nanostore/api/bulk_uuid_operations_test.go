@@ -286,3 +286,75 @@ func TestTypedStoreDeleteByUUIDs(t *testing.T) {
 		}
 	})
 }
+
+func TestTypedStoreResolveUUID(t *testing.T) {
+	// Create a temporary file
+	tmpfile, err := os.CreateTemp("", "test*.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = os.Remove(tmpfile.Name()) }()
+	_ = tmpfile.Close()
+
+	// Create typed store
+	store, err := api.NewFromType[TestItem](tmpfile.Name())
+	if err != nil {
+		t.Fatalf("failed to create typed store: %v", err)
+	}
+	defer func() { _ = store.Close() }()
+
+	t.Run("resolve UUID from SimpleID", func(t *testing.T) {
+		// Create test item
+		uuid, err := store.Create("Test Item for Resolution", &TestItem{
+			Status:   "pending",
+			Priority: "medium",
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// Get the created item to check its SimpleID
+		item, err := store.Get(uuid)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// Now test ResolveUUID with the SimpleID
+		resolvedUUID, err := store.ResolveUUID(item.SimpleID)
+		if err != nil {
+			t.Fatalf("ResolveUUID failed: %v", err)
+		}
+
+		if resolvedUUID != uuid {
+			t.Errorf("ResolveUUID returned %s, want %s", resolvedUUID, uuid)
+		}
+	})
+
+	t.Run("resolve UUID with non-existent SimpleID", func(t *testing.T) {
+		_, err := store.ResolveUUID("non-existent-id")
+		if err == nil {
+			t.Error("ResolveUUID should return error for non-existent ID")
+		}
+	})
+
+	t.Run("resolve UUID with already valid UUID", func(t *testing.T) {
+		// Create test item
+		uuid, err := store.Create("Test Item for UUID Resolution", &TestItem{
+			Status:   "active",
+			Priority: "high",
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// Test resolving an already valid UUID (should return the same UUID)
+		resolvedUUID, err := store.ResolveUUID(uuid)
+		if err != nil {
+			t.Fatalf("ResolveUUID failed with UUID input: %v", err)
+		}
+
+		if resolvedUUID != uuid {
+			t.Errorf("ResolveUUID with UUID input returned %s, want %s", resolvedUUID, uuid)
+		}
+	})
+}

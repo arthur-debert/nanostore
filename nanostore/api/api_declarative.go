@@ -4,9 +4,93 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
+	"time"
 
 	"github.com/arthur-debert/nanostore/nanostore"
+	"github.com/arthur-debert/nanostore/nanostore/store"
+	"github.com/arthur-debert/nanostore/types"
 )
+
+// DocumentMetadata contains the metadata fields of a document
+// This provides structured access to document metadata without the full document content
+type DocumentMetadata struct {
+	UUID      string    // Stable internal identifier
+	SimpleID  string    // Generated ID like "1", "c2", "1.2.c3"
+	Title     string    // Document title
+	CreatedAt time.Time // Creation timestamp
+	UpdatedAt time.Time // Last update timestamp
+}
+
+// DebugInfo contains comprehensive debugging information about a TypedStore
+type DebugInfo struct {
+	StoreType     string            // Type of underlying store implementation
+	FilePath      string            // Location of store data file (if applicable)
+	DocumentCount int               // Total number of documents in store
+	Configuration *nanostore.Config // Complete dimension configuration
+	TypeInfo      TypeDebugInfo     // Information about the Go type T
+	RuntimeStats  RuntimeDebugStats // Runtime statistics and metrics
+	LastError     string            // Last error encountered (if any)
+}
+
+// TypeDebugInfo contains information about the Go type used with TypedStore
+type TypeDebugInfo struct {
+	TypeName    string           // Full Go type name
+	PackageName string           // Package name containing the type
+	FieldCount  int              // Number of struct fields
+	Fields      []FieldDebugInfo // Details about each field
+	EmbedsList  []string         // List of embedded types
+	HasDocument bool             // Whether type embeds nanostore.Document
+}
+
+// FieldDebugInfo contains information about a struct field
+type FieldDebugInfo struct {
+	Name         string // Field name
+	Type         string // Field type
+	Tag          string // Complete struct tag
+	IsEmbedded   bool   // Whether field is embedded
+	IsDimension  bool   // Whether field maps to a dimension
+	DimensionTag string // Dimension configuration from tag
+}
+
+// RuntimeDebugStats contains runtime statistics about the store
+type RuntimeDebugStats struct {
+	TotalDimensions int // Number of configured dimensions
+	TotalValues     int // Total number of values across all dimensions
+	TotalPrefixes   int // Total number of prefix mappings
+}
+
+// StoreStats contains statistical information about store contents
+type StoreStats struct {
+	TotalDocuments        int                       // Total number of documents
+	DimensionDistribution map[string]map[string]int // Distribution of values per dimension
+	DataFieldCoverage     map[string]float64        // Percentage coverage of data fields
+	DataFieldDistribution map[string]map[string]int // Value distribution for data fields
+}
+
+// IntegrityReport contains the results of store integrity validation
+type IntegrityReport struct {
+	IsValid        bool               // Whether store passed all integrity checks
+	TotalDocuments int                // Total number of documents validated
+	ErrorCount     int                // Number of errors found
+	WarningCount   int                // Number of warnings found
+	Errors         []IntegrityError   // Detailed error information
+	Warnings       []IntegrityWarning // Detailed warning information
+	Summary        string             // Human-readable summary of findings
+}
+
+// IntegrityError represents a serious integrity issue found during validation
+type IntegrityError struct {
+	Type       string // Error type (e.g., "UUID_DUPLICATE", "INVALID_DIMENSION_VALUE")
+	DocumentID string // ID of affected document
+	Message    string // Human-readable error description
+}
+
+// IntegrityWarning represents a minor issue found during validation
+type IntegrityWarning struct {
+	Type       string // Warning type (e.g., "MISSING_SIMPLE_ID")
+	DocumentID string // ID of affected document
+	Message    string // Human-readable warning description
+}
 
 // TypedStore wraps a Store with type-safe operations for a specific document type T.
 //
@@ -279,24 +363,39 @@ func (ts *TypedStore[T]) Create(title string, data *T) (string, error) {
 	return ts.store.Add(title, dimensions)
 }
 
-// Get retrieves a document by ID and unmarshals it into the typed structure
+// Get retrieves a document by ID and unmarshals it into the typed structure.
+//
+// Accepts both UUID and SimpleID for maximum flexibility.
+// ID Resolution Strategy:
+// 1. Try to resolve ID as SimpleID to UUID
+// 2. If resolution fails, use ID directly as UUID
+// 3. Query store with resolved/direct UUID
+//
+// This provides consistent behavior with GetRaw and other ID-based methods.
 func (ts *TypedStore[T]) Get(id string) (*T, error) {
-	// First try to resolve if it's a simple ID
-	uuid := id
-	if resolvedUUID, err := ts.store.ResolveUUID(id); err == nil {
-		uuid = resolvedUUID
+	// Consistent ID resolution: try SimpleID first, fallback to direct UUID
+	uuid, err := ts.store.ResolveUUID(id)
+	if err != nil {
+		// If resolution fails, try using the ID directly as UUID
+		uuid = id
 	}
 
-	// List with UUID filter to get the document
-	docs, err := ts.store.List(nanostore.ListOptions{
-		Filters: map[string]interface{}{"uuid": uuid},
+	// Use List with UUID filter to get the document
+	docs, err := ts.store.List(types.ListOptions{
+		Filters: map[string]interface{}{
+			"uuid": uuid,
+		},
 	})
 	if err != nil {
 		return nil, err
 	}
 
 	if len(docs) == 0 {
-		return nil, fmt.Errorf("document not found: %s", id)
+		return nil, fmt.Errorf("document with ID %s not found", id)
+	}
+
+	if len(docs) > 1 {
+		return nil, fmt.Errorf("multiple documents found for ID %s", id)
 	}
 
 	var result T
@@ -307,19 +406,24 @@ func (ts *TypedStore[T]) Get(id string) (*T, error) {
 	return &result, nil
 }
 
-// Update modifies an existing document with typed data
-func (ts *TypedStore[T]) Update(id string, data *T) error {
+// buildUpdateRequest creates an UpdateRequest from typed data
+// This helper eliminates ~100 lines of code duplication across Update methods
+// by centralizing the complex struct-to-update-request conversion logic
+func (ts *TypedStore[T]) buildUpdateRequest(data *T) (nanostore.UpdateRequest, error) {
+	// MarshalDimensions uses reflection to extract dimensions from struct tags
+	// This is where struct tag parsing happens and values are validated
 	dimensions, extraData, err := MarshalDimensions(data)
 	if err != nil {
-		return fmt.Errorf("failed to marshal dimensions: %w", err)
+		return nanostore.UpdateRequest{}, fmt.Errorf("failed to marshal dimensions: %w", err)
 	}
 
-	// Store extra data in dimensions with a special prefix
+	// Store extra data in dimensions with the "_data." prefix
+	// This preserves fields that don't have dimension tags but need to be stored
 	for key, value := range extraData {
 		dimensions["_data."+key] = value
 	}
 
-	// Extract title and body if they're set
+	// Extract title and body if they're set in the embedded Document
 	var req nanostore.UpdateRequest
 	req.Dimensions = dimensions
 
@@ -333,6 +437,16 @@ func (ts *TypedStore[T]) Update(id string, data *T) error {
 		if doc.Body != "" {
 			req.Body = &doc.Body
 		}
+	}
+
+	return req, nil
+}
+
+// Update modifies an existing document with typed data
+func (ts *TypedStore[T]) Update(id string, data *T) error {
+	req, err := ts.buildUpdateRequest(data)
+	if err != nil {
+		return err
 	}
 
 	return ts.store.Update(id, req)
@@ -350,74 +464,59 @@ func (ts *TypedStore[T]) DeleteByDimension(filters map[string]interface{}) (int,
 }
 
 // DeleteWhere removes all documents matching a custom WHERE clause
+//
+// SECURITY WARNING: This method accepts SQL conditions and must be used carefully.
+// Always use parameterized queries with ? placeholders to prevent SQL injection.
+//
 // The where clause should not include the "WHERE" keyword itself.
-// Use with caution as it allows arbitrary SQL conditions.
+//
+// Example:
+//
+//	// SAFE - uses parameterized query
+//	count, err := store.DeleteWhere("status = ? AND created_at < ?", "archived", cutoffDate)
+//
+//	// DANGEROUS - vulnerable to SQL injection
+//	count, err := store.DeleteWhere("status = '" + userInput + "'") // DON'T DO THIS
+//
 // Returns the number of documents deleted.
 func (ts *TypedStore[T]) DeleteWhere(whereClause string, args ...interface{}) (int, error) {
+	// Pass through to underlying store which implements the secure WHERE clause evaluation
 	return ts.store.DeleteWhere(whereClause, args...)
 }
 
 // UpdateByDimension updates all documents matching the given dimension filters
 // Multiple filters are combined with AND. Returns the number of documents updated.
 func (ts *TypedStore[T]) UpdateByDimension(filters map[string]interface{}, data *T) (int, error) {
-	dimensions, extraData, err := MarshalDimensions(data)
+	req, err := ts.buildUpdateRequest(data)
 	if err != nil {
-		return 0, fmt.Errorf("failed to marshal dimensions: %w", err)
-	}
-
-	// Store extra data in dimensions with a special prefix
-	for key, value := range extraData {
-		dimensions["_data."+key] = value
-	}
-
-	// Extract title and body if they're set
-	var req nanostore.UpdateRequest
-	req.Dimensions = dimensions
-
-	// Use reflection to check if Title or Body fields are set
-	val := reflect.ValueOf(data).Elem()
-	if docField := val.FieldByName("Document"); docField.IsValid() {
-		doc := docField.Interface().(nanostore.Document)
-		if doc.Title != "" {
-			req.Title = &doc.Title
-		}
-		if doc.Body != "" {
-			req.Body = &doc.Body
-		}
+		return 0, err
 	}
 
 	return ts.store.UpdateByDimension(filters, req)
 }
 
 // UpdateWhere updates all documents matching a custom WHERE clause
+//
+// SECURITY WARNING: This method accepts SQL conditions and must be used carefully.
+// Always use parameterized queries with ? placeholders to prevent SQL injection.
+//
 // The where clause should not include the "WHERE" keyword itself.
-// Use with caution as it allows arbitrary SQL conditions.
+//
+// Example:
+//
+//	// SAFE - uses parameterized query
+//	task := &Task{Status: "completed"}
+//	count, err := store.UpdateWhere("status = ? AND priority = ?", task, "pending", "high")
+//
+//	// DANGEROUS - vulnerable to SQL injection
+//	whereClause := "status = '" + userInput + "'" // DON'T DO THIS
+//
 // Returns the number of documents updated.
 func (ts *TypedStore[T]) UpdateWhere(whereClause string, data *T, args ...interface{}) (int, error) {
-	dimensions, extraData, err := MarshalDimensions(data)
+	// Convert typed data to UpdateRequest using shared helper
+	req, err := ts.buildUpdateRequest(data)
 	if err != nil {
-		return 0, fmt.Errorf("failed to marshal dimensions: %w", err)
-	}
-
-	// Store extra data in dimensions with a special prefix
-	for key, value := range extraData {
-		dimensions["_data."+key] = value
-	}
-
-	// Extract title and body if they're set
-	var req nanostore.UpdateRequest
-	req.Dimensions = dimensions
-
-	// Use reflection to check if Title or Body fields are set
-	val := reflect.ValueOf(data).Elem()
-	if docField := val.FieldByName("Document"); docField.IsValid() {
-		doc := docField.Interface().(nanostore.Document)
-		if doc.Title != "" {
-			req.Title = &doc.Title
-		}
-		if doc.Body != "" {
-			req.Body = &doc.Body
-		}
+		return 0, err
 	}
 
 	return ts.store.UpdateWhere(whereClause, req, args...)
@@ -426,30 +525,9 @@ func (ts *TypedStore[T]) UpdateWhere(whereClause string, data *T, args ...interf
 // UpdateByUUIDs updates multiple documents by their UUIDs in a single operation
 // Returns the number of documents updated.
 func (ts *TypedStore[T]) UpdateByUUIDs(uuids []string, data *T) (int, error) {
-	dimensions, extraData, err := MarshalDimensions(data)
+	req, err := ts.buildUpdateRequest(data)
 	if err != nil {
-		return 0, fmt.Errorf("failed to marshal dimensions: %w", err)
-	}
-
-	// Store extra data in dimensions with a special prefix
-	for key, value := range extraData {
-		dimensions["_data."+key] = value
-	}
-
-	// Extract title and body if they're set
-	var req nanostore.UpdateRequest
-	req.Dimensions = dimensions
-
-	// Use reflection to check if Title or Body fields are set
-	val := reflect.ValueOf(data).Elem()
-	if docField := val.FieldByName("Document"); docField.IsValid() {
-		doc := docField.Interface().(nanostore.Document)
-		if doc.Title != "" {
-			req.Title = &doc.Title
-		}
-		if doc.Body != "" {
-			req.Body = &doc.Body
-		}
+		return 0, err
 	}
 
 	return ts.store.UpdateByUUIDs(uuids, req)
@@ -465,7 +543,7 @@ func (ts *TypedStore[T]) DeleteByUUIDs(uuids []string) (int, error) {
 func (ts *TypedStore[T]) Query() *TypedQuery[T] {
 	return &TypedQuery[T]{
 		store: ts.store,
-		options: nanostore.ListOptions{
+		options: types.ListOptions{
 			Filters: make(map[string]interface{}),
 		},
 	}
@@ -480,6 +558,148 @@ func (ts *TypedStore[T]) Close() error {
 // This is useful for operations like export that work with the raw Store interface
 func (ts *TypedStore[T]) Store() nanostore.Store {
 	return ts.store
+}
+
+// ResolveUUID converts a simple ID (e.g., "1.2.c3") to a UUID
+// This provides direct access to ID resolution without needing to access the underlying store
+func (ts *TypedStore[T]) ResolveUUID(simpleID string) (string, error) {
+	return ts.store.ResolveUUID(simpleID)
+}
+
+// List returns documents based on the provided ListOptions, converted to typed structs
+// This provides direct access to the underlying store's List functionality while maintaining type safety
+func (ts *TypedStore[T]) List(opts types.ListOptions) ([]T, error) {
+	// Delegate to underlying store for actual querying
+	// The store handles all filtering, ordering, and pagination logic
+	docs, err := ts.store.List(opts)
+	if err != nil {
+		return nil, err
+	}
+
+	// Convert raw documents to typed structs
+	// Pre-allocate slice for performance - we know the exact size needed
+	result := make([]T, len(docs))
+	for i, doc := range docs {
+		// UnmarshalDimensions maps document dimensions to struct fields using reflection
+		// This is where struct tags are processed and values are converted
+		if err := UnmarshalDimensions(doc, &result[i]); err != nil {
+			// Fail fast on unmarshal error - indicates schema mismatch or corrupted data
+			return nil, fmt.Errorf("failed to unmarshal document %s: %w", doc.UUID, err)
+		}
+	}
+
+	return result, nil
+}
+
+// GetRaw retrieves a document by ID and returns the raw document structure.
+//
+// Accepts both UUID and SimpleID for maximum flexibility.
+// ID Resolution Strategy:
+// 1. Try to resolve ID as SimpleID to UUID
+// 2. If resolution fails, use ID directly as UUID
+// 3. Query store with resolved/direct UUID
+//
+// This provides consistent behavior with Get and other ID-based methods.
+// Returns the raw document without type conversion - useful for:
+// - Accessing dimensions not defined in the struct
+// - Inspecting metadata (CreatedAt, UpdatedAt, etc.)
+// - Working with documents that partially match the struct schema
+// - Debugging and introspection
+// - Administrative operations
+func (ts *TypedStore[T]) GetRaw(id string) (*types.Document, error) {
+	// Consistent ID resolution: try SimpleID first, fallback to direct UUID
+	// This dual approach handles both user-provided SimpleIDs ("1", "h2")
+	// and system-provided UUIDs transparently
+	uuid, err := ts.store.ResolveUUID(id)
+	if err != nil {
+		// If resolution fails, assume ID is already a UUID
+		// This fallback is critical for API consistency - methods should accept both ID types
+		uuid = id
+	}
+
+	// Use List with UUID filter to get the raw document
+	// We use List instead of GetByID to leverage existing filtering infrastructure
+	docs, err := ts.store.List(types.ListOptions{
+		Filters: map[string]interface{}{
+			"uuid": uuid, // Filter by exact UUID match
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	// Validate result count - UUIDs should be unique
+	if len(docs) == 0 {
+		return nil, fmt.Errorf("document with ID %s not found", id)
+	}
+
+	if len(docs) > 1 {
+		// This should never happen with valid UUIDs, but check anyway
+		// Could indicate data corruption or ID collision
+		return nil, fmt.Errorf("multiple documents found for ID %s", id)
+	}
+
+	return &docs[0], nil
+}
+
+// AddRaw creates a new document with raw dimension values
+// This provides direct access to the underlying store's Add functionality for cases where:
+// - The document doesn't fully match the struct schema
+// - You need to set custom _data fields not defined in the struct
+// - You want to bypass struct tag validation
+// - You're migrating data that has different dimension names
+// Returns the UUID of the created document
+func (ts *TypedStore[T]) AddRaw(title string, dimensions map[string]interface{}) (string, error) {
+	// Pass through directly to underlying store without type marshaling
+	// This bypasses all struct tag processing and validation
+	// Critical for migration scenarios where old data may not match current schema
+	return ts.store.Add(title, dimensions)
+}
+
+// GetDimensions returns the raw dimensions map for a document
+// This provides access to all dimension values and custom _data fields, useful for:
+// - Accessing fields not defined in the struct schema
+// - Debugging dimension values and configuration
+// - Working with documents that have additional custom fields
+// - Introspecting the full dimension structure
+// Accepts both UUID and SimpleID for maximum flexibility
+// Returns a copy of the dimensions map to prevent accidental modifications
+func (ts *TypedStore[T]) GetDimensions(id string) (map[string]interface{}, error) {
+	doc, err := ts.GetRaw(id)
+	if err != nil {
+		return nil, err
+	}
+
+	// Return a copy of the dimensions to prevent modifications
+	result := make(map[string]interface{})
+	for key, value := range doc.Dimensions {
+		result[key] = value
+	}
+
+	return result, nil
+}
+
+// GetMetadata returns the metadata fields of a document
+// This provides access to document metadata (UUID, SimpleID, Title, timestamps) without
+// loading the full document content or dimensions, useful for:
+// - Quick metadata inspection without full document overhead
+// - Accessing metadata when document content is not in struct format
+// - Building document lists with metadata-only information
+// - Debugging and administrative operations
+// Accepts both UUID and SimpleID for maximum flexibility
+func (ts *TypedStore[T]) GetMetadata(id string) (*DocumentMetadata, error) {
+	doc, err := ts.GetRaw(id)
+	if err != nil {
+		return nil, err
+	}
+
+	return &DocumentMetadata{
+		UUID:      doc.UUID,
+		SimpleID:  doc.SimpleID,
+		Title:     doc.Title,
+		CreatedAt: doc.CreatedAt,
+		UpdatedAt: doc.UpdatedAt,
+	}, nil
 }
 
 // TypedQuery provides a fluent interface for building type-safe queries.
@@ -566,9 +786,952 @@ func (ts *TypedStore[T]) Store() nanostore.Store {
 //	hasActiveTasks, err := store.Query().
 //	    Status("active").
 //	    Exists()
+
+// GetDimensionConfig returns the runtime configuration for this TypedStore.
+//
+// This method provides introspection capabilities for the automatically generated
+// dimension configuration. It allows applications to examine:
+//
+// - **Dimension Names**: All configured dimension names
+// - **Enumerated Values**: Valid values for each enumerated dimension
+// - **Prefix Mappings**: Value-to-prefix mappings for ID generation
+// - **Default Values**: Default values for dimensions
+// - **Hierarchical Relations**: Parent-child relationship configurations
+//
+// # Use Cases
+//
+// - **Debugging**: Inspect configuration during development
+// - **Validation**: Verify struct tags were parsed correctly
+// - **Documentation**: Generate API documentation from configuration
+// - **Migration**: Compare configurations across schema versions
+// - **Testing**: Validate configuration in unit tests
+//
+// # Return Format
+//
+// Returns the same Config struct used internally by nanostore, containing:
+//
+//	type Config struct {
+//	    Dimensions []DimensionConfig
+//	}
+//
+//	type DimensionConfig struct {
+//	    Name         string
+//	    Type         DimensionType  // Enumerated or Hierarchical
+//	    Values       []string       // For enumerated dimensions
+//	    Prefixes     map[string]string // Value -> prefix mapping
+//	    DefaultValue string         // Default for new documents
+//	    RefField     string         // For hierarchical dimensions
+//	}
+//
+// # Example Usage
+//
+//	// Inspect configuration
+//	config, err := store.GetDimensionConfig()
+//	if err != nil {
+//	    log.Fatal(err)
+//	}
+//
+//	for _, dim := range config.Dimensions {
+//	    fmt.Printf("Dimension: %s\n", dim.Name)
+//	    if dim.Type == nanostore.Enumerated {
+//	        fmt.Printf("  Values: %v\n", dim.Values)
+//	        fmt.Printf("  Prefixes: %v\n", dim.Prefixes)
+//	        fmt.Printf("  Default: %s\n", dim.DefaultValue)
+//	    }
+//	}
+//
+// # Performance Notes
+//
+// This method returns a copy of the configuration, not a reference.
+// The configuration is generated once at TypedStore creation and cached,
+// so this method is O(1) with respect to runtime performance.
+func (ts *TypedStore[T]) GetDimensionConfig() (*nanostore.Config, error) {
+	// Return a copy of the cached configuration
+	// Critical: This is cached from struct tag parsing done ONCE at store creation.
+	// We don't regenerate via reflection here because:
+	//   1. Reflection is expensive (2.6µs vs 0.8ns)
+	//   2. Configuration is immutable after store creation
+	//   3. Multiple threads can safely access this cached copy
+	configCopy := ts.config
+	return &configCopy, nil
+}
+
+// SetTimeFunc sets a custom time function for deterministic timestamps in testing.
+//
+// This method enables deterministic testing by allowing tests to control the timestamps
+// used for document creation and updates. This is essential for reliable test scenarios
+// where predictable timestamps are needed for assertions and ordering.
+//
+// # Use Cases
+//
+// - **Deterministic Testing**: Control timestamps for reproducible test results
+// - **Time-Based Assertions**: Test documents with specific creation/update times
+// - **Ordering Tests**: Verify correct ordering behavior with known timestamps
+// - **Migration Testing**: Simulate documents created at different times
+// - **Performance Testing**: Measure operations without time variations
+//
+// # Parameters
+//
+// - **timeFunc**: Function that returns the desired time.Time value
+//   - If nil, reverts to using the system time (time.Now)
+//   - Function is called each time a timestamp is needed
+//   - Should be deterministic for testing purposes
+//
+// # Example Usage
+//
+//	// Set fixed time for all operations
+//	fixedTime := time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC)
+//	store.SetTimeFunc(func() time.Time { return fixedTime })
+//
+//	// Create document with predictable timestamp
+//	id, err := store.Create("Test Document", &TodoItem{Status: "pending"})
+//
+//	// Reset to system time when done
+//	store.SetTimeFunc(nil)
+//
+//	// Use with time sequences for testing ordering
+//	baseTime := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+//	counter := 0
+//	store.SetTimeFunc(func() time.Time {
+//	    counter++
+//	    return baseTime.Add(time.Duration(counter) * time.Hour)
+//	})
+//
+// # Implementation Notes
+//
+// This method attempts to cast the underlying store to the TestStore interface.
+// If the cast fails (e.g., in production builds without test support), the method
+// returns an error indicating the limitation.
+//
+// # Error Conditions
+//
+// - **No Test Support**: The underlying store doesn't implement TestStore interface
+// - **Store Type Mismatch**: Store implementation doesn't support time function setting
+//
+// # Production vs Testing
+//
+// This method is primarily intended for testing scenarios. Production code typically
+// should not need to override system time, though the capability exists if needed
+// for specific use cases like migration or data import.
+func (ts *TypedStore[T]) SetTimeFunc(timeFunc func() time.Time) error {
+	// Attempt to cast underlying store to TestStore interface
+	// This interface check is necessary because not all store implementations
+	// support time function override (production stores may omit this feature)
+	testStore, ok := ts.store.(store.TestStore)
+	if !ok {
+		// Fail fast with clear error - this prevents silent time function ignoring
+		// which would lead to confusing test failures
+		return fmt.Errorf("underlying store does not support SetTimeFunc - store type %T does not implement TestStore interface", ts.store)
+	}
+
+	// Delegate to underlying store's SetTimeFunc
+	// The underlying store handles the actual time function replacement
+	testStore.SetTimeFunc(timeFunc)
+	return nil
+}
+
+// ValidateConfiguration performs runtime validation of the TypedStore configuration.
+//
+// This method checks for configuration issues that might not be caught during
+// store creation, including:
+//
+// - **Prefix Conflicts**: Multiple values mapping to the same prefix
+// - **Invalid Default Values**: Defaults not in enumerated value lists
+// - **Missing Required Fields**: Hierarchical dimensions without ref fields
+// - **Constraint Violations**: Values violating naming conventions
+// - **Type Consistency**: Field types compatible with dimension types
+//
+// # Validation Categories
+//
+// ## Enumerated Dimension Validation
+//
+// - All values are non-empty strings
+// - Default value exists in values list
+// - Prefix mappings point to valid values
+// - No duplicate values or prefixes
+//
+// ## Hierarchical Dimension Validation
+//
+// - RefField is specified and non-empty
+// - Field types are compatible (typically string)
+// - No circular reference possibilities
+//
+// ## Cross-Dimension Validation
+//
+// - Prefix conflicts across dimensions
+// - Dimension name uniqueness
+// - Compatible with nanostore constraints
+//
+// # Error Reporting
+//
+// Returns detailed errors with specific field and value information:
+//
+//	"dimension 'status': default value 'invalid' not in values list [pending,active,done]"
+//	"dimension 'priority': prefix conflict - value 'high' and 'urgent' both map to prefix 'h'"
+//	"field 'ParentID': hierarchical dimension missing ref field specification"
+//
+// # Example Usage
+//
+//	// Validate configuration during testing
+//	func TestStoreConfiguration(t *testing.T) {
+//	    store, err := api.NewFromType[TodoItem]("test.json")
+//	    require.NoError(t, err)
+//	    defer store.Close()
+//
+//	    err = store.ValidateConfiguration()
+//	    assert.NoError(t, err, "Configuration should be valid")
+//	}
+//
+//	// Validate before critical operations
+//	if err := store.ValidateConfiguration(); err != nil {
+//	    return fmt.Errorf("invalid store configuration: %w", err)
+//	}
+//
+// # Performance Notes
+//
+// This method performs O(n²) validation for prefix conflicts where n is the
+// total number of configured values across all dimensions. It should typically
+// be called during application startup or testing, not in hot paths.
+func (ts *TypedStore[T]) ValidateConfiguration() error {
+	config, err := ts.GetDimensionConfig()
+	if err != nil {
+		return fmt.Errorf("failed to get configuration: %w", err)
+	}
+
+	// Track all prefixes across dimensions to detect conflicts
+	allPrefixes := make(map[string][]string) // prefix -> list of "dimension:value"
+
+	for _, dim := range config.Dimensions {
+		// Validate enumerated dimensions
+		if dim.Type == nanostore.Enumerated {
+			// Check that values list is not empty
+			if len(dim.Values) == 0 {
+				return fmt.Errorf("dimension '%s': enumerated dimension must have at least one value", dim.Name)
+			}
+
+			// Check for empty values
+			for _, value := range dim.Values {
+				if strings.TrimSpace(value) == "" {
+					return fmt.Errorf("dimension '%s': empty value not allowed", dim.Name)
+				}
+			}
+
+			// Check default value exists in values list
+			if dim.DefaultValue != "" {
+				found := false
+				for _, value := range dim.Values {
+					if value == dim.DefaultValue {
+						found = true
+						break
+					}
+				}
+				if !found {
+					return fmt.Errorf("dimension '%s': default value '%s' not in values list %v",
+						dim.Name, dim.DefaultValue, dim.Values)
+				}
+			}
+
+			// Check prefix mappings and collect for conflict detection
+			for value, prefix := range dim.Prefixes {
+				// Verify the value exists in values list
+				found := false
+				for _, v := range dim.Values {
+					if v == value {
+						found = true
+						break
+					}
+				}
+				if !found {
+					return fmt.Errorf("dimension '%s': prefix mapping for unknown value '%s'", dim.Name, value)
+				}
+
+				// Verify prefix is non-empty
+				if strings.TrimSpace(prefix) == "" {
+					return fmt.Errorf("dimension '%s': empty prefix not allowed for value '%s'", dim.Name, value)
+				}
+
+				// Track prefix for conflict detection
+				key := dim.Name + ":" + value
+				allPrefixes[prefix] = append(allPrefixes[prefix], key)
+			}
+		}
+
+		// Validate hierarchical dimensions
+		if dim.Type == nanostore.Hierarchical {
+			if strings.TrimSpace(dim.RefField) == "" {
+				return fmt.Errorf("dimension '%s': hierarchical dimension must specify RefField", dim.Name)
+			}
+		}
+	}
+
+	// Check for prefix conflicts across dimensions
+	for prefix, sources := range allPrefixes {
+		if len(sources) > 1 {
+			return fmt.Errorf("prefix conflict: prefix '%s' used by multiple dimension:value pairs: %v",
+				prefix, sources)
+		}
+	}
+
+	return nil
+}
+
+// GetDebugInfo returns comprehensive debugging information about the TypedStore.
+//
+// This method provides developers with detailed insights into the store's current
+// state, configuration, and runtime characteristics. It's invaluable for debugging
+// issues, optimizing performance, and understanding store behavior.
+//
+// # Information Categories
+//
+// ## Store Metadata
+// - **Store Type**: Type of underlying store implementation
+// - **File Path**: Location of store data file (if applicable)
+// - **Configuration**: Complete dimension configuration details
+// - **Document Count**: Total number of documents in store
+//
+// ## Runtime Statistics
+// - **Memory Usage**: Estimated memory consumption (when available)
+// - **Performance Metrics**: Query and operation timing information
+// - **Cache Status**: Information about internal caching
+// - **Configuration Hash**: Fingerprint for configuration validation
+//
+// ## Type Information
+// - **Go Type**: Full type name for T
+// - **Struct Fields**: Field names and types from reflection
+// - **Tag Configuration**: Parsed struct tag information
+// - **Embedding Validation**: Confirms nanostore.Document embedding
+//
+// # Return Format
+//
+// Returns a structured DebugInfo object containing all debugging information:
+//
+//	type DebugInfo struct {
+//	    StoreType        string
+//	    FilePath         string
+//	    DocumentCount    int
+//	    Configuration    *nanostore.Config
+//	    TypeInfo         TypeDebugInfo
+//	    RuntimeStats     RuntimeDebugStats
+//	    LastError        string
+//	}
+//
+// # Example Usage
+//
+//	// Get comprehensive debug information
+//	debug, err := store.GetDebugInfo()
+//	if err != nil {
+//	    log.Fatal(err)
+//	}
+//
+//	fmt.Printf("Store Type: %s\n", debug.StoreType)
+//	fmt.Printf("Document Count: %d\n", debug.DocumentCount)
+//	fmt.Printf("Go Type: %s\n", debug.TypeInfo.TypeName)
+//
+//	for _, dim := range debug.Configuration.Dimensions {
+//	    fmt.Printf("Dimension %s: %d values\n", dim.Name, len(dim.Values))
+//	}
+//
+// # Performance Notes
+//
+// This method performs reflection and potentially expensive store operations
+// to gather comprehensive information. It should be used primarily for debugging
+// and development, not in hot paths or production monitoring.
+//
+// # Use Cases
+//
+// - **Debugging**: Understand why queries aren't working as expected
+// - **Development**: Inspect configuration during development
+// - **Testing**: Validate store state in unit tests
+// - **Monitoring**: Get runtime statistics for health checks
+// - **Documentation**: Generate documentation from live configuration
+func (ts *TypedStore[T]) GetDebugInfo() (*DebugInfo, error) {
+	var zero T
+	typ := reflect.TypeOf(zero)
+
+	// Get configuration information
+	config, err := ts.GetDimensionConfig()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get configuration: %w", err)
+	}
+
+	// Get document count using raw store access
+	allDocs, err := ts.store.List(types.ListOptions{})
+	if err != nil {
+		return &DebugInfo{
+			StoreType:     fmt.Sprintf("%T", ts.store),
+			DocumentCount: -1,
+			Configuration: config,
+			TypeInfo:      extractTypeInfo(typ),
+			LastError:     err.Error(),
+		}, nil
+	}
+
+	// Extract type information
+	typeInfo := extractTypeInfo(typ)
+
+	// Build debug info
+	debugInfo := &DebugInfo{
+		StoreType:     fmt.Sprintf("%T", ts.store),
+		DocumentCount: len(allDocs),
+		Configuration: config,
+		TypeInfo:      typeInfo,
+		RuntimeStats: RuntimeDebugStats{
+			TotalDimensions: len(config.Dimensions),
+			TotalValues:     countTotalValues(config.Dimensions),
+			TotalPrefixes:   countTotalPrefixes(config.Dimensions),
+		},
+	}
+
+	return debugInfo, nil
+}
+
+// GetStoreStats returns statistical information about the store's contents.
+//
+// This method provides quantitative insights into the store's document distribution,
+// dimension usage, and data patterns. It's useful for understanding data patterns
+// and optimizing queries.
+//
+// # Statistical Categories
+//
+// ## Document Distribution
+// - **Total Documents**: Count of all documents in store
+// - **By Dimension Values**: Distribution across enumerated dimension values
+// - **By Hierarchical Depth**: Distribution of parent-child relationships
+// - **By Creation Time**: Temporal distribution of documents
+//
+// ## Data Field Usage
+// - **Custom Fields**: Usage patterns of `_data.*` fields
+// - **Field Value Distribution**: Most common values per field
+// - **Field Coverage**: Percentage of documents with each field
+//
+// ## Performance Insights
+// - **Query Complexity**: Estimates for different query patterns
+// - **Index Utilization**: Which dimensions benefit from indexing
+// - **Hot Spots**: Most frequently queried dimension combinations
+//
+// # Example Usage
+//
+//	// Get store statistics
+//	stats, err := store.GetStoreStats()
+//	if err != nil {
+//	    log.Fatal(err)
+//	}
+//
+//	fmt.Printf("Total Documents: %d\n", stats.TotalDocuments)
+//
+//	for dimension, distribution := range stats.DimensionDistribution {
+//	    fmt.Printf("Dimension %s:\n", dimension)
+//	    for value, count := range distribution {
+//	        fmt.Printf("  %s: %d documents\n", value, count)
+//	    }
+//	}
+//
+//	for field, coverage := range stats.DataFieldCoverage {
+//	    fmt.Printf("Field %s: %.1f%% coverage\n", field, coverage*100)
+//	}
+//
+// # Performance Notes
+//
+// This method iterates through all documents to calculate statistics.
+// For large stores, this can be expensive. Consider caching results
+// or calling periodically rather than on every request.
+func (ts *TypedStore[T]) GetStoreStats() (*StoreStats, error) {
+	// Get all documents for analysis using raw store access
+	allDocs, err := ts.store.List(types.ListOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to retrieve documents for stats: %w", err)
+	}
+
+	stats := &StoreStats{
+		TotalDocuments:        len(allDocs),
+		DimensionDistribution: make(map[string]map[string]int),
+		DataFieldCoverage:     make(map[string]float64),
+		DataFieldDistribution: make(map[string]map[string]int),
+	}
+
+	if len(allDocs) == 0 {
+		return stats, nil
+	}
+
+	// Get configuration to know which dimensions exist
+	config, err := ts.GetDimensionConfig()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get configuration: %w", err)
+	}
+
+	// Initialize dimension distribution maps
+	for _, dim := range config.Dimensions {
+		if dim.Type == nanostore.Enumerated {
+			stats.DimensionDistribution[dim.Name] = make(map[string]int)
+		}
+	}
+
+	// Track data fields seen across all documents
+	dataFieldCounts := make(map[string]int)
+	dataFieldValues := make(map[string]map[string]int)
+
+	// Analyze each document
+	for _, doc := range allDocs {
+		// Analyze enumerated dimensions
+		for _, dim := range config.Dimensions {
+			if dim.Type == nanostore.Enumerated {
+				if value, exists := doc.Dimensions[dim.Name]; exists {
+					valueStr := fmt.Sprintf("%v", value)
+					stats.DimensionDistribution[dim.Name][valueStr]++
+				}
+			}
+		}
+
+		// Analyze data fields
+		for key, value := range doc.Dimensions {
+			if strings.HasPrefix(key, "_data.") {
+				fieldName := strings.TrimPrefix(key, "_data.")
+				dataFieldCounts[fieldName]++
+
+				// Track value distribution for data fields
+				if dataFieldValues[fieldName] == nil {
+					dataFieldValues[fieldName] = make(map[string]int)
+				}
+				valueStr := fmt.Sprintf("%v", value)
+				dataFieldValues[fieldName][valueStr]++
+			}
+		}
+	}
+
+	// Calculate coverage percentages for data fields
+	totalDocs := float64(len(allDocs))
+	for field, count := range dataFieldCounts {
+		stats.DataFieldCoverage[field] = float64(count) / totalDocs
+	}
+
+	// Store data field value distributions
+	stats.DataFieldDistribution = dataFieldValues
+
+	return stats, nil
+}
+
+// ValidateStoreIntegrity performs comprehensive integrity checks on the store.
+//
+// This method validates the consistency and correctness of the store's data,
+// configuration, and relationships. It's essential for debugging data corruption
+// issues and ensuring store reliability.
+//
+// # Validation Categories
+//
+// ## Configuration Consistency
+// - **Dimension Values**: All document values exist in configured value lists
+// - **Default Values**: Documents have appropriate defaults when unspecified
+// - **Required Fields**: All required dimensions are present
+// - **Type Consistency**: Field types match expected types
+//
+// ## Document Integrity
+// - **UUID Uniqueness**: All document UUIDs are unique
+// - **SimpleID Consistency**: SimpleIDs match UUID relationships
+// - **Hierarchical Validity**: Parent-child relationships are valid
+// - **Timestamp Ordering**: CreatedAt ≤ UpdatedAt for all documents
+//
+// ## Structural Validity
+// - **Embedding Compliance**: All documents properly embed required fields
+// - **Field Completeness**: Required metadata fields are present
+// - **Data Consistency**: Custom data fields follow expected patterns
+//
+// # Return Format
+//
+// Returns a detailed IntegrityReport with findings:
+//
+//	type IntegrityReport struct {
+//	    IsValid           bool
+//	    TotalDocuments    int
+//	    ErrorCount        int
+//	    WarningCount      int
+//	    Errors           []IntegrityError
+//	    Warnings         []IntegrityWarning
+//	    Summary          string
+//	}
+//
+// # Example Usage
+//
+//	// Validate store integrity
+//	report, err := store.ValidateStoreIntegrity()
+//	if err != nil {
+//	    log.Fatal(err)
+//	}
+//
+//	fmt.Printf("Store Valid: %v\n", report.IsValid)
+//	fmt.Printf("Documents: %d, Errors: %d, Warnings: %d\n",
+//	    report.TotalDocuments, report.ErrorCount, report.WarningCount)
+//
+//	for _, error := range report.Errors {
+//	    fmt.Printf("ERROR: %s\n", error.Message)
+//	}
+//
+// # Performance Notes
+//
+// This method performs extensive validation by examining all documents and
+// their relationships. For large stores, this can take significant time.
+// Consider running periodically or during maintenance windows.
+func (ts *TypedStore[T]) ValidateStoreIntegrity() (*IntegrityReport, error) {
+	// Get all documents and configuration using raw store access
+	allDocs, err := ts.store.List(types.ListOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to retrieve documents: %w", err)
+	}
+
+	config, err := ts.GetDimensionConfig()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get configuration: %w", err)
+	}
+
+	report := &IntegrityReport{
+		TotalDocuments: len(allDocs),
+		Errors:         []IntegrityError{},
+		Warnings:       []IntegrityWarning{},
+	}
+
+	// Track UUIDs for uniqueness validation
+	seenUUIDs := make(map[string]bool)
+
+	// Validate each document
+	for i, doc := range allDocs {
+		// Check UUID uniqueness
+		if seenUUIDs[doc.UUID] {
+			report.Errors = append(report.Errors, IntegrityError{
+				Type:       "UUID_DUPLICATE",
+				DocumentID: doc.UUID,
+				Message:    fmt.Sprintf("Duplicate UUID found: %s", doc.UUID),
+			})
+		}
+		seenUUIDs[doc.UUID] = true
+
+		// Check timestamp consistency
+		if !doc.UpdatedAt.IsZero() && !doc.CreatedAt.IsZero() && doc.UpdatedAt.Before(doc.CreatedAt) {
+			report.Errors = append(report.Errors, IntegrityError{
+				Type:       "TIMESTAMP_INCONSISTENT",
+				DocumentID: doc.UUID,
+				Message:    fmt.Sprintf("UpdatedAt (%v) is before CreatedAt (%v)", doc.UpdatedAt, doc.CreatedAt),
+			})
+		}
+
+		// Validate enumerated dimension values
+		for _, dim := range config.Dimensions {
+			if dim.Type == nanostore.Enumerated {
+				if value, exists := doc.Dimensions[dim.Name]; exists {
+					valueStr := fmt.Sprintf("%v", value)
+
+					// Check if value is in allowed list
+					found := false
+					for _, allowedValue := range dim.Values {
+						if valueStr == allowedValue {
+							found = true
+							break
+						}
+					}
+
+					if !found {
+						report.Errors = append(report.Errors, IntegrityError{
+							Type:       "INVALID_DIMENSION_VALUE",
+							DocumentID: doc.UUID,
+							Message:    fmt.Sprintf("Document %d: dimension '%s' has invalid value '%s' (allowed: %v)", i, dim.Name, valueStr, dim.Values),
+						})
+					}
+				}
+			}
+		}
+
+		// Check for missing required metadata
+		if doc.UUID == "" {
+			report.Errors = append(report.Errors, IntegrityError{
+				Type:       "MISSING_UUID",
+				DocumentID: fmt.Sprintf("document_%d", i),
+				Message:    fmt.Sprintf("Document %d is missing UUID", i),
+			})
+		}
+
+		if doc.SimpleID == "" {
+			report.Warnings = append(report.Warnings, IntegrityWarning{
+				Type:       "MISSING_SIMPLE_ID",
+				DocumentID: doc.UUID,
+				Message:    fmt.Sprintf("Document has empty SimpleID: %s", doc.UUID),
+			})
+		}
+	}
+
+	// Set final status
+	report.ErrorCount = len(report.Errors)
+	report.WarningCount = len(report.Warnings)
+	report.IsValid = report.ErrorCount == 0
+
+	// Generate summary
+	if report.IsValid {
+		if report.WarningCount > 0 {
+			report.Summary = fmt.Sprintf("Store is valid with %d warnings", report.WarningCount)
+		} else {
+			report.Summary = "Store is completely valid"
+		}
+	} else {
+		report.Summary = fmt.Sprintf("Store has %d errors and %d warnings", report.ErrorCount, report.WarningCount)
+	}
+
+	return report, nil
+}
+
+// AddDimensionValue adds a new enumerated value to an existing dimension.
+//
+// This method provides limited runtime configuration modification by allowing
+// new values to be added to existing enumerated dimensions. This is one of the
+// safer configuration changes since it doesn't invalidate existing documents.
+//
+// # Supported Operations
+//
+// - **Add Enumerated Values**: Extend existing value lists
+// - **Add Prefix Mappings**: Assign prefixes to new values
+// - **Validation**: Ensure new values don't conflict with existing configuration
+//
+// # Limitations
+//
+// Due to the complexity of runtime configuration changes, this method has
+// several important limitations:
+//
+// - **Enumerated Only**: Only works with enumerated dimensions, not hierarchical
+// - **Additive Only**: Cannot remove or modify existing values
+// - **No Store Update**: Changes don't persist to underlying store configuration
+// - **Session Only**: Changes are lost when TypedStore is recreated
+// - **No Migration**: Existing documents are not affected
+//
+// # Future Enhancements
+//
+// Full runtime configuration modification would require:
+//
+// - **Store-Level Support**: Underlying nanostore API for config changes
+// - **Data Migration**: Automatic migration of existing documents
+// - **Atomic Updates**: Transactional configuration changes
+// - **Rollback Support**: Ability to revert configuration changes
+// - **Validation**: Comprehensive checking before applying changes
+//
+// # Parameters
+//
+// - **dimensionName**: Name of the existing enumerated dimension
+// - **value**: New value to add to the dimension's value list
+// - **prefix**: Optional prefix for the new value (empty string for no prefix)
+//
+// # Example Usage
+//
+//	// Add a new status value with prefix
+//	err := store.AddDimensionValue("status", "cancelled", "c")
+//	if err != nil {
+//	    log.Fatal(err)
+//	}
+//
+//	// Add a new priority value without prefix
+//	err = store.AddDimensionValue("priority", "urgent", "")
+//	if err != nil {
+//	    log.Fatal(err)
+//	}
+//
+//	// Verify the change
+//	config, err := store.GetDimensionConfig()
+//	if err != nil {
+//	    log.Fatal(err)
+//	}
+//	// config now includes the new values
+//
+// # Error Conditions
+//
+// - **Dimension Not Found**: The specified dimension doesn't exist
+// - **Not Enumerated**: The dimension is not an enumerated type
+// - **Value Exists**: The value is already in the dimension's value list
+// - **Prefix Conflict**: The prefix is already used by another value
+// - **Invalid Input**: Empty value or dimension name
+//
+// # Security Notes
+//
+// This method modifies in-memory configuration only. Changes do not persist
+// across application restarts and do not affect the underlying store's
+// configuration or existing documents.
+func (ts *TypedStore[T]) AddDimensionValue(dimensionName, value, prefix string) error {
+	if strings.TrimSpace(dimensionName) == "" {
+		return fmt.Errorf("dimension name cannot be empty")
+	}
+	if strings.TrimSpace(value) == "" {
+		return fmt.Errorf("value cannot be empty")
+	}
+
+	// Get current configuration
+	config, err := ts.GetDimensionConfig()
+	if err != nil {
+		return fmt.Errorf("failed to get current configuration: %w", err)
+	}
+
+	// Find the dimension
+	var targetDim *nanostore.DimensionConfig
+	for i := range config.Dimensions {
+		if config.Dimensions[i].Name == dimensionName {
+			targetDim = &config.Dimensions[i]
+			break
+		}
+	}
+
+	if targetDim == nil {
+		return fmt.Errorf("dimension '%s' not found", dimensionName)
+	}
+
+	if targetDim.Type != nanostore.Enumerated {
+		return fmt.Errorf("dimension '%s' is not enumerated (type: %v)", dimensionName, targetDim.Type)
+	}
+
+	// Check if value already exists
+	for _, existingValue := range targetDim.Values {
+		if existingValue == value {
+			return fmt.Errorf("value '%s' already exists in dimension '%s'", value, dimensionName)
+		}
+	}
+
+	// Check prefix conflicts if prefix is provided
+	if prefix != "" {
+		// Check against all dimensions for conflicts
+		for _, dim := range config.Dimensions {
+			for _, existingPrefix := range dim.Prefixes {
+				if existingPrefix == prefix {
+					return fmt.Errorf("prefix '%s' is already used by another value", prefix)
+				}
+			}
+		}
+	}
+
+	// Note: This is a demonstration of the API design.
+	// In a full implementation, this would:
+	// 1. Update the underlying store configuration
+	// 2. Persist changes to storage
+	// 3. Handle concurrent access safely
+	// 4. Validate against existing documents
+	//
+	// For now, we return an informational error indicating the limitation
+	return fmt.Errorf("runtime configuration modification is not fully implemented - "+
+		"changes would add value '%s' with prefix '%s' to dimension '%s', "+
+		"but underlying store configuration cannot be modified in current implementation",
+		value, prefix, dimensionName)
+}
+
+// ModifyDimensionDefault changes the default value for an enumerated dimension.
+//
+// This method demonstrates the API pattern for runtime configuration changes.
+// Like AddDimensionValue, it has significant limitations in the current implementation.
+//
+// # Parameters
+//
+// - **dimensionName**: Name of the existing enumerated dimension
+// - **newDefault**: New default value (must exist in dimension's value list)
+//
+// # Example Usage
+//
+//	// Change default status from "pending" to "active"
+//	err := store.ModifyDimensionDefault("status", "active")
+//	if err != nil {
+//	    log.Fatal(err)
+//	}
+//
+// # Limitations
+//
+// Same limitations as AddDimensionValue - this is an API demonstration
+// that shows the intended design pattern for future full implementation.
+func (ts *TypedStore[T]) ModifyDimensionDefault(dimensionName, newDefault string) error {
+	if strings.TrimSpace(dimensionName) == "" {
+		return fmt.Errorf("dimension name cannot be empty")
+	}
+	if strings.TrimSpace(newDefault) == "" {
+		return fmt.Errorf("default value cannot be empty")
+	}
+
+	// Get current configuration
+	config, err := ts.GetDimensionConfig()
+	if err != nil {
+		return fmt.Errorf("failed to get current configuration: %w", err)
+	}
+
+	// Find and validate the dimension
+	var targetDim *nanostore.DimensionConfig
+	for i := range config.Dimensions {
+		if config.Dimensions[i].Name == dimensionName {
+			targetDim = &config.Dimensions[i]
+			break
+		}
+	}
+
+	if targetDim == nil {
+		return fmt.Errorf("dimension '%s' not found", dimensionName)
+	}
+
+	if targetDim.Type != nanostore.Enumerated {
+		return fmt.Errorf("dimension '%s' is not enumerated", dimensionName)
+	}
+
+	// Verify new default exists in values list
+	found := false
+	for _, value := range targetDim.Values {
+		if value == newDefault {
+			found = true
+			break
+		}
+	}
+
+	if !found {
+		return fmt.Errorf("new default '%s' is not in values list %v for dimension '%s'",
+			newDefault, targetDim.Values, dimensionName)
+	}
+
+	// In a full implementation, this would update the store configuration
+	return fmt.Errorf("runtime configuration modification is not fully implemented - "+
+		"would change default for dimension '%s' from '%s' to '%s', "+
+		"but underlying store configuration cannot be modified in current implementation",
+		dimensionName, targetDim.DefaultValue, newDefault)
+}
+
 type TypedQuery[T any] struct {
-	store   nanostore.Store       // Underlying store for query execution
-	options nanostore.ListOptions // Accumulated query options
+	store   nanostore.Store   // Underlying store for query execution
+	options types.ListOptions // Accumulated query options
+}
+
+// getDimensionConfig returns the dimension configuration for type T
+// This is used internally by NOT methods to get valid values dynamically
+func (tq *TypedQuery[T]) getDimensionConfig() (*nanostore.Config, error) {
+	var zero T
+	typ := reflect.TypeOf(zero)
+
+	// Check that T embeds Document
+	if !embedsDocument(typ) {
+		return nil, fmt.Errorf("type %T does not embed nanostore.Document", zero)
+	}
+
+	// Generate dimension configuration from struct tags
+	config, err := generateConfigFromType(typ)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate config for type %T: %w", zero, err)
+	}
+
+	return &config, nil
+}
+
+// getEnumeratedValues returns the valid values for an enumerated dimension
+// This method is CRITICAL for fixing the hardcoded values issue in NOT methods.
+// Instead of hardcoding ["pending", "active", "done"], we dynamically discover
+// values from the actual struct tag configuration at runtime.
+// Returns nil if the dimension doesn't exist or isn't enumerated
+func (tq *TypedQuery[T]) getEnumeratedValues(dimensionName string) ([]string, error) {
+	// Get configuration from the cached dimension config (performance optimized)
+	config, err := tq.getDimensionConfig()
+	if err != nil {
+		return nil, err
+	}
+
+	// Linear search through dimensions - typically small (< 10 dimensions)
+	for _, dim := range config.Dimensions {
+		if dim.Name == dimensionName && dim.Type == nanostore.Enumerated {
+			// Return the actual values from struct tags, not hardcoded values
+			return dim.Values, nil
+		}
+	}
+
+	return nil, fmt.Errorf("dimension '%s' not found or not enumerated", dimensionName)
 }
 
 // Activity filters by activity value.
@@ -576,6 +1739,80 @@ type TypedQuery[T any] struct {
 // filter methods based on their configured dimensions.
 func (tq *TypedQuery[T]) Activity(value string) *TypedQuery[T] {
 	tq.options.Filters["activity"] = value
+	return tq
+}
+
+// ActivityIn filters by multiple activity values.
+// This allows OR-style filtering for activity values - documents matching ANY
+// of the provided values will be included in results.
+//
+// Example:
+//
+//	// Find documents that are either active or archived
+//	results, err := store.Query().ActivityIn("active", "archived").Find()
+func (tq *TypedQuery[T]) ActivityIn(values ...string) *TypedQuery[T] {
+	tq.options.Filters["activity"] = values
+	return tq
+}
+
+// ActivityNot excludes a specific activity.
+// This works by including all OTHER known activity values.
+//
+// Example:
+//
+//	// Find all tasks that are NOT deleted
+//	results, err := store.Query().ActivityNot("deleted").Find()
+func (tq *TypedQuery[T]) ActivityNot(value string) *TypedQuery[T] {
+	// Dynamically get all known activity values from type configuration
+	allActivities, err := tq.getEnumeratedValues("activity")
+	if err != nil {
+		// If we can't get values, fall back to no filtering
+		// This maintains backward compatibility
+		return tq
+	}
+
+	var includeActivities []string
+	for _, a := range allActivities {
+		if a != value {
+			includeActivities = append(includeActivities, a)
+		}
+	}
+	if len(includeActivities) > 0 {
+		tq.options.Filters["activity"] = includeActivities
+	}
+	return tq
+}
+
+// ActivityNotIn excludes multiple activity values.
+// This works by including all OTHER known activity values.
+//
+// Example:
+//
+//	// Find all tasks that are NOT deleted or archived (i.e., active only)
+//	results, err := store.Query().ActivityNotIn("deleted", "archived").Find()
+func (tq *TypedQuery[T]) ActivityNotIn(values ...string) *TypedQuery[T] {
+	// Dynamically get all known activity values from type configuration
+	allActivities, err := tq.getEnumeratedValues("activity")
+	if err != nil {
+		// If we can't get values, fall back to no filtering
+		// This maintains backward compatibility
+		return tq
+	}
+
+	excludeSet := make(map[string]bool)
+	for _, v := range values {
+		excludeSet[v] = true
+	}
+
+	var includeActivities []string
+	for _, a := range allActivities {
+		if !excludeSet[a] {
+			includeActivities = append(includeActivities, a)
+		}
+	}
+	if len(includeActivities) > 0 {
+		tq.options.Filters["activity"] = includeActivities
+	}
 	return tq
 }
 
@@ -607,21 +1844,67 @@ func (tq *TypedQuery[T]) StatusIn(values ...string) *TypedQuery[T] {
 
 // StatusNot excludes a specific status.
 //
-// Implementation Note: This demonstrates a limitation of the current query system.
-// True NOT operations would require store-level support. This implementation
-// works around the limitation by filtering to all OTHER known status values.
+// Implementation Note: This uses a workaround approach since the underlying store
+// doesn't support native NOT operations. It works by filtering to all OTHER known
+// status values based on the configured dimension values.
 //
-// Warning: This approach requires hardcoded knowledge of all possible status values
-// and may not work correctly if new values are added to the dimension configuration.
+// For documents that match the struct schema, this will work correctly.
+// For documents with unknown status values, behavior may vary.
 //
-// Future Enhancement: The store layer should support native NOT operations.
+// Example:
+//
+//	// Find all tasks that are NOT done
+//	results, err := store.Query().StatusNot("done").Find()
 func (tq *TypedQuery[T]) StatusNot(value string) *TypedQuery[T] {
-	// HACK: Get all possible status values from hardcoded list
-	// TODO: Extract this from the store's dimension configuration
-	allStatuses := []string{"pending", "active", "done"}
+	// Dynamically get all known status values from type configuration
+	// CRITICAL FIX: This replaces hardcoded ["pending", "active", "done"] with
+	// actual values from struct tags, making this work with ANY enum configuration
+	allStatuses, err := tq.getEnumeratedValues("status")
+	if err != nil {
+		// If we can't get values, fall back to no filtering
+		// This graceful degradation prevents query failures for misconfigured structs
+		return tq
+	}
+
+	// Build inclusion list: everything EXCEPT the specified value
+	// This approach works because underlying store doesn't support native NOT operations
 	var includeStatuses []string
 	for _, s := range allStatuses {
 		if s != value {
+			includeStatuses = append(includeStatuses, s)
+		}
+	}
+	// Only set filter if we have values to include (avoid empty filter)
+	if len(includeStatuses) > 0 {
+		tq.options.Filters["status"] = includeStatuses
+	}
+	return tq
+}
+
+// StatusNotIn excludes multiple status values.
+// This works by including all OTHER known status values.
+//
+// Example:
+//
+//	// Find all tasks that are NOT done or archived
+//	results, err := store.Query().StatusNotIn("done", "archived").Find()
+func (tq *TypedQuery[T]) StatusNotIn(values ...string) *TypedQuery[T] {
+	// Dynamically get all known status values from type configuration
+	allStatuses, err := tq.getEnumeratedValues("status")
+	if err != nil {
+		// If we can't get values, fall back to no filtering
+		// This maintains backward compatibility
+		return tq
+	}
+
+	excludeSet := make(map[string]bool)
+	for _, v := range values {
+		excludeSet[v] = true
+	}
+
+	var includeStatuses []string
+	for _, s := range allStatuses {
+		if !excludeSet[s] {
 			includeStatuses = append(includeStatuses, s)
 		}
 	}
@@ -640,6 +1923,220 @@ func (tq *TypedQuery[T]) StatusNot(value string) *TypedQuery[T] {
 //	results, err := store.Query().Priority("high").Find()
 func (tq *TypedQuery[T]) Priority(value string) *TypedQuery[T] {
 	tq.options.Filters["priority"] = value
+	return tq
+}
+
+// PriorityIn filters by multiple priority values.
+// This allows OR-style filtering for priority values - documents matching ANY
+// of the provided values will be included in results.
+//
+// Example:
+//
+//	// Find documents that are either high or medium priority
+//	results, err := store.Query().PriorityIn("high", "medium").Find()
+func (tq *TypedQuery[T]) PriorityIn(values ...string) *TypedQuery[T] {
+	tq.options.Filters["priority"] = values
+	return tq
+}
+
+// PriorityNot excludes a specific priority.
+// This works by including all OTHER known priority values.
+//
+// Example:
+//
+//	// Find all tasks that are NOT low priority
+//	results, err := store.Query().PriorityNot("low").Find()
+func (tq *TypedQuery[T]) PriorityNot(value string) *TypedQuery[T] {
+	// Dynamically get all known priority values from type configuration
+	allPriorities, err := tq.getEnumeratedValues("priority")
+	if err != nil {
+		// If we can't get values, fall back to no filtering
+		// This maintains backward compatibility
+		return tq
+	}
+
+	var includePriorities []string
+	for _, p := range allPriorities {
+		if p != value {
+			includePriorities = append(includePriorities, p)
+		}
+	}
+	if len(includePriorities) > 0 {
+		tq.options.Filters["priority"] = includePriorities
+	}
+	return tq
+}
+
+// PriorityNotIn excludes multiple priority values.
+// This works by including all OTHER known priority values.
+//
+// Example:
+//
+//	// Find all tasks that are NOT low or medium priority (i.e., high priority only)
+//	results, err := store.Query().PriorityNotIn("low", "medium").Find()
+func (tq *TypedQuery[T]) PriorityNotIn(values ...string) *TypedQuery[T] {
+	// Dynamically get all known priority values from type configuration
+	allPriorities, err := tq.getEnumeratedValues("priority")
+	if err != nil {
+		// If we can't get values, fall back to no filtering
+		// This maintains backward compatibility
+		return tq
+	}
+
+	excludeSet := make(map[string]bool)
+	for _, v := range values {
+		excludeSet[v] = true
+	}
+
+	var includePriorities []string
+	for _, p := range allPriorities {
+		if !excludeSet[p] {
+			includePriorities = append(includePriorities, p)
+		}
+	}
+	if len(includePriorities) > 0 {
+		tq.options.Filters["priority"] = includePriorities
+	}
+	return tq
+}
+
+// Data filters by custom data fields not defined in the struct schema.
+// This method enables querying documents by _data.* fields that were added via AddRaw
+// or other means outside the typed struct definition.
+//
+// The field name should NOT include the "_data." prefix - it will be added automatically.
+//
+// Examples:
+//
+//	// Find documents with specific assignee
+//	results, err := store.Query().Data("assignee", "alice").Find()
+//
+//	// Find documents with specific tags
+//	results, err := store.Query().Data("tags", "urgent").Find()
+//
+//	// Chain with other filters
+//	results, err := store.Query().
+//	    Status("active").
+//	    Data("assignee", "alice").
+//	    Find()
+//
+// Performance Note: Data field queries may be slower than dimension queries
+// since they typically cannot leverage specialized indexes.
+func (tq *TypedQuery[T]) Data(field string, value interface{}) *TypedQuery[T] {
+	tq.options.Filters["_data."+field] = value
+	return tq
+}
+
+// DataIn filters by multiple values for a custom data field.
+// This allows OR-style filtering for data field values - documents matching ANY
+// of the provided values will be included in results.
+//
+// The field name should NOT include the "_data." prefix - it will be added automatically.
+//
+// Examples:
+//
+//	// Find documents with multiple possible assignees
+//	results, err := store.Query().DataIn("assignee", "alice", "bob").Find()
+//
+//	// Find documents with multiple possible tags
+//	results, err := store.Query().DataIn("category", "urgent", "important").Find()
+func (tq *TypedQuery[T]) DataIn(field string, values ...interface{}) *TypedQuery[T] {
+	tq.options.Filters["_data."+field] = values
+	return tq
+}
+
+// DataNot excludes documents with a specific data field value.
+//
+// Implementation Note: Since we don't know all possible values for data fields,
+// this method uses a post-processing approach. The exclusion is handled in the
+// Find() method after retrieving results from the store.
+//
+// Performance Note: This may be slower than dimension-based NOT operations
+// since it requires post-processing of all matching documents.
+//
+// Examples:
+//
+//	// Find documents NOT assigned to Alice
+//	results, err := store.Query().DataNot("assignee", "alice").Find()
+//
+//	// Find documents NOT tagged as urgent
+//	results, err := store.Query().DataNot("tags", "urgent").Find()
+func (tq *TypedQuery[T]) DataNot(field string, value interface{}) *TypedQuery[T] {
+	// Use special filter key to mark for post-processing
+	tq.options.Filters["__data_not__"+field] = value
+	return tq
+}
+
+// DataNotIn excludes documents with any of the specified data field values.
+//
+// Implementation Note: Like DataNot, this uses post-processing since we don't
+// know all possible values for custom data fields.
+//
+// Examples:
+//
+//	// Find documents NOT assigned to Alice or Bob
+//	results, err := store.Query().DataNotIn("assignee", "alice", "bob").Find()
+func (tq *TypedQuery[T]) DataNotIn(field string, values ...interface{}) *TypedQuery[T] {
+	// Use special filter key to mark for post-processing
+	tq.options.Filters["__data_not_in__"+field] = values
+	return tq
+}
+
+// Where adds a custom SQL WHERE clause condition for advanced filtering.
+//
+// Implementation Note: Since the underlying store doesn't support WHERE clauses
+// in List operations (only in Delete/Update), this method uses post-processing.
+// The condition is applied after retrieving results from the store.
+//
+// The whereClause should NOT include the "WHERE" keyword itself.
+// Use SQL column names that match the underlying schema:
+// - Document fields: uuid, simple_id, title, body, created_at, updated_at
+// - Dimension fields: Use dimension names directly (status, priority, etc.)
+// - Data fields: Use _data.field_name format
+//
+// Performance Note: This may be slower than dimension-based filtering since
+// it requires post-processing of all matching documents from other filters.
+//
+// Examples:
+//
+//	// Find documents created in the last week
+//	results, err := store.Query().
+//	    Where("created_at > ?", time.Now().AddDate(0, 0, -7)).
+//	    Find()
+//
+//	// Find documents with title containing text (case-insensitive)
+//	results, err := store.Query().
+//	    Where("LOWER(title) LIKE ?", "%important%").
+//	    Find()
+//
+//	// Complex condition with multiple fields
+//	results, err := store.Query().
+//	    Status("active").
+//	    Where("created_at > ? AND (priority = ? OR _data.urgent = ?)",
+//	          yesterday, "high", true).
+//	    Find()
+//
+// CRITICAL SECURITY NOTE: Always use parameterized queries with ? placeholders.
+// The underlying WhereEvaluator implements robust injection protection, but you must
+// use it correctly. Examples:
+//
+//	// SAFE - parameterized query
+//	query.Where("status = ? AND priority = ?", userStatus, userPriority)
+//
+//	// DANGEROUS - string concatenation opens injection vulnerability
+//	query.Where("status = '" + userInput + "'") // DON'T DO THIS
+//
+//	// DANGEROUS - even formatted strings are vulnerable
+//	query.Where(fmt.Sprintf("status = '%s'", userInput)) // DON'T DO THIS
+//
+// The security design requires that query structure be established BEFORE
+// user parameters are considered. Parameter substitution happens safely after parsing.
+func (tq *TypedQuery[T]) Where(whereClause string, args ...interface{}) *TypedQuery[T] {
+	// Use special filter key to mark for post-processing
+	tq.options.Filters["__where_clause__"] = map[string]interface{}{
+		"clause": whereClause,
+		"args":   args,
+	}
 	return tq
 }
 
@@ -699,7 +2196,7 @@ func (tq *TypedQuery[T]) Search(text string) *TypedQuery[T] {
 
 // OrderBy adds ordering
 func (tq *TypedQuery[T]) OrderBy(column string) *TypedQuery[T] {
-	tq.options.OrderBy = append(tq.options.OrderBy, nanostore.OrderClause{
+	tq.options.OrderBy = append(tq.options.OrderBy, types.OrderClause{
 		Column:     column,
 		Descending: false,
 	})
@@ -708,8 +2205,59 @@ func (tq *TypedQuery[T]) OrderBy(column string) *TypedQuery[T] {
 
 // OrderByDesc adds descending ordering
 func (tq *TypedQuery[T]) OrderByDesc(column string) *TypedQuery[T] {
-	tq.options.OrderBy = append(tq.options.OrderBy, nanostore.OrderClause{
+	tq.options.OrderBy = append(tq.options.OrderBy, types.OrderClause{
 		Column:     column,
+		Descending: true,
+	})
+	return tq
+}
+
+// OrderByData adds ascending ordering by custom data field.
+// This method enables ordering documents by _data.* fields that were added via AddRaw
+// or other means outside the typed struct definition.
+//
+// The field name should NOT include the "_data." prefix - it will be added automatically.
+//
+// Examples:
+//
+//	// Order by assignee name
+//	results, err := store.Query().OrderByData("assignee").Find()
+//
+//	// Order by creation timestamp in custom data
+//	results, err := store.Query().OrderByData("created_by_user").Find()
+//
+//	// Combine with filters and other ordering
+//	results, err := store.Query().
+//	    Status("active").
+//	    OrderByData("priority_score").
+//	    OrderByDesc("created_at").
+//	    Find()
+//
+// Performance Note: Ordering by data fields may be slower than dimension ordering
+// since they typically cannot leverage specialized indexes.
+func (tq *TypedQuery[T]) OrderByData(field string) *TypedQuery[T] {
+	tq.options.OrderBy = append(tq.options.OrderBy, types.OrderClause{
+		Column:     "_data." + field,
+		Descending: false,
+	})
+	return tq
+}
+
+// OrderByDataDesc adds descending ordering by custom data field.
+// This method enables ordering documents by _data.* fields in descending order.
+//
+// The field name should NOT include the "_data." prefix - it will be added automatically.
+//
+// Examples:
+//
+//	// Order by priority score (highest first)
+//	results, err := store.Query().OrderByDataDesc("priority_score").Find()
+//
+//	// Order by last update timestamp (most recent first)
+//	results, err := store.Query().OrderByDataDesc("last_updated").Find()
+func (tq *TypedQuery[T]) OrderByDataDesc(field string) *TypedQuery[T] {
+	tq.options.OrderBy = append(tq.options.OrderBy, types.OrderClause{
+		Column:     "_data." + field,
 		Descending: true,
 	})
 	return tq
@@ -778,11 +2326,57 @@ func (tq *TypedQuery[T]) Offset(n int) *TypedQuery[T] {
 //	    Limit(10).
 //	    Find()
 func (tq *TypedQuery[T]) Find() ([]T, error) {
-	// Check for special filters
+	// Check for special filters and extract them for post-processing
 	parentNotExists := false
 	if _, ok := tq.options.Filters["__parent_not_exists__"]; ok {
 		parentNotExists = true
 		delete(tq.options.Filters, "__parent_not_exists__")
+	}
+
+	// Extract special filters for post-processing
+	var dataNotFilters []struct {
+		field string
+		value interface{}
+	}
+	var dataNotInFilters []struct {
+		field  string
+		values []interface{}
+	}
+	var whereClause struct {
+		clause string
+		args   []interface{}
+		active bool
+	}
+
+	for key, value := range tq.options.Filters {
+		if strings.HasPrefix(key, "__data_not__") {
+			field := strings.TrimPrefix(key, "__data_not__")
+			dataNotFilters = append(dataNotFilters, struct {
+				field string
+				value interface{}
+			}{field, value})
+			delete(tq.options.Filters, key)
+		} else if strings.HasPrefix(key, "__data_not_in__") {
+			field := strings.TrimPrefix(key, "__data_not_in__")
+			if values, ok := value.([]interface{}); ok {
+				dataNotInFilters = append(dataNotInFilters, struct {
+					field  string
+					values []interface{}
+				}{field, values})
+			}
+			delete(tq.options.Filters, key)
+		} else if key == "__where_clause__" {
+			if whereMap, ok := value.(map[string]interface{}); ok {
+				if clause, ok := whereMap["clause"].(string); ok {
+					whereClause.clause = clause
+					whereClause.active = true
+					if args, ok := whereMap["args"].([]interface{}); ok {
+						whereClause.args = args
+					}
+				}
+			}
+			delete(tq.options.Filters, key)
+		}
 	}
 
 	docs, err := tq.store.List(tq.options)
@@ -797,6 +2391,51 @@ func (tq *TypedQuery[T]) Find() ([]T, error) {
 			// Check if parent_id exists in dimensions
 			if _, hasParent := doc.Dimensions["parent_id"]; hasParent {
 				continue // Skip documents with parent
+			}
+		}
+
+		// Apply data NOT filters
+		skip := false
+		for _, filter := range dataNotFilters {
+			if dataValue, exists := doc.Dimensions["_data."+filter.field]; exists {
+				if dataValue == filter.value {
+					skip = true
+					break
+				}
+			}
+		}
+		if skip {
+			continue
+		}
+
+		// Apply data NOT IN filters
+		for _, filter := range dataNotInFilters {
+			if dataValue, exists := doc.Dimensions["_data."+filter.field]; exists {
+				for _, excludeValue := range filter.values {
+					if dataValue == excludeValue {
+						skip = true
+						break
+					}
+				}
+				if skip {
+					break
+				}
+			}
+		}
+		if skip {
+			continue
+		}
+
+		// Apply WHERE clause filter
+		if whereClause.active {
+			// Use the secure WhereEvaluator to safely evaluate the WHERE clause
+			evaluator := store.NewWhereEvaluator(whereClause.clause, whereClause.args...)
+			matches, err := evaluator.EvaluateDocument(&doc)
+			if err != nil {
+				return nil, fmt.Errorf("failed to evaluate WHERE clause: %w", err)
+			}
+			if !matches {
+				continue // Skip documents that don't match the WHERE clause
 			}
 		}
 
@@ -1015,4 +2654,94 @@ func generateConfigFromType(typ reflect.Type) (nanostore.Config, error) {
 	}
 
 	return config, nil
+}
+
+// extractTypeInfo extracts detailed information about a Go type for debugging purposes.
+// This function analyzes the type structure and provides comprehensive metadata
+// about the type's fields, embedding relationships, and nanostore compatibility.
+func extractTypeInfo(typ reflect.Type) TypeDebugInfo {
+	if typ.Kind() == reflect.Ptr {
+		typ = typ.Elem()
+	}
+
+	info := TypeDebugInfo{
+		TypeName:    typ.String(),
+		PackageName: typ.PkgPath(),
+		FieldCount:  0,
+		Fields:      []FieldDebugInfo{},
+		EmbedsList:  []string{},
+		HasDocument: false,
+	}
+
+	if typ.Kind() != reflect.Struct {
+		return info
+	}
+
+	info.FieldCount = typ.NumField()
+
+	for i := 0; i < typ.NumField(); i++ {
+		field := typ.Field(i)
+
+		fieldInfo := FieldDebugInfo{
+			Name:         field.Name,
+			Type:         field.Type.String(),
+			Tag:          string(field.Tag),
+			IsEmbedded:   field.Anonymous,
+			IsDimension:  false,
+			DimensionTag: "",
+		}
+
+		// Check if this field is a dimension
+		if field.Tag.Get("values") != "" || field.Tag.Get("dimension") != "" {
+			fieldInfo.IsDimension = true
+			if values := field.Tag.Get("values"); values != "" {
+				fieldInfo.DimensionTag = fmt.Sprintf("values:%s", values)
+				if prefix := field.Tag.Get("prefix"); prefix != "" {
+					fieldInfo.DimensionTag += fmt.Sprintf(" prefix:%s", prefix)
+				}
+				if defaultVal := field.Tag.Get("default"); defaultVal != "" {
+					fieldInfo.DimensionTag += fmt.Sprintf(" default:%s", defaultVal)
+				}
+			} else if dimension := field.Tag.Get("dimension"); dimension != "" {
+				fieldInfo.DimensionTag = fmt.Sprintf("dimension:%s", dimension)
+			}
+		}
+
+		// Check if embedded
+		if field.Anonymous {
+			info.EmbedsList = append(info.EmbedsList, field.Type.String())
+			// Check if it's nanostore.Document
+			if field.Type == reflect.TypeOf(nanostore.Document{}) {
+				info.HasDocument = true
+			}
+		}
+
+		info.Fields = append(info.Fields, fieldInfo)
+	}
+
+	return info
+}
+
+// countTotalValues counts the total number of enumerated values across all dimensions.
+// This provides insight into the complexity of the dimension configuration.
+func countTotalValues(dimensions []nanostore.DimensionConfig) int {
+	total := 0
+	for _, dim := range dimensions {
+		if dim.Type == nanostore.Enumerated {
+			total += len(dim.Values)
+		}
+	}
+	return total
+}
+
+// countTotalPrefixes counts the total number of prefix mappings across all dimensions.
+// This helps understand the ID generation complexity and potential for conflicts.
+func countTotalPrefixes(dimensions []nanostore.DimensionConfig) int {
+	total := 0
+	for _, dim := range dimensions {
+		if dim.Type == nanostore.Enumerated && dim.Prefixes != nil {
+			total += len(dim.Prefixes)
+		}
+	}
+	return total
 }

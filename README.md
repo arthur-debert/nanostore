@@ -41,7 +41,10 @@ $ todo list
 ### Type-Safe API with Struct Tags
 
 ```go
-import "github.com/arthur-debert/nanostore/nanostore"
+import (
+    "github.com/arthur-debert/nanostore/nanostore"
+    "github.com/arthur-debert/nanostore/nanostore/api"
+)
 
 // Define your data model with struct tags
 type TodoItem struct {
@@ -58,7 +61,7 @@ type TodoItem struct {
 }
 
 // Create typed store - configuration generated automatically from struct tags
-store, err := nanostore.NewFromType[TodoItem]("todos.json")
+store, err := api.NewFromType[TodoItem]("todos.json")
 if err != nil {
     log.Fatal(err)
 }

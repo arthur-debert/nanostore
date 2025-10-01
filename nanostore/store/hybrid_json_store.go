@@ -720,12 +720,172 @@ func (s *hybridJSONFileStore) UpdateByDimension(filters map[string]interface{}, 
 
 // DeleteWhere removes documents matching a WHERE clause
 func (s *hybridJSONFileStore) DeleteWhere(whereClause string, args ...interface{}) (int, error) {
-	return 0, errors.New("DeleteWhere not supported in hybrid JSON store")
+	if strings.TrimSpace(whereClause) == "" {
+		return 0, errors.New("WHERE clause cannot be empty")
+	}
+
+	evaluator := NewWhereEvaluator(whereClause, args...)
+
+	result, err := s.lockManager.ExecuteWithResult(storage.WriteOperation, func() (interface{}, error) {
+		// Load current data
+		err := s.loadWithLock()
+		if err != nil {
+			return 0, fmt.Errorf("failed to load data: %w", err)
+		}
+
+		var matchingUUIDs []string
+
+		// Find documents that match the WHERE clause
+		for _, hybridDoc := range s.hybridData.Documents {
+			// Convert HybridDocument to types.Document for evaluation
+			doc := types.Document{
+				UUID:       hybridDoc.UUID,
+				SimpleID:   hybridDoc.SimpleID,
+				Title:      hybridDoc.Title,
+				Body:       hybridDoc.Body,
+				CreatedAt:  hybridDoc.CreatedAt,
+				UpdatedAt:  hybridDoc.UpdatedAt,
+				Dimensions: hybridDoc.Dimensions,
+			}
+
+			matches, err := evaluator.EvaluateDocument(&doc)
+			if err != nil {
+				return 0, fmt.Errorf("failed to evaluate WHERE clause for document %s: %w", doc.UUID, err)
+			}
+			if matches {
+				matchingUUIDs = append(matchingUUIDs, doc.UUID)
+			}
+		}
+
+		if len(matchingUUIDs) == 0 {
+			return 0, nil // No matching documents
+		}
+
+		// Delete matching documents
+		deletedCount := 0
+		filteredDocs := make([]HybridDocument, 0, len(s.hybridData.Documents)-len(matchingUUIDs))
+
+		for _, doc := range s.hybridData.Documents {
+			found := false
+			for _, uuid := range matchingUUIDs {
+				if doc.UUID == uuid {
+					found = true
+					deletedCount++
+					break
+				}
+			}
+			if !found {
+				filteredDocs = append(filteredDocs, doc)
+			}
+		}
+
+		s.hybridData.Documents = filteredDocs
+
+		// Save the updated data
+		err = s.saveWithLock()
+		if err != nil {
+			return 0, fmt.Errorf("failed to save data after deletion: %w", err)
+		}
+
+		return deletedCount, nil
+	})
+
+	if err != nil {
+		return 0, err
+	}
+
+	return result.(int), nil
 }
 
-// UpdateWhere is not supported in the hybrid JSON store
+// UpdateWhere updates documents matching a custom WHERE clause
 func (s *hybridJSONFileStore) UpdateWhere(whereClause string, updates types.UpdateRequest, args ...interface{}) (int, error) {
-	return 0, errors.New("UpdateWhere not supported in hybrid JSON store")
+	if strings.TrimSpace(whereClause) == "" {
+		return 0, errors.New("WHERE clause cannot be empty")
+	}
+
+	evaluator := NewWhereEvaluator(whereClause, args...)
+
+	result, err := s.lockManager.ExecuteWithResult(storage.WriteOperation, func() (interface{}, error) {
+		// Load current data
+		err := s.loadWithLock()
+		if err != nil {
+			return 0, fmt.Errorf("failed to load data: %w", err)
+		}
+
+		// Validate update dimensions if provided
+		if updates.Dimensions != nil {
+			for name, value := range updates.Dimensions {
+				// Skip validation for _data fields - they can be any type
+				if strings.HasPrefix(name, "_data.") {
+					continue
+				}
+				if value != nil {
+					if err := validation.ValidateSimpleType(value, name); err != nil {
+						return 0, err
+					}
+				}
+			}
+		}
+
+		updatedCount := 0
+
+		// Update documents that match the WHERE clause
+		for i, hybridDoc := range s.hybridData.Documents {
+			// Convert HybridDocument to types.Document for evaluation
+			doc := types.Document{
+				UUID:       hybridDoc.UUID,
+				SimpleID:   hybridDoc.SimpleID,
+				Title:      hybridDoc.Title,
+				Body:       hybridDoc.Body,
+				CreatedAt:  hybridDoc.CreatedAt,
+				UpdatedAt:  hybridDoc.UpdatedAt,
+				Dimensions: hybridDoc.Dimensions,
+			}
+
+			matches, err := evaluator.EvaluateDocument(&doc)
+			if err != nil {
+				return 0, fmt.Errorf("failed to evaluate WHERE clause for document %s: %w", doc.UUID, err)
+			}
+
+			if matches {
+				// Apply updates to this document
+				if updates.Title != nil {
+					s.hybridData.Documents[i].Title = *updates.Title
+				}
+				if updates.Body != nil {
+					s.hybridData.Documents[i].Body = *updates.Body
+				}
+				if updates.Dimensions != nil {
+					// Update dimensions
+					for key, value := range updates.Dimensions {
+						if s.hybridData.Documents[i].Dimensions == nil {
+							s.hybridData.Documents[i].Dimensions = make(map[string]interface{})
+						}
+						s.hybridData.Documents[i].Dimensions[key] = value
+					}
+				}
+				// Update timestamp
+				s.hybridData.Documents[i].UpdatedAt = s.timeFunc()
+				updatedCount++
+			}
+		}
+
+		if updatedCount > 0 {
+			// Save the updated data
+			err = s.saveWithLock()
+			if err != nil {
+				return 0, fmt.Errorf("failed to save data after update: %w", err)
+			}
+		}
+
+		return updatedCount, nil
+	})
+
+	if err != nil {
+		return 0, err
+	}
+
+	return result.(int), nil
 }
 
 // UpdateByUUIDs updates multiple documents by their UUIDs in a single operation
