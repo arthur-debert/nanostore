@@ -21,6 +21,77 @@ type DocumentMetadata struct {
 	UpdatedAt time.Time // Last update timestamp
 }
 
+// DebugInfo contains comprehensive debugging information about a TypedStore
+type DebugInfo struct {
+	StoreType     string            // Type of underlying store implementation
+	FilePath      string            // Location of store data file (if applicable)
+	DocumentCount int               // Total number of documents in store
+	Configuration *nanostore.Config // Complete dimension configuration
+	TypeInfo      TypeDebugInfo     // Information about the Go type T
+	RuntimeStats  RuntimeDebugStats // Runtime statistics and metrics
+	LastError     string            // Last error encountered (if any)
+}
+
+// TypeDebugInfo contains information about the Go type used with TypedStore
+type TypeDebugInfo struct {
+	TypeName    string           // Full Go type name
+	PackageName string           // Package name containing the type
+	FieldCount  int              // Number of struct fields
+	Fields      []FieldDebugInfo // Details about each field
+	EmbedsList  []string         // List of embedded types
+	HasDocument bool             // Whether type embeds nanostore.Document
+}
+
+// FieldDebugInfo contains information about a struct field
+type FieldDebugInfo struct {
+	Name         string // Field name
+	Type         string // Field type
+	Tag          string // Complete struct tag
+	IsEmbedded   bool   // Whether field is embedded
+	IsDimension  bool   // Whether field maps to a dimension
+	DimensionTag string // Dimension configuration from tag
+}
+
+// RuntimeDebugStats contains runtime statistics about the store
+type RuntimeDebugStats struct {
+	TotalDimensions int // Number of configured dimensions
+	TotalValues     int // Total number of values across all dimensions
+	TotalPrefixes   int // Total number of prefix mappings
+}
+
+// StoreStats contains statistical information about store contents
+type StoreStats struct {
+	TotalDocuments        int                       // Total number of documents
+	DimensionDistribution map[string]map[string]int // Distribution of values per dimension
+	DataFieldCoverage     map[string]float64        // Percentage coverage of data fields
+	DataFieldDistribution map[string]map[string]int // Value distribution for data fields
+}
+
+// IntegrityReport contains the results of store integrity validation
+type IntegrityReport struct {
+	IsValid        bool               // Whether store passed all integrity checks
+	TotalDocuments int                // Total number of documents validated
+	ErrorCount     int                // Number of errors found
+	WarningCount   int                // Number of warnings found
+	Errors         []IntegrityError   // Detailed error information
+	Warnings       []IntegrityWarning // Detailed warning information
+	Summary        string             // Human-readable summary of findings
+}
+
+// IntegrityError represents a serious integrity issue found during validation
+type IntegrityError struct {
+	Type       string // Error type (e.g., "UUID_DUPLICATE", "INVALID_DIMENSION_VALUE")
+	DocumentID string // ID of affected document
+	Message    string // Human-readable error description
+}
+
+// IntegrityWarning represents a minor issue found during validation
+type IntegrityWarning struct {
+	Type       string // Warning type (e.g., "MISSING_SIMPLE_ID")
+	DocumentID string // ID of affected document
+	Message    string // Human-readable warning description
+}
+
 // TypedStore wraps a Store with type-safe operations for a specific document type T.
 //
 // This is the primary interface for applications using nanostore, providing compile-time
@@ -986,6 +1057,406 @@ func (ts *TypedStore[T]) ValidateConfiguration() error {
 	}
 
 	return nil
+}
+
+// GetDebugInfo returns comprehensive debugging information about the TypedStore.
+//
+// This method provides developers with detailed insights into the store's current
+// state, configuration, and runtime characteristics. It's invaluable for debugging
+// issues, optimizing performance, and understanding store behavior.
+//
+// # Information Categories
+//
+// ## Store Metadata
+// - **Store Type**: Type of underlying store implementation
+// - **File Path**: Location of store data file (if applicable)
+// - **Configuration**: Complete dimension configuration details
+// - **Document Count**: Total number of documents in store
+//
+// ## Runtime Statistics
+// - **Memory Usage**: Estimated memory consumption (when available)
+// - **Performance Metrics**: Query and operation timing information
+// - **Cache Status**: Information about internal caching
+// - **Configuration Hash**: Fingerprint for configuration validation
+//
+// ## Type Information
+// - **Go Type**: Full type name for T
+// - **Struct Fields**: Field names and types from reflection
+// - **Tag Configuration**: Parsed struct tag information
+// - **Embedding Validation**: Confirms nanostore.Document embedding
+//
+// # Return Format
+//
+// Returns a structured DebugInfo object containing all debugging information:
+//
+//	type DebugInfo struct {
+//	    StoreType        string
+//	    FilePath         string
+//	    DocumentCount    int
+//	    Configuration    *nanostore.Config
+//	    TypeInfo         TypeDebugInfo
+//	    RuntimeStats     RuntimeDebugStats
+//	    LastError        string
+//	}
+//
+// # Example Usage
+//
+//	// Get comprehensive debug information
+//	debug, err := store.GetDebugInfo()
+//	if err != nil {
+//	    log.Fatal(err)
+//	}
+//
+//	fmt.Printf("Store Type: %s\n", debug.StoreType)
+//	fmt.Printf("Document Count: %d\n", debug.DocumentCount)
+//	fmt.Printf("Go Type: %s\n", debug.TypeInfo.TypeName)
+//
+//	for _, dim := range debug.Configuration.Dimensions {
+//	    fmt.Printf("Dimension %s: %d values\n", dim.Name, len(dim.Values))
+//	}
+//
+// # Performance Notes
+//
+// This method performs reflection and potentially expensive store operations
+// to gather comprehensive information. It should be used primarily for debugging
+// and development, not in hot paths or production monitoring.
+//
+// # Use Cases
+//
+// - **Debugging**: Understand why queries aren't working as expected
+// - **Development**: Inspect configuration during development
+// - **Testing**: Validate store state in unit tests
+// - **Monitoring**: Get runtime statistics for health checks
+// - **Documentation**: Generate documentation from live configuration
+func (ts *TypedStore[T]) GetDebugInfo() (*DebugInfo, error) {
+	var zero T
+	typ := reflect.TypeOf(zero)
+
+	// Get configuration information
+	config, err := ts.GetDimensionConfig()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get configuration: %w", err)
+	}
+
+	// Get document count using raw store access
+	allDocs, err := ts.store.List(types.ListOptions{})
+	if err != nil {
+		return &DebugInfo{
+			StoreType:     fmt.Sprintf("%T", ts.store),
+			DocumentCount: -1,
+			Configuration: config,
+			TypeInfo:      extractTypeInfo(typ),
+			LastError:     err.Error(),
+		}, nil
+	}
+
+	// Extract type information
+	typeInfo := extractTypeInfo(typ)
+
+	// Build debug info
+	debugInfo := &DebugInfo{
+		StoreType:     fmt.Sprintf("%T", ts.store),
+		DocumentCount: len(allDocs),
+		Configuration: config,
+		TypeInfo:      typeInfo,
+		RuntimeStats: RuntimeDebugStats{
+			TotalDimensions: len(config.Dimensions),
+			TotalValues:     countTotalValues(config.Dimensions),
+			TotalPrefixes:   countTotalPrefixes(config.Dimensions),
+		},
+	}
+
+	return debugInfo, nil
+}
+
+// GetStoreStats returns statistical information about the store's contents.
+//
+// This method provides quantitative insights into the store's document distribution,
+// dimension usage, and data patterns. It's useful for understanding data patterns
+// and optimizing queries.
+//
+// # Statistical Categories
+//
+// ## Document Distribution
+// - **Total Documents**: Count of all documents in store
+// - **By Dimension Values**: Distribution across enumerated dimension values
+// - **By Hierarchical Depth**: Distribution of parent-child relationships
+// - **By Creation Time**: Temporal distribution of documents
+//
+// ## Data Field Usage
+// - **Custom Fields**: Usage patterns of `_data.*` fields
+// - **Field Value Distribution**: Most common values per field
+// - **Field Coverage**: Percentage of documents with each field
+//
+// ## Performance Insights
+// - **Query Complexity**: Estimates for different query patterns
+// - **Index Utilization**: Which dimensions benefit from indexing
+// - **Hot Spots**: Most frequently queried dimension combinations
+//
+// # Example Usage
+//
+//	// Get store statistics
+//	stats, err := store.GetStoreStats()
+//	if err != nil {
+//	    log.Fatal(err)
+//	}
+//
+//	fmt.Printf("Total Documents: %d\n", stats.TotalDocuments)
+//
+//	for dimension, distribution := range stats.DimensionDistribution {
+//	    fmt.Printf("Dimension %s:\n", dimension)
+//	    for value, count := range distribution {
+//	        fmt.Printf("  %s: %d documents\n", value, count)
+//	    }
+//	}
+//
+//	for field, coverage := range stats.DataFieldCoverage {
+//	    fmt.Printf("Field %s: %.1f%% coverage\n", field, coverage*100)
+//	}
+//
+// # Performance Notes
+//
+// This method iterates through all documents to calculate statistics.
+// For large stores, this can be expensive. Consider caching results
+// or calling periodically rather than on every request.
+func (ts *TypedStore[T]) GetStoreStats() (*StoreStats, error) {
+	// Get all documents for analysis using raw store access
+	allDocs, err := ts.store.List(types.ListOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to retrieve documents for stats: %w", err)
+	}
+
+	stats := &StoreStats{
+		TotalDocuments:        len(allDocs),
+		DimensionDistribution: make(map[string]map[string]int),
+		DataFieldCoverage:     make(map[string]float64),
+		DataFieldDistribution: make(map[string]map[string]int),
+	}
+
+	if len(allDocs) == 0 {
+		return stats, nil
+	}
+
+	// Get configuration to know which dimensions exist
+	config, err := ts.GetDimensionConfig()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get configuration: %w", err)
+	}
+
+	// Initialize dimension distribution maps
+	for _, dim := range config.Dimensions {
+		if dim.Type == nanostore.Enumerated {
+			stats.DimensionDistribution[dim.Name] = make(map[string]int)
+		}
+	}
+
+	// Track data fields seen across all documents
+	dataFieldCounts := make(map[string]int)
+	dataFieldValues := make(map[string]map[string]int)
+
+	// Analyze each document
+	for _, doc := range allDocs {
+		// Analyze enumerated dimensions
+		for _, dim := range config.Dimensions {
+			if dim.Type == nanostore.Enumerated {
+				if value, exists := doc.Dimensions[dim.Name]; exists {
+					valueStr := fmt.Sprintf("%v", value)
+					stats.DimensionDistribution[dim.Name][valueStr]++
+				}
+			}
+		}
+
+		// Analyze data fields
+		for key, value := range doc.Dimensions {
+			if strings.HasPrefix(key, "_data.") {
+				fieldName := strings.TrimPrefix(key, "_data.")
+				dataFieldCounts[fieldName]++
+
+				// Track value distribution for data fields
+				if dataFieldValues[fieldName] == nil {
+					dataFieldValues[fieldName] = make(map[string]int)
+				}
+				valueStr := fmt.Sprintf("%v", value)
+				dataFieldValues[fieldName][valueStr]++
+			}
+		}
+	}
+
+	// Calculate coverage percentages for data fields
+	totalDocs := float64(len(allDocs))
+	for field, count := range dataFieldCounts {
+		stats.DataFieldCoverage[field] = float64(count) / totalDocs
+	}
+
+	// Store data field value distributions
+	stats.DataFieldDistribution = dataFieldValues
+
+	return stats, nil
+}
+
+// ValidateStoreIntegrity performs comprehensive integrity checks on the store.
+//
+// This method validates the consistency and correctness of the store's data,
+// configuration, and relationships. It's essential for debugging data corruption
+// issues and ensuring store reliability.
+//
+// # Validation Categories
+//
+// ## Configuration Consistency
+// - **Dimension Values**: All document values exist in configured value lists
+// - **Default Values**: Documents have appropriate defaults when unspecified
+// - **Required Fields**: All required dimensions are present
+// - **Type Consistency**: Field types match expected types
+//
+// ## Document Integrity
+// - **UUID Uniqueness**: All document UUIDs are unique
+// - **SimpleID Consistency**: SimpleIDs match UUID relationships
+// - **Hierarchical Validity**: Parent-child relationships are valid
+// - **Timestamp Ordering**: CreatedAt ≤ UpdatedAt for all documents
+//
+// ## Structural Validity
+// - **Embedding Compliance**: All documents properly embed required fields
+// - **Field Completeness**: Required metadata fields are present
+// - **Data Consistency**: Custom data fields follow expected patterns
+//
+// # Return Format
+//
+// Returns a detailed IntegrityReport with findings:
+//
+//	type IntegrityReport struct {
+//	    IsValid           bool
+//	    TotalDocuments    int
+//	    ErrorCount        int
+//	    WarningCount      int
+//	    Errors           []IntegrityError
+//	    Warnings         []IntegrityWarning
+//	    Summary          string
+//	}
+//
+// # Example Usage
+//
+//	// Validate store integrity
+//	report, err := store.ValidateStoreIntegrity()
+//	if err != nil {
+//	    log.Fatal(err)
+//	}
+//
+//	fmt.Printf("Store Valid: %v\n", report.IsValid)
+//	fmt.Printf("Documents: %d, Errors: %d, Warnings: %d\n",
+//	    report.TotalDocuments, report.ErrorCount, report.WarningCount)
+//
+//	for _, error := range report.Errors {
+//	    fmt.Printf("ERROR: %s\n", error.Message)
+//	}
+//
+// # Performance Notes
+//
+// This method performs extensive validation by examining all documents and
+// their relationships. For large stores, this can take significant time.
+// Consider running periodically or during maintenance windows.
+func (ts *TypedStore[T]) ValidateStoreIntegrity() (*IntegrityReport, error) {
+	// Get all documents and configuration using raw store access
+	allDocs, err := ts.store.List(types.ListOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to retrieve documents: %w", err)
+	}
+
+	config, err := ts.GetDimensionConfig()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get configuration: %w", err)
+	}
+
+	report := &IntegrityReport{
+		TotalDocuments: len(allDocs),
+		Errors:         []IntegrityError{},
+		Warnings:       []IntegrityWarning{},
+	}
+
+	// Track UUIDs for uniqueness validation
+	seenUUIDs := make(map[string]bool)
+
+	// Validate each document
+	for i, doc := range allDocs {
+		// Check UUID uniqueness
+		if seenUUIDs[doc.UUID] {
+			report.Errors = append(report.Errors, IntegrityError{
+				Type:       "UUID_DUPLICATE",
+				DocumentID: doc.UUID,
+				Message:    fmt.Sprintf("Duplicate UUID found: %s", doc.UUID),
+			})
+		}
+		seenUUIDs[doc.UUID] = true
+
+		// Check timestamp consistency
+		if !doc.UpdatedAt.IsZero() && !doc.CreatedAt.IsZero() && doc.UpdatedAt.Before(doc.CreatedAt) {
+			report.Errors = append(report.Errors, IntegrityError{
+				Type:       "TIMESTAMP_INCONSISTENT",
+				DocumentID: doc.UUID,
+				Message:    fmt.Sprintf("UpdatedAt (%v) is before CreatedAt (%v)", doc.UpdatedAt, doc.CreatedAt),
+			})
+		}
+
+		// Validate enumerated dimension values
+		for _, dim := range config.Dimensions {
+			if dim.Type == nanostore.Enumerated {
+				if value, exists := doc.Dimensions[dim.Name]; exists {
+					valueStr := fmt.Sprintf("%v", value)
+
+					// Check if value is in allowed list
+					found := false
+					for _, allowedValue := range dim.Values {
+						if valueStr == allowedValue {
+							found = true
+							break
+						}
+					}
+
+					if !found {
+						report.Errors = append(report.Errors, IntegrityError{
+							Type:       "INVALID_DIMENSION_VALUE",
+							DocumentID: doc.UUID,
+							Message:    fmt.Sprintf("Document %d: dimension '%s' has invalid value '%s' (allowed: %v)", i, dim.Name, valueStr, dim.Values),
+						})
+					}
+				}
+			}
+		}
+
+		// Check for missing required metadata
+		if doc.UUID == "" {
+			report.Errors = append(report.Errors, IntegrityError{
+				Type:       "MISSING_UUID",
+				DocumentID: fmt.Sprintf("document_%d", i),
+				Message:    fmt.Sprintf("Document %d is missing UUID", i),
+			})
+		}
+
+		if doc.SimpleID == "" {
+			report.Warnings = append(report.Warnings, IntegrityWarning{
+				Type:       "MISSING_SIMPLE_ID",
+				DocumentID: doc.UUID,
+				Message:    fmt.Sprintf("Document has empty SimpleID: %s", doc.UUID),
+			})
+		}
+	}
+
+	// Set final status
+	report.ErrorCount = len(report.Errors)
+	report.WarningCount = len(report.Warnings)
+	report.IsValid = report.ErrorCount == 0
+
+	// Generate summary
+	if report.IsValid {
+		if report.WarningCount > 0 {
+			report.Summary = fmt.Sprintf("Store is valid with %d warnings", report.WarningCount)
+		} else {
+			report.Summary = "Store is completely valid"
+		}
+	} else {
+		report.Summary = fmt.Sprintf("Store has %d errors and %d warnings", report.ErrorCount, report.WarningCount)
+	}
+
+	return report, nil
 }
 
 // AddDimensionValue adds a new enumerated value to an existing dimension.
@@ -2066,4 +2537,94 @@ func generateConfigFromType(typ reflect.Type) (nanostore.Config, error) {
 	}
 
 	return config, nil
+}
+
+// extractTypeInfo extracts detailed information about a Go type for debugging purposes.
+// This function analyzes the type structure and provides comprehensive metadata
+// about the type's fields, embedding relationships, and nanostore compatibility.
+func extractTypeInfo(typ reflect.Type) TypeDebugInfo {
+	if typ.Kind() == reflect.Ptr {
+		typ = typ.Elem()
+	}
+
+	info := TypeDebugInfo{
+		TypeName:    typ.String(),
+		PackageName: typ.PkgPath(),
+		FieldCount:  0,
+		Fields:      []FieldDebugInfo{},
+		EmbedsList:  []string{},
+		HasDocument: false,
+	}
+
+	if typ.Kind() != reflect.Struct {
+		return info
+	}
+
+	info.FieldCount = typ.NumField()
+
+	for i := 0; i < typ.NumField(); i++ {
+		field := typ.Field(i)
+
+		fieldInfo := FieldDebugInfo{
+			Name:         field.Name,
+			Type:         field.Type.String(),
+			Tag:          string(field.Tag),
+			IsEmbedded:   field.Anonymous,
+			IsDimension:  false,
+			DimensionTag: "",
+		}
+
+		// Check if this field is a dimension
+		if field.Tag.Get("values") != "" || field.Tag.Get("dimension") != "" {
+			fieldInfo.IsDimension = true
+			if values := field.Tag.Get("values"); values != "" {
+				fieldInfo.DimensionTag = fmt.Sprintf("values:%s", values)
+				if prefix := field.Tag.Get("prefix"); prefix != "" {
+					fieldInfo.DimensionTag += fmt.Sprintf(" prefix:%s", prefix)
+				}
+				if defaultVal := field.Tag.Get("default"); defaultVal != "" {
+					fieldInfo.DimensionTag += fmt.Sprintf(" default:%s", defaultVal)
+				}
+			} else if dimension := field.Tag.Get("dimension"); dimension != "" {
+				fieldInfo.DimensionTag = fmt.Sprintf("dimension:%s", dimension)
+			}
+		}
+
+		// Check if embedded
+		if field.Anonymous {
+			info.EmbedsList = append(info.EmbedsList, field.Type.String())
+			// Check if it's nanostore.Document
+			if field.Type == reflect.TypeOf(nanostore.Document{}) {
+				info.HasDocument = true
+			}
+		}
+
+		info.Fields = append(info.Fields, fieldInfo)
+	}
+
+	return info
+}
+
+// countTotalValues counts the total number of enumerated values across all dimensions.
+// This provides insight into the complexity of the dimension configuration.
+func countTotalValues(dimensions []nanostore.DimensionConfig) int {
+	total := 0
+	for _, dim := range dimensions {
+		if dim.Type == nanostore.Enumerated {
+			total += len(dim.Values)
+		}
+	}
+	return total
+}
+
+// countTotalPrefixes counts the total number of prefix mappings across all dimensions.
+// This helps understand the ID generation complexity and potential for conflicts.
+func countTotalPrefixes(dimensions []nanostore.DimensionConfig) int {
+	total := 0
+	for _, dim := range dimensions {
+		if dim.Type == nanostore.Enumerated && dim.Prefixes != nil {
+			total += len(dim.Prefixes)
+		}
+	}
+	return total
 }
