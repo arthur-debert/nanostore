@@ -406,11 +406,12 @@ func (ts *TypedStore[T]) Get(id string) (*T, error) {
 	return &result, nil
 }
 
-// Update modifies an existing document with typed data
-func (ts *TypedStore[T]) Update(id string, data *T) error {
+// buildUpdateRequest creates an UpdateRequest from typed data
+// This helper eliminates code duplication across Update methods
+func (ts *TypedStore[T]) buildUpdateRequest(data *T) (nanostore.UpdateRequest, error) {
 	dimensions, extraData, err := MarshalDimensions(data)
 	if err != nil {
-		return fmt.Errorf("failed to marshal dimensions: %w", err)
+		return nanostore.UpdateRequest{}, fmt.Errorf("failed to marshal dimensions: %w", err)
 	}
 
 	// Store extra data in dimensions with a special prefix
@@ -432,6 +433,16 @@ func (ts *TypedStore[T]) Update(id string, data *T) error {
 		if doc.Body != "" {
 			req.Body = &doc.Body
 		}
+	}
+
+	return req, nil
+}
+
+// Update modifies an existing document with typed data
+func (ts *TypedStore[T]) Update(id string, data *T) error {
+	req, err := ts.buildUpdateRequest(data)
+	if err != nil {
+		return err
 	}
 
 	return ts.store.Update(id, req)
@@ -459,30 +470,9 @@ func (ts *TypedStore[T]) DeleteWhere(whereClause string, args ...interface{}) (i
 // UpdateByDimension updates all documents matching the given dimension filters
 // Multiple filters are combined with AND. Returns the number of documents updated.
 func (ts *TypedStore[T]) UpdateByDimension(filters map[string]interface{}, data *T) (int, error) {
-	dimensions, extraData, err := MarshalDimensions(data)
+	req, err := ts.buildUpdateRequest(data)
 	if err != nil {
-		return 0, fmt.Errorf("failed to marshal dimensions: %w", err)
-	}
-
-	// Store extra data in dimensions with a special prefix
-	for key, value := range extraData {
-		dimensions["_data."+key] = value
-	}
-
-	// Extract title and body if they're set
-	var req nanostore.UpdateRequest
-	req.Dimensions = dimensions
-
-	// Use reflection to check if Title or Body fields are set
-	val := reflect.ValueOf(data).Elem()
-	if docField := val.FieldByName("Document"); docField.IsValid() {
-		doc := docField.Interface().(nanostore.Document)
-		if doc.Title != "" {
-			req.Title = &doc.Title
-		}
-		if doc.Body != "" {
-			req.Body = &doc.Body
-		}
+		return 0, err
 	}
 
 	return ts.store.UpdateByDimension(filters, req)
@@ -493,30 +483,9 @@ func (ts *TypedStore[T]) UpdateByDimension(filters map[string]interface{}, data 
 // Use with caution as it allows arbitrary SQL conditions.
 // Returns the number of documents updated.
 func (ts *TypedStore[T]) UpdateWhere(whereClause string, data *T, args ...interface{}) (int, error) {
-	dimensions, extraData, err := MarshalDimensions(data)
+	req, err := ts.buildUpdateRequest(data)
 	if err != nil {
-		return 0, fmt.Errorf("failed to marshal dimensions: %w", err)
-	}
-
-	// Store extra data in dimensions with a special prefix
-	for key, value := range extraData {
-		dimensions["_data."+key] = value
-	}
-
-	// Extract title and body if they're set
-	var req nanostore.UpdateRequest
-	req.Dimensions = dimensions
-
-	// Use reflection to check if Title or Body fields are set
-	val := reflect.ValueOf(data).Elem()
-	if docField := val.FieldByName("Document"); docField.IsValid() {
-		doc := docField.Interface().(nanostore.Document)
-		if doc.Title != "" {
-			req.Title = &doc.Title
-		}
-		if doc.Body != "" {
-			req.Body = &doc.Body
-		}
+		return 0, err
 	}
 
 	return ts.store.UpdateWhere(whereClause, req, args...)
@@ -525,30 +494,9 @@ func (ts *TypedStore[T]) UpdateWhere(whereClause string, data *T, args ...interf
 // UpdateByUUIDs updates multiple documents by their UUIDs in a single operation
 // Returns the number of documents updated.
 func (ts *TypedStore[T]) UpdateByUUIDs(uuids []string, data *T) (int, error) {
-	dimensions, extraData, err := MarshalDimensions(data)
+	req, err := ts.buildUpdateRequest(data)
 	if err != nil {
-		return 0, fmt.Errorf("failed to marshal dimensions: %w", err)
-	}
-
-	// Store extra data in dimensions with a special prefix
-	for key, value := range extraData {
-		dimensions["_data."+key] = value
-	}
-
-	// Extract title and body if they're set
-	var req nanostore.UpdateRequest
-	req.Dimensions = dimensions
-
-	// Use reflection to check if Title or Body fields are set
-	val := reflect.ValueOf(data).Elem()
-	if docField := val.FieldByName("Document"); docField.IsValid() {
-		doc := docField.Interface().(nanostore.Document)
-		if doc.Title != "" {
-			req.Title = &doc.Title
-		}
-		if doc.Body != "" {
-			req.Body = &doc.Body
-		}
+		return 0, err
 	}
 
 	return ts.store.UpdateByUUIDs(uuids, req)
