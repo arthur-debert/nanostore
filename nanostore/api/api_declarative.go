@@ -850,22 +850,10 @@ func (ts *TypedStore[T]) GetMetadata(id string) (*DocumentMetadata, error) {
 // The configuration is generated once at TypedStore creation and cached,
 // so this method is O(1) with respect to runtime performance.
 func (ts *TypedStore[T]) GetDimensionConfig() (*nanostore.Config, error) {
-	// Get the original type T to regenerate config
-	var zero T
-	typ := reflect.TypeOf(zero)
-
-	// Check that T still embeds Document (defensive check)
-	if !embedsDocument(typ) {
-		return nil, fmt.Errorf("type %T does not embed nanostore.Document", zero)
-	}
-
-	// Regenerate config from struct tags to ensure consistency
-	config, err := generateConfigFromType(typ)
-	if err != nil {
-		return nil, fmt.Errorf("failed to generate config from type %T: %w", zero, err)
-	}
-
-	return &config, nil
+	// Return a copy of the cached configuration
+	// The configuration was generated once at TypedStore creation and cached
+	configCopy := ts.config
+	return &configCopy, nil
 }
 
 // SetTimeFunc sets a custom time function for deterministic timestamps in testing.
