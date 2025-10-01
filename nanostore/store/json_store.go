@@ -645,8 +645,70 @@ func (s *jsonFileStore) DeleteByDimension(filters map[string]interface{}) (int, 
 
 // DeleteWhere removes documents matching a custom WHERE clause
 func (s *jsonFileStore) DeleteWhere(whereClause string, args ...interface{}) (int, error) {
-	// This method doesn't make sense for JSON store
-	return 0, errors.New("DeleteWhere not supported in JSON store")
+	if strings.TrimSpace(whereClause) == "" {
+		return 0, errors.New("WHERE clause cannot be empty")
+	}
+
+	evaluator := NewWhereEvaluator(whereClause, args...)
+
+	result, err := s.lockManager.ExecuteWithResult(storage.WriteOperation, func() (interface{}, error) {
+		// Load current data
+		err := s.load()
+		if err != nil {
+			return 0, fmt.Errorf("failed to load data: %w", err)
+		}
+
+		var matchingUUIDs []string
+
+		// Find documents that match the WHERE clause
+		for _, doc := range s.data.Documents {
+			matches, err := evaluator.EvaluateDocument(&doc)
+			if err != nil {
+				return 0, fmt.Errorf("failed to evaluate WHERE clause for document %s: %w", doc.UUID, err)
+			}
+			if matches {
+				matchingUUIDs = append(matchingUUIDs, doc.UUID)
+			}
+		}
+
+		if len(matchingUUIDs) == 0 {
+			return 0, nil // No matching documents
+		}
+
+		// Delete matching documents
+		deletedCount := 0
+		filteredDocs := make([]types.Document, 0, len(s.data.Documents)-len(matchingUUIDs))
+
+		for _, doc := range s.data.Documents {
+			found := false
+			for _, uuid := range matchingUUIDs {
+				if doc.UUID == uuid {
+					found = true
+					deletedCount++
+					break
+				}
+			}
+			if !found {
+				filteredDocs = append(filteredDocs, doc)
+			}
+		}
+
+		s.data.Documents = filteredDocs
+
+		// Save the updated data
+		err = s.save()
+		if err != nil {
+			return 0, fmt.Errorf("failed to save data after deletion: %w", err)
+		}
+
+		return deletedCount, nil
+	})
+
+	if err != nil {
+		return 0, err
+	}
+
+	return result.(int), nil
 }
 
 // DeleteByUUIDs deletes multiple documents by their UUIDs in a single operation
@@ -833,8 +895,82 @@ func (s *jsonFileStore) UpdateByDimension(filters map[string]interface{}, update
 
 // UpdateWhere updates documents matching a custom WHERE clause
 func (s *jsonFileStore) UpdateWhere(whereClause string, updates types.UpdateRequest, args ...interface{}) (int, error) {
-	// This method doesn't make sense for JSON store
-	return 0, errors.New("UpdateWhere not supported in JSON store")
+	if strings.TrimSpace(whereClause) == "" {
+		return 0, errors.New("WHERE clause cannot be empty")
+	}
+
+	evaluator := NewWhereEvaluator(whereClause, args...)
+
+	result, err := s.lockManager.ExecuteWithResult(storage.WriteOperation, func() (interface{}, error) {
+		// Load current data
+		err := s.load()
+		if err != nil {
+			return 0, fmt.Errorf("failed to load data: %w", err)
+		}
+
+		// Validate update dimensions if provided
+		if updates.Dimensions != nil {
+			for name, value := range updates.Dimensions {
+				// Skip validation for _data fields - they can be any type
+				if strings.HasPrefix(name, "_data.") {
+					continue
+				}
+				if value != nil {
+					if err := validation.ValidateSimpleType(value, name); err != nil {
+						return 0, err
+					}
+				}
+			}
+		}
+
+		updatedCount := 0
+
+		// Update documents that match the WHERE clause
+		for i, doc := range s.data.Documents {
+			matches, err := evaluator.EvaluateDocument(&doc)
+			if err != nil {
+				return 0, fmt.Errorf("failed to evaluate WHERE clause for document %s: %w", doc.UUID, err)
+			}
+
+			if matches {
+				// Apply updates to this document
+				if updates.Title != nil {
+					s.data.Documents[i].Title = *updates.Title
+				}
+				if updates.Body != nil {
+					s.data.Documents[i].Body = *updates.Body
+				}
+				if updates.Dimensions != nil {
+					// Update dimensions
+					for key, value := range updates.Dimensions {
+						if s.data.Documents[i].Dimensions == nil {
+							s.data.Documents[i].Dimensions = make(map[string]interface{})
+						}
+						s.data.Documents[i].Dimensions[key] = value
+					}
+				}
+				// Update timestamp
+				s.data.Documents[i].UpdatedAt = s.timeFunc()
+				updatedCount++
+			}
+		}
+
+		if updatedCount > 0 {
+			// Save the updated data
+			err = s.save()
+			if err != nil {
+				return 0, fmt.Errorf("failed to save data after update: %w", err)
+			}
+		}
+
+		return updatedCount, nil
+	})
+
+	if err != nil {
+		return 0, err
+	}
+
+	return result.(int), nil
 }
 
 // UpdateByUUIDs updates multiple documents by their UUIDs in a single operation
