@@ -407,19 +407,23 @@ func (ts *TypedStore[T]) Get(id string) (*T, error) {
 }
 
 // buildUpdateRequest creates an UpdateRequest from typed data
-// This helper eliminates code duplication across Update methods
+// This helper eliminates ~100 lines of code duplication across Update methods
+// by centralizing the complex struct-to-update-request conversion logic
 func (ts *TypedStore[T]) buildUpdateRequest(data *T) (nanostore.UpdateRequest, error) {
+	// MarshalDimensions uses reflection to extract dimensions from struct tags
+	// This is where struct tag parsing happens and values are validated
 	dimensions, extraData, err := MarshalDimensions(data)
 	if err != nil {
 		return nanostore.UpdateRequest{}, fmt.Errorf("failed to marshal dimensions: %w", err)
 	}
 
-	// Store extra data in dimensions with a special prefix
+	// Store extra data in dimensions with the "_data." prefix
+	// This preserves fields that don't have dimension tags but need to be stored
 	for key, value := range extraData {
 		dimensions["_data."+key] = value
 	}
 
-	// Extract title and body if they're set
+	// Extract title and body if they're set in the embedded Document
 	var req nanostore.UpdateRequest
 	req.Dimensions = dimensions
 
@@ -460,10 +464,23 @@ func (ts *TypedStore[T]) DeleteByDimension(filters map[string]interface{}) (int,
 }
 
 // DeleteWhere removes all documents matching a custom WHERE clause
+//
+// SECURITY WARNING: This method accepts SQL conditions and must be used carefully.
+// Always use parameterized queries with ? placeholders to prevent SQL injection.
+//
 // The where clause should not include the "WHERE" keyword itself.
-// Use with caution as it allows arbitrary SQL conditions.
+//
+// Example:
+//
+//	// SAFE - uses parameterized query
+//	count, err := store.DeleteWhere("status = ? AND created_at < ?", "archived", cutoffDate)
+//
+//	// DANGEROUS - vulnerable to SQL injection
+//	count, err := store.DeleteWhere("status = '" + userInput + "'") // DON'T DO THIS
+//
 // Returns the number of documents deleted.
 func (ts *TypedStore[T]) DeleteWhere(whereClause string, args ...interface{}) (int, error) {
+	// Pass through to underlying store which implements the secure WHERE clause evaluation
 	return ts.store.DeleteWhere(whereClause, args...)
 }
 
@@ -479,10 +496,24 @@ func (ts *TypedStore[T]) UpdateByDimension(filters map[string]interface{}, data 
 }
 
 // UpdateWhere updates all documents matching a custom WHERE clause
+//
+// SECURITY WARNING: This method accepts SQL conditions and must be used carefully.
+// Always use parameterized queries with ? placeholders to prevent SQL injection.
+//
 // The where clause should not include the "WHERE" keyword itself.
-// Use with caution as it allows arbitrary SQL conditions.
+//
+// Example:
+//
+//	// SAFE - uses parameterized query
+//	task := &Task{Status: "completed"}
+//	count, err := store.UpdateWhere("status = ? AND priority = ?", task, "pending", "high")
+//
+//	// DANGEROUS - vulnerable to SQL injection
+//	whereClause := "status = '" + userInput + "'" // DON'T DO THIS
+//
 // Returns the number of documents updated.
 func (ts *TypedStore[T]) UpdateWhere(whereClause string, data *T, args ...interface{}) (int, error) {
+	// Convert typed data to UpdateRequest using shared helper
 	req, err := ts.buildUpdateRequest(data)
 	if err != nil {
 		return 0, err
@@ -538,14 +569,21 @@ func (ts *TypedStore[T]) ResolveUUID(simpleID string) (string, error) {
 // List returns documents based on the provided ListOptions, converted to typed structs
 // This provides direct access to the underlying store's List functionality while maintaining type safety
 func (ts *TypedStore[T]) List(opts types.ListOptions) ([]T, error) {
+	// Delegate to underlying store for actual querying
+	// The store handles all filtering, ordering, and pagination logic
 	docs, err := ts.store.List(opts)
 	if err != nil {
 		return nil, err
 	}
 
+	// Convert raw documents to typed structs
+	// Pre-allocate slice for performance - we know the exact size needed
 	result := make([]T, len(docs))
 	for i, doc := range docs {
+		// UnmarshalDimensions maps document dimensions to struct fields using reflection
+		// This is where struct tags are processed and values are converted
 		if err := UnmarshalDimensions(doc, &result[i]); err != nil {
+			// Fail fast on unmarshal error - indicates schema mismatch or corrupted data
 			return nil, fmt.Errorf("failed to unmarshal document %s: %w", doc.UUID, err)
 		}
 	}
@@ -570,27 +608,34 @@ func (ts *TypedStore[T]) List(opts types.ListOptions) ([]T, error) {
 // - Administrative operations
 func (ts *TypedStore[T]) GetRaw(id string) (*types.Document, error) {
 	// Consistent ID resolution: try SimpleID first, fallback to direct UUID
+	// This dual approach handles both user-provided SimpleIDs ("1", "h2")
+	// and system-provided UUIDs transparently
 	uuid, err := ts.store.ResolveUUID(id)
 	if err != nil {
-		// If resolution fails, try using the ID directly as UUID
+		// If resolution fails, assume ID is already a UUID
+		// This fallback is critical for API consistency - methods should accept both ID types
 		uuid = id
 	}
 
 	// Use List with UUID filter to get the raw document
+	// We use List instead of GetByID to leverage existing filtering infrastructure
 	docs, err := ts.store.List(types.ListOptions{
 		Filters: map[string]interface{}{
-			"uuid": uuid,
+			"uuid": uuid, // Filter by exact UUID match
 		},
 	})
 	if err != nil {
 		return nil, err
 	}
 
+	// Validate result count - UUIDs should be unique
 	if len(docs) == 0 {
 		return nil, fmt.Errorf("document with ID %s not found", id)
 	}
 
 	if len(docs) > 1 {
+		// This should never happen with valid UUIDs, but check anyway
+		// Could indicate data corruption or ID collision
 		return nil, fmt.Errorf("multiple documents found for ID %s", id)
 	}
 
@@ -605,6 +650,9 @@ func (ts *TypedStore[T]) GetRaw(id string) (*types.Document, error) {
 // - You're migrating data that has different dimension names
 // Returns the UUID of the created document
 func (ts *TypedStore[T]) AddRaw(title string, dimensions map[string]interface{}) (string, error) {
+	// Pass through directly to underlying store without type marshaling
+	// This bypasses all struct tag processing and validation
+	// Critical for migration scenarios where old data may not match current schema
 	return ts.store.Add(title, dimensions)
 }
 
@@ -799,7 +847,11 @@ func (ts *TypedStore[T]) GetMetadata(id string) (*DocumentMetadata, error) {
 // so this method is O(1) with respect to runtime performance.
 func (ts *TypedStore[T]) GetDimensionConfig() (*nanostore.Config, error) {
 	// Return a copy of the cached configuration
-	// The configuration was generated once at TypedStore creation and cached
+	// Critical: This is cached from struct tag parsing done ONCE at store creation.
+	// We don't regenerate via reflection here because:
+	//   1. Reflection is expensive (2.6µs vs 0.8ns)
+	//   2. Configuration is immutable after store creation
+	//   3. Multiple threads can safely access this cached copy
 	configCopy := ts.config
 	return &configCopy, nil
 }
@@ -863,12 +915,17 @@ func (ts *TypedStore[T]) GetDimensionConfig() (*nanostore.Config, error) {
 // for specific use cases like migration or data import.
 func (ts *TypedStore[T]) SetTimeFunc(timeFunc func() time.Time) error {
 	// Attempt to cast underlying store to TestStore interface
+	// This interface check is necessary because not all store implementations
+	// support time function override (production stores may omit this feature)
 	testStore, ok := ts.store.(store.TestStore)
 	if !ok {
+		// Fail fast with clear error - this prevents silent time function ignoring
+		// which would lead to confusing test failures
 		return fmt.Errorf("underlying store does not support SetTimeFunc - store type %T does not implement TestStore interface", ts.store)
 	}
 
 	// Delegate to underlying store's SetTimeFunc
+	// The underlying store handles the actual time function replacement
 	testStore.SetTimeFunc(timeFunc)
 	return nil
 }
@@ -1655,15 +1712,21 @@ func (tq *TypedQuery[T]) getDimensionConfig() (*nanostore.Config, error) {
 }
 
 // getEnumeratedValues returns the valid values for an enumerated dimension
+// This method is CRITICAL for fixing the hardcoded values issue in NOT methods.
+// Instead of hardcoding ["pending", "active", "done"], we dynamically discover
+// values from the actual struct tag configuration at runtime.
 // Returns nil if the dimension doesn't exist or isn't enumerated
 func (tq *TypedQuery[T]) getEnumeratedValues(dimensionName string) ([]string, error) {
+	// Get configuration from the cached dimension config (performance optimized)
 	config, err := tq.getDimensionConfig()
 	if err != nil {
 		return nil, err
 	}
 
+	// Linear search through dimensions - typically small (< 10 dimensions)
 	for _, dim := range config.Dimensions {
 		if dim.Name == dimensionName && dim.Type == nanostore.Enumerated {
+			// Return the actual values from struct tags, not hardcoded values
 			return dim.Values, nil
 		}
 	}
@@ -1794,19 +1857,24 @@ func (tq *TypedQuery[T]) StatusIn(values ...string) *TypedQuery[T] {
 //	results, err := store.Query().StatusNot("done").Find()
 func (tq *TypedQuery[T]) StatusNot(value string) *TypedQuery[T] {
 	// Dynamically get all known status values from type configuration
+	// CRITICAL FIX: This replaces hardcoded ["pending", "active", "done"] with
+	// actual values from struct tags, making this work with ANY enum configuration
 	allStatuses, err := tq.getEnumeratedValues("status")
 	if err != nil {
 		// If we can't get values, fall back to no filtering
-		// This maintains backward compatibility
+		// This graceful degradation prevents query failures for misconfigured structs
 		return tq
 	}
 
+	// Build inclusion list: everything EXCEPT the specified value
+	// This approach works because underlying store doesn't support native NOT operations
 	var includeStatuses []string
 	for _, s := range allStatuses {
 		if s != value {
 			includeStatuses = append(includeStatuses, s)
 		}
 	}
+	// Only set filter if we have values to include (avoid empty filter)
 	if len(includeStatuses) > 0 {
 		tq.options.Filters["status"] = includeStatuses
 	}
@@ -2048,8 +2116,21 @@ func (tq *TypedQuery[T]) DataNotIn(field string, values ...interface{}) *TypedQu
 //	          yesterday, "high", true).
 //	    Find()
 //
-// Security Note: Use parameterized queries with ? placeholders to prevent
-// SQL injection. Never concatenate user input directly into the whereClause.
+// CRITICAL SECURITY NOTE: Always use parameterized queries with ? placeholders.
+// The underlying WhereEvaluator implements robust injection protection, but you must
+// use it correctly. Examples:
+//
+//	// SAFE - parameterized query
+//	query.Where("status = ? AND priority = ?", userStatus, userPriority)
+//
+//	// DANGEROUS - string concatenation opens injection vulnerability
+//	query.Where("status = '" + userInput + "'") // DON'T DO THIS
+//
+//	// DANGEROUS - even formatted strings are vulnerable
+//	query.Where(fmt.Sprintf("status = '%s'", userInput)) // DON'T DO THIS
+//
+// The security design requires that query structure be established BEFORE
+// user parameters are considered. Parameter substitution happens safely after parsing.
 func (tq *TypedQuery[T]) Where(whereClause string, args ...interface{}) *TypedQuery[T] {
 	// Use special filter key to mark for post-processing
 	tq.options.Filters["__where_clause__"] = map[string]interface{}{

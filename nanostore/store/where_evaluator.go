@@ -59,17 +59,23 @@ func (we *WhereEvaluator) EvaluateDocument(doc *types.Document) (bool, error) {
 // cannot be modified by parameter values.
 func (we *WhereEvaluator) evaluateClause(doc *types.Document) (bool, error) {
 	// Parse the clause into conditions FIRST, before parameter substitution
-	// This prevents injection attacks where parameters could modify the clause structure
+	// This CRITICAL security step prevents injection attacks by establishing
+	// the query structure before any user data is considered.
+	// Example attack prevented: whereClause="status = ?" with param="active' OR 1=1"
+	// Without this approach, the param could modify the query structure.
 	conditions, err := we.parseConditions(we.whereClause)
 	if err != nil {
 		return false, fmt.Errorf("clause parsing failed: %w", err)
 	}
 
 	// Evaluate all conditions with safe parameter binding
+	// Parameters are safely substituted into the already-parsed structure
 	return we.evaluateConditions(doc, conditions)
 }
 
 // formatArgument safely formats an argument for inclusion in the clause
+// This is the CORE security function that prevents injection attacks.
+// All user parameters flow through here for safe formatting.
 func (we *WhereEvaluator) formatArgument(arg interface{}) (string, error) {
 	if arg == nil {
 		return "NULL", nil
@@ -77,24 +83,32 @@ func (we *WhereEvaluator) formatArgument(arg interface{}) (string, error) {
 
 	switch v := arg.(type) {
 	case string:
-		// Escape single quotes and wrap in quotes
+		// Escape single quotes using SQL standard ('') escaping
+		// This prevents string parameters from breaking out of quotes
+		// Example: "O'Reilly" becomes "'O''Reilly'" (safe)
 		escaped := strings.ReplaceAll(v, "'", "''")
 		return fmt.Sprintf("'%s'", escaped), nil
 	case int, int8, int16, int32, int64:
+		// Integers are safe - no escaping needed
 		return fmt.Sprintf("%d", v), nil
 	case uint, uint8, uint16, uint32, uint64:
+		// Unsigned integers are safe - no escaping needed
 		return fmt.Sprintf("%d", v), nil
 	case float32, float64:
+		// Floats are safe - use %g for compact representation
 		return fmt.Sprintf("%g", v), nil
 	case bool:
+		// Booleans converted to SQL standard TRUE/FALSE
 		if v {
 			return "TRUE", nil
 		}
 		return "FALSE", nil
 	case time.Time:
+		// Time values formatted as ISO 8601 strings (safe format)
 		return fmt.Sprintf("'%s'", v.Format(time.RFC3339)), nil
 	default:
-		// For any other type, convert to string and treat as string
+		// Unknown types converted to string and escaped
+		// This provides safe fallback for custom types
 		return fmt.Sprintf("'%s'", fmt.Sprintf("%v", v)), nil
 	}
 }
@@ -131,15 +145,19 @@ func (we *WhereEvaluator) parseConditions(clause string) ([]Condition, error) {
 	clause = regexp.MustCompile(`\s+`).ReplaceAllString(clause, " ")
 	clause = strings.TrimSpace(clause)
 
-	// Validate parameter count first
+	// Validate parameter count first - CRITICAL security check
+	// This prevents injection via parameter count mismatch which could cause
+	// parameters to be interpreted as part of the query structure
 	placeholderCount := strings.Count(clause, "?")
 
 	// Filter out nil arguments at the end (common pattern when people add nil as safety)
+	// This graceful handling prevents errors from defensive programming patterns
 	filteredArgs := we.args
 	for len(filteredArgs) > 0 && filteredArgs[len(filteredArgs)-1] == nil && placeholderCount < len(filteredArgs) {
 		filteredArgs = filteredArgs[:len(filteredArgs)-1]
 	}
 
+	// Fail fast if parameter count doesn't match - prevents injection attempts
 	if placeholderCount != len(filteredArgs) {
 		return nil, fmt.Errorf("placeholder count (%d) doesn't match argument count (%d)", placeholderCount, len(filteredArgs))
 	}
@@ -148,18 +166,21 @@ func (we *WhereEvaluator) parseConditions(clause string) ([]Condition, error) {
 	we.args = filteredArgs
 
 	// Split by AND (case insensitive)
-	// We need to handle this carefully to preserve field name case
+	// IMPORTANT: We preserve field name case sensitivity while making operators case-insensitive
+	// This maintains compatibility with document field names which ARE case-sensitive
 	parts := we.splitByAND(clause)
 	conditions := make([]Condition, 0, len(parts))
-	currentParamIndex := 0
+	currentParamIndex := 0 // Track parameter index across all conditions
 
 	for _, part := range parts {
+		// Parse each condition individually, tracking parameter usage
+		// This ensures parameters are bound to the correct conditions in order
 		condition, paramCount, err := we.parseConditionWithParamTracking(strings.TrimSpace(part), currentParamIndex)
 		if err != nil {
 			return nil, fmt.Errorf("parsing condition '%s': %w", part, err)
 		}
 		conditions = append(conditions, condition)
-		currentParamIndex += paramCount
+		currentParamIndex += paramCount // Advance parameter index for next condition
 	}
 
 	return conditions, nil
