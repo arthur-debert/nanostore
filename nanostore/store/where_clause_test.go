@@ -188,8 +188,8 @@ func TestDeleteWhere(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.Remove(tmpfile.Name())
-	tmpfile.Close()
+	defer func() { _ = os.Remove(tmpfile.Name()) }()
+	_ = tmpfile.Close()
 
 	// Create store configuration
 	config := &testConfig{
@@ -213,7 +213,7 @@ func TestDeleteWhere(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	// Add test documents
 	testDocs := []struct {
@@ -330,8 +330,8 @@ func TestUpdateWhere(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.Remove(tmpfile.Name())
-	tmpfile.Close()
+	defer func() { _ = os.Remove(tmpfile.Name()) }()
+	_ = tmpfile.Close()
 
 	// Create store configuration
 	config := &testConfig{
@@ -355,7 +355,7 @@ func TestUpdateWhere(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	// Add test documents
 	testDocs := []struct {

@@ -311,7 +311,7 @@ func (we *WhereEvaluator) compareStrings(actual, expected string) bool {
 	// Handle boolean comparisons case-insensitively
 	if (strings.ToLower(actual) == "true" || strings.ToLower(actual) == "false") &&
 		(strings.ToLower(expected) == "true" || strings.ToLower(expected) == "false") {
-		return strings.ToLower(actual) == strings.ToLower(expected)
+		return strings.EqualFold(actual, expected)
 	}
 
 	// Regular string comparison

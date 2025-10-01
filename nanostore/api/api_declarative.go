@@ -2311,15 +2311,15 @@ func (tq *TypedQuery[T]) Find() ([]T, error) {
 
 		// Apply WHERE clause filter
 		if whereClause.active {
-			// Note: This is a simplified implementation that doesn't actually execute SQL.
-			// In a real implementation, you would need to:
-			// 1. Parse the WHERE clause
-			// 2. Evaluate it against document fields
-			// 3. Support parameter substitution with whereClause.args
-			// For now, we'll log that WHERE clauses require special implementation
-			// and include all documents (effectively making it a no-op)
-			_ = whereClause.clause
-			_ = whereClause.args
+			// Use the secure WhereEvaluator to safely evaluate the WHERE clause
+			evaluator := store.NewWhereEvaluator(whereClause.clause, whereClause.args...)
+			matches, err := evaluator.EvaluateDocument(&doc)
+			if err != nil {
+				return nil, fmt.Errorf("failed to evaluate WHERE clause: %w", err)
+			}
+			if !matches {
+				continue // Skip documents that don't match the WHERE clause
+			}
 		}
 
 		var typed T

@@ -67,7 +67,6 @@ func TestCoreOperationsWithManyInputs(t *testing.T) {
 
 	t.Run("CreateWithAllDimensionCombinations", func(t *testing.T) {
 		documentCount := 0
-		var createdDocuments []string
 
 		// Test all combinations of valid dimension values
 		for _, status := range statusValues {
@@ -88,7 +87,6 @@ func TestCoreOperationsWithManyInputs(t *testing.T) {
 							continue
 						}
 
-						createdDocuments = append(createdDocuments, uuid)
 						documentCount++
 
 						// Verify the document was created correctly
@@ -463,7 +461,6 @@ func TestPaginationWithLargeDatasets(t *testing.T) {
 
 	// Create a larger dataset for pagination testing
 	const totalDocs = 50
-	var createdTitles []string
 
 	for i := 0; i < totalDocs; i++ {
 		title := fmt.Sprintf("Task %03d", i)
@@ -478,7 +475,6 @@ func TestPaginationWithLargeDatasets(t *testing.T) {
 		if err != nil {
 			t.Fatalf("failed to create task %d: %v", i, err)
 		}
-		createdTitles = append(createdTitles, title)
 	}
 
 	t.Run("BasicPagination", func(t *testing.T) {
