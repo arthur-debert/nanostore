@@ -363,24 +363,39 @@ func (ts *TypedStore[T]) Create(title string, data *T) (string, error) {
 	return ts.store.Add(title, dimensions)
 }
 
-// Get retrieves a document by ID and unmarshals it into the typed structure
+// Get retrieves a document by ID and unmarshals it into the typed structure.
+//
+// Accepts both UUID and SimpleID for maximum flexibility.
+// ID Resolution Strategy:
+// 1. Try to resolve ID as SimpleID to UUID
+// 2. If resolution fails, use ID directly as UUID
+// 3. Query store with resolved/direct UUID
+//
+// This provides consistent behavior with GetRaw and other ID-based methods.
 func (ts *TypedStore[T]) Get(id string) (*T, error) {
-	// First try to resolve if it's a simple ID
-	uuid := id
-	if resolvedUUID, err := ts.store.ResolveUUID(id); err == nil {
-		uuid = resolvedUUID
+	// Consistent ID resolution: try SimpleID first, fallback to direct UUID
+	uuid, err := ts.store.ResolveUUID(id)
+	if err != nil {
+		// If resolution fails, try using the ID directly as UUID
+		uuid = id
 	}
 
-	// List with UUID filter to get the document
-	docs, err := ts.store.List(nanostore.ListOptions{
-		Filters: map[string]interface{}{"uuid": uuid},
+	// Use List with UUID filter to get the document
+	docs, err := ts.store.List(types.ListOptions{
+		Filters: map[string]interface{}{
+			"uuid": uuid,
+		},
 	})
 	if err != nil {
 		return nil, err
 	}
 
 	if len(docs) == 0 {
-		return nil, fmt.Errorf("document not found: %s", id)
+		return nil, fmt.Errorf("document with ID %s not found", id)
+	}
+
+	if len(docs) > 1 {
+		return nil, fmt.Errorf("multiple documents found for ID %s", id)
 	}
 
 	var result T
@@ -590,15 +605,23 @@ func (ts *TypedStore[T]) List(opts types.ListOptions) ([]T, error) {
 	return result, nil
 }
 
-// GetRaw returns the raw document without type conversion
-// This provides direct access to the underlying document structure, useful for:
+// GetRaw retrieves a document by ID and returns the raw document structure.
+//
+// Accepts both UUID and SimpleID for maximum flexibility.
+// ID Resolution Strategy:
+// 1. Try to resolve ID as SimpleID to UUID
+// 2. If resolution fails, use ID directly as UUID
+// 3. Query store with resolved/direct UUID
+//
+// This provides consistent behavior with Get and other ID-based methods.
+// Returns the raw document without type conversion - useful for:
 // - Accessing dimensions not defined in the struct
 // - Inspecting metadata (CreatedAt, UpdatedAt, etc.)
 // - Working with documents that partially match the struct schema
 // - Debugging and introspection
-// Accepts both UUID and SimpleID for maximum flexibility
+// - Administrative operations
 func (ts *TypedStore[T]) GetRaw(id string) (*types.Document, error) {
-	// First try to resolve as SimpleID to UUID
+	// Consistent ID resolution: try SimpleID first, fallback to direct UUID
 	uuid, err := ts.store.ResolveUUID(id)
 	if err != nil {
 		// If resolution fails, try using the ID directly as UUID
