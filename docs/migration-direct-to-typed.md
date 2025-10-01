@@ -339,6 +339,113 @@ err := store.SetTimeFunc(func() time.Time {
 })
 ```
 
+## Advanced Operations Migration
+
+### ID Resolution
+
+**Before:**
+```go
+uuid, err := store.ResolveUUID("1.2.c3")
+```
+
+**After:**
+```go
+uuid, err := store.ResolveUUID("1.2.c3")  // Same interface!
+```
+
+### Bulk UUID Operations
+
+**Before:**
+```go
+// Update multiple documents by UUIDs
+count, err := store.UpdateByUUIDs([]string{uuid1, uuid2}, nanostore.UpdateRequest{
+    Dimensions: map[string]interface{}{
+        "status": "completed",
+    },
+})
+
+// Delete multiple documents by UUIDs  
+count, err := store.DeleteByUUIDs([]string{uuid1, uuid2})
+```
+
+**After:**
+```go
+// Update multiple documents by UUIDs - Type-safe!
+updateData := &Task{Status: "completed"}
+count, err := store.UpdateByUUIDs([]string{uuid1, uuid2}, updateData)
+
+// Delete multiple documents by UUIDs - Same interface!
+count, err := store.DeleteByUUIDs([]string{uuid1, uuid2})
+```
+
+### Custom ListOptions (Full Flexibility)
+
+**Before:**
+```go
+docs, err := store.List(types.ListOptions{
+    Filters: map[string]interface{}{
+        "status": []string{"pending", "active"},
+        "_data.assignee": "alice",
+    },
+    FilterBySearch: "important",
+    OrderBy: []types.OrderClause{
+        {Column: "created_at", Descending: true},
+        {Column: "priority", Descending: false},
+    },
+    Limit:  &[]int{10}[0],
+    Offset: &[]int{20}[0],
+})
+```
+
+**After:**
+```go
+// Option 1: Direct ListOptions (same flexibility)
+tasks, err := store.List(types.ListOptions{
+    Filters: map[string]interface{}{
+        "status": []string{"pending", "active"},
+        "_data.assignee": "alice",
+    },
+    FilterBySearch: "important",
+    OrderBy: []types.OrderClause{
+        {Column: "created_at", Descending: true},
+        {Column: "priority", Descending: false},
+    },
+    Limit:  &[]int{10}[0],
+    Offset: &[]int{20}[0],
+})
+
+// Option 2: Fluent Query Builder (enhanced experience)
+tasks, err := store.Query().
+    StatusIn("pending", "active").
+    Data("assignee", "alice").
+    Search("important").
+    OrderByDesc("created_at").
+    OrderBy("priority").
+    Limit(10).
+    Offset(20).
+    Find()
+```
+
+### Testing Utilities
+
+**Before:**
+```go
+testStore := store.(nanostore.TestStore)
+testStore.SetTimeFunc(func() time.Time {
+    return time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC)
+})
+```
+
+**After:**
+```go
+err := store.SetTimeFunc(func() time.Time {
+    return time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC)
+})
+if err != nil {
+    t.Fatalf("SetTimeFunc failed: %v", err)  // Better error handling
+}
+```
+
 ## Migration Checklist
 
 ### Step 1: Define Your Types
@@ -362,6 +469,10 @@ err := store.SetTimeFunc(func() time.Time {
 - [ ] Use typed methods like `Status()`, `Priority()` instead of generic filters
 - [ ] Migrate complex filters to `Where()` clauses
 - [ ] Update NOT operations to use `StatusNot()`, etc.
+- [ ] Verify `ResolveUUID()` calls (same interface)
+- [ ] Update bulk operations: `UpdateByUUIDs()`, `DeleteByUUIDs()` (now type-safe)
+- [ ] Migrate `List(ListOptions)` calls (unchanged interface)
+- [ ] Update testing utilities: `SetTimeFunc()` (better error handling)
 
 ### Step 5: Test and Validate
 - [ ] Run existing tests with new TypedStore code
@@ -416,6 +527,29 @@ status := task.Status
 ✅ **Reduced Boilerplate**: Less code to write and maintain  
 ✅ **Better Performance**: Optimized operations and caching  
 ✅ **Consistent API**: Single way to do things reduces confusion  
+
+## Frequently Asked Questions
+
+### Q: Does TypedStore support all Direct Store operations?
+**A: Yes!** TypedStore provides 100% feature parity with the Direct Store API. Every operation has an equivalent, often with enhanced type safety.
+
+### Q: Can I still use complex ListOptions?
+**A: Absolutely!** TypedStore supports `List(types.ListOptions)` with full flexibility. You also get the enhanced fluent query builder as a bonus.
+
+### Q: Are bulk UUID operations available?
+**A: Yes!** `UpdateByUUIDs()` and `DeleteByUUIDs()` are available with improved type safety - you pass typed structs instead of raw maps.
+
+### Q: Can I resolve SimpleIDs to UUIDs?
+**A: Yes!** `ResolveUUID()` has the exact same interface as the Direct Store API.
+
+### Q: Do testing utilities work with TypedStore?
+**A: Yes!** `SetTimeFunc()` is available with better error handling. No more type assertions needed.
+
+### Q: What if I need raw document access?
+**A: Use raw methods!** `AddRaw()`, `GetRaw()`, `GetDimensions()`, `GetMetadata()` provide direct access when needed.
+
+### Q: Is performance the same or better?
+**A: Better!** TypedStore includes performance optimizations like intelligent caching and reduced reflection overhead.
 
 ## Getting Help
 
