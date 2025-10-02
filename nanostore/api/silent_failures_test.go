@@ -190,7 +190,7 @@ func TestSilentFailuresInQueries(t *testing.T) {
 		}
 
 		// Test valid DataIn with exact case
-		results, err = store.Query().DataIn("Assignee", "alice", "bob").Find()
+		_, err = store.Query().DataIn("Assignee", "alice", "bob").Find()
 		if err != nil {
 			t.Errorf("Valid DataIn query failed: %v", err)
 		}
@@ -205,7 +205,7 @@ func TestSilentFailuresInQueries(t *testing.T) {
 		}
 
 		// Test case-insensitive DataIn
-		results, err = store.Query().DataIn("assignee", "alice", "bob").Find()
+		_, err = store.Query().DataIn("assignee", "alice", "bob").Find()
 		if err != nil {
 			t.Errorf("Case-insensitive DataIn query failed: %v", err)
 		}

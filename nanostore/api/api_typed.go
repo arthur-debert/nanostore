@@ -506,7 +506,7 @@ func validateDataFieldName(fieldName string, validFields []string) (string, erro
 		errMsg += " (no data fields available for this type)"
 	}
 
-	return "", fmt.Errorf(errMsg)
+	return "", fmt.Errorf("%s", errMsg)
 }
 
 // ValidateSimpleType ensures a dimension value is a simple type (string, number, bool)
