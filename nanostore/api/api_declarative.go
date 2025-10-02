@@ -283,12 +283,13 @@ func NewFromType[T any](filePath string) (*TypedStore[T], error) {
 //
 // 1. **Type Marshaling**: Converts typed struct to dimension map
 // 2. **Data Separation**: Distinguishes between dimensional and extra data
-// 3. **ID Generation**: Triggers automatic SimpleID generation based on dimensions
-// 4. **UUID Assignment**: Creates stable internal UUID for the document
+// 3. **Document Field Extraction**: Preserves title and body from embedded Document
+// 4. **ID Generation**: Triggers automatic SimpleID generation based on dimensions
+// 5. **UUID Assignment**: Creates stable internal UUID for the document
 //
 // # Data Processing Strategy
 //
-// The method processes struct fields in three categories:
+// The method processes struct fields in four categories:
 //
 // ## Dimensional Fields
 // Fields with dimension tags become part of the document's partition:
@@ -306,6 +307,11 @@ func NewFromType[T any](filePath string) (*TypedStore[T], error) {
 //	Assignee string                               // Becomes dimensions["_data.assignee"]
 //	DueDate  time.Time                           // Becomes dimensions["_data.duedate"]
 //
+// ## Document Fields
+// Embedded Document fields are handled specially:
+//
+//	Document nanostore.Document                   // Title and Body are extracted and preserved
+//
 // # SimpleID Generation
 //
 // The returned ID is a human-readable SimpleID that reflects the document's dimensions:
@@ -314,6 +320,24 @@ func NewFromType[T any](filePath string) (*TypedStore[T], error) {
 //	task := &Task{Status: "done", Priority: "high", Title: "Fix bug"}
 //	id, err := store.Create("Fix critical bug", task)
 //	// Returns: "dh3" (done="d", high="h", position=3)
+//
+// # Title and Body Handling
+//
+// Create provides flexible title and body handling for embedded Document fields:
+//
+// **Title Precedence**:
+// 1. If title parameter is non-empty, it takes precedence
+// 2. If title parameter is empty and struct has Document.Title, use struct title
+// 3. If neither is provided, the document will have an empty title
+//
+// **Body Preservation**:
+// - Body content from embedded Document.Body is always preserved
+// - This eliminates the need for workarounds like two-phase create+update operations
+// - Empty body fields are ignored (not stored as empty strings)
+//
+// **Backward Compatibility**:
+// - Existing two-phase workarounds continue to work unchanged
+// - No breaking changes to existing Create method signatures
 //
 // # Error Handling
 //
@@ -341,6 +365,17 @@ func NewFromType[T any](filePath string) (*TypedStore[T], error) {
 //	}
 //	id, err := store.Create("Implement feature X", task)
 //
+//	// Document creation with embedded Document fields
+//	taskWithBody := &Task{
+//	    Document: nanostore.Document{
+//	        Title: "Default Title",      // Used if Create title parameter is empty
+//	        Body:  "Task description",   // Automatically preserved
+//	    },
+//	    Status:   "pending",
+//	    Priority: "high",
+//	}
+//	id, err := store.Create("Override Title", taskWithBody)  // Title parameter takes precedence
+//
 //	// Hierarchical document creation (child)
 //	subtask := &Task{
 //	    Status:   "pending",
@@ -360,7 +395,34 @@ func (ts *TypedStore[T]) Create(title string, data *T) (string, error) {
 		dimensions["_data."+key] = value
 	}
 
-	return ts.store.Add(title, dimensions)
+	// Extract Document fields (title, body) from the embedded Document
+	structTitle, structBody, hasDocument := extractDocumentFields(data)
+
+	// Determine final title: use parameter if non-empty, otherwise use struct title
+	finalTitle := title
+	if title == "" && hasDocument && structTitle != "" {
+		finalTitle = structTitle
+	}
+
+	// Add the document with proper title and body handling
+	uuid, err := ts.store.Add(finalTitle, dimensions)
+	if err != nil {
+		return "", err
+	}
+
+	// If we have body content from the struct, update the document to include it
+	if hasDocument && structBody != "" {
+		// Update the document with the body content
+		// The Add method doesn't handle body content directly, so we need a follow-up update
+		err = ts.store.Update(uuid, types.UpdateRequest{
+			Body: &structBody,
+		})
+		if err != nil {
+			return "", fmt.Errorf("failed to set body content: %w", err)
+		}
+	}
+
+	return uuid, nil
 }
 
 // Get retrieves a document by ID and unmarshals it into the typed structure.
@@ -410,9 +472,9 @@ func (ts *TypedStore[T]) Get(id string) (*T, error) {
 // This helper eliminates ~100 lines of code duplication across Update methods
 // by centralizing the complex struct-to-update-request conversion logic
 func (ts *TypedStore[T]) buildUpdateRequest(data *T) (nanostore.UpdateRequest, error) {
-	// MarshalDimensions uses reflection to extract dimensions from struct tags
+	// MarshalDimensionsForUpdate preserves zero values for field clearing in updates
 	// This is where struct tag parsing happens and values are validated
-	dimensions, extraData, err := MarshalDimensions(data)
+	dimensions, extraData, err := MarshalDimensionsForUpdate(data)
 	if err != nil {
 		return nanostore.UpdateRequest{}, fmt.Errorf("failed to marshal dimensions: %w", err)
 	}
@@ -442,7 +504,48 @@ func (ts *TypedStore[T]) buildUpdateRequest(data *T) (nanostore.UpdateRequest, e
 	return req, nil
 }
 
-// Update modifies an existing document with typed data
+// Update modifies an existing document with typed data.
+//
+// This method processes all fields in the provided struct and applies them to the document:
+//
+// # Field Clearing Behavior
+//
+// **IMPORTANT**: As of this version, zero values in the update struct will clear
+// the corresponding fields in the document. This enables field clearing but represents
+// a behavior change from previous versions where zero values were ignored.
+//
+// ## Data Fields (Non-Dimension Fields)
+// - Zero values (empty strings, 0, time.Time{}, etc.) WILL clear the field
+// - This allows you to explicitly clear field values in update operations
+//
+// ## Dimension Fields
+// - **Enumerated dimensions** (with "values" tag): Zero values are ignored to prevent validation errors
+// - **Non-enumerated dimensions** (like refs): Zero values will clear the field
+//
+// # Usage Examples
+//
+//	// Clear assignee field and update priority
+//	task := &Task{
+//	    Assignee: "",    // Will clear the assignee field
+//	    Priority: "high", // Will update priority to "high"
+//	    // Note: If Description is not set, it will also be cleared to ""
+//	}
+//	err := store.Update("task-1", task)
+//
+//	// To preserve existing values while updating specific fields,
+//	// first get the document, then modify only the desired fields:
+//	existing, _ := store.Get("task-1")
+//	existing.Priority = "high" // Only change priority
+//	err := store.Update("task-1", existing)
+//
+// # Migration from Previous Behavior
+//
+// If your code previously relied on zero values being ignored in updates,
+// you will need to either:
+// 1. Get the existing document first and modify only the fields you want to change
+// 2. Explicitly set all fields to their desired values (including preserving existing values)
+//
+// Accepts both UUID and SimpleID for the id parameter.
 func (ts *TypedStore[T]) Update(id string, data *T) error {
 	req, err := ts.buildUpdateRequest(data)
 	if err != nil {
@@ -484,8 +587,15 @@ func (ts *TypedStore[T]) DeleteWhere(whereClause string, args ...interface{}) (i
 	return ts.store.DeleteWhere(whereClause, args...)
 }
 
-// UpdateByDimension updates all documents matching the given dimension filters
-// Multiple filters are combined with AND. Returns the number of documents updated.
+// UpdateByDimension updates all documents matching the given dimension filters.
+//
+// Multiple filters are combined with AND. This method applies the same field clearing
+// behavior as Update() - zero values in the data struct will clear the corresponding
+// fields in ALL matching documents.
+//
+// See Update() method documentation for complete field clearing behavior details.
+//
+// Returns the number of documents updated.
 func (ts *TypedStore[T]) UpdateByDimension(filters map[string]interface{}, data *T) (int, error) {
 	req, err := ts.buildUpdateRequest(data)
 	if err != nil {
@@ -495,7 +605,10 @@ func (ts *TypedStore[T]) UpdateByDimension(filters map[string]interface{}, data 
 	return ts.store.UpdateByDimension(filters, req)
 }
 
-// UpdateWhere updates all documents matching a custom WHERE clause
+// UpdateWhere updates all documents matching a custom WHERE clause.
+//
+// This method applies the same field clearing behavior as Update() - zero values
+// in the data struct will clear the corresponding fields in ALL matching documents.
 //
 // SECURITY WARNING: This method accepts SQL conditions and must be used carefully.
 // Always use parameterized queries with ? placeholders to prevent SQL injection.
@@ -504,12 +617,17 @@ func (ts *TypedStore[T]) UpdateByDimension(filters map[string]interface{}, data 
 //
 // Example:
 //
-//	// SAFE - uses parameterized query
-//	task := &Task{Status: "completed"}
+//	// SAFE - uses parameterized query with field clearing
+//	task := &Task{
+//	    Status:   "completed", // Will update status
+//	    Assignee: "",          // Will clear assignee field
+//	}
 //	count, err := store.UpdateWhere("status = ? AND priority = ?", task, "pending", "high")
 //
 //	// DANGEROUS - vulnerable to SQL injection
 //	whereClause := "status = '" + userInput + "'" // DON'T DO THIS
+//
+// See Update() method documentation for complete field clearing behavior details.
 //
 // Returns the number of documents updated.
 func (ts *TypedStore[T]) UpdateWhere(whereClause string, data *T, args ...interface{}) (int, error) {
@@ -522,7 +640,22 @@ func (ts *TypedStore[T]) UpdateWhere(whereClause string, data *T, args ...interf
 	return ts.store.UpdateWhere(whereClause, req, args...)
 }
 
-// UpdateByUUIDs updates multiple documents by their UUIDs in a single operation
+// UpdateByUUIDs updates multiple documents by their UUIDs in a single operation.
+//
+// This method applies the same field clearing behavior as Update() - zero values
+// in the data struct will clear the corresponding fields in ALL updated documents.
+//
+// **IMPORTANT**: This enables bulk field clearing, which was the primary goal of
+// issue #82. You can now clear fields across multiple documents efficiently:
+//
+//	// Clear assignee field for multiple tasks
+//	updates := &Task{
+//	    Assignee: "", // Will clear assignee field in all specified documents
+//	}
+//	count, err := store.UpdateByUUIDs(taskUUIDs, updates)
+//
+// See Update() method documentation for complete field clearing behavior details.
+//
 // Returns the number of documents updated.
 func (ts *TypedStore[T]) UpdateByUUIDs(uuids []string, data *T) (int, error) {
 	req, err := ts.buildUpdateRequest(data)

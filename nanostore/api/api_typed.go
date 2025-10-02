@@ -93,6 +93,112 @@ func MarshalDimensions(v interface{}) (dimensions map[string]interface{}, data m
 	return dimensions, data, nil
 }
 
+// MarshalDimensionsForUpdate converts a struct with dimension tags into dimensions and data maps
+// for update operations. Unlike MarshalDimensions, this version preserves zero values to allow
+// field clearing in update operations.
+//
+// Key differences from MarshalDimensions:
+// - Zero values in data fields (non-dimension fields) are preserved and will clear existing values
+// - Zero values in enumerated dimension fields (with "values" tag) are skipped to avoid validation errors
+// - Zero values in non-enumerated dimension fields (like refs) are preserved
+//
+// This enables the ability to clear fields in bulk update operations like UpdateByUUIDs,
+// UpdateByDimension, and UpdateWhere, which was previously impossible due to zero value skipping.
+//
+// BREAKING CHANGE: This changes the behavior of all Update methods. Previously, zero values
+// were ignored. Now zero values will clear the corresponding fields in the document.
+//
+// Example:
+//
+//	// This will clear the Assignee field and set Priority to "low"
+//	updates := &Task{
+//		Assignee: "",    // Zero value - WILL clear the field
+//		Priority: "low", // Non-zero value - will update the field
+//		// Note: Other data fields like Description will also be cleared if not set
+//	}
+//	store.UpdateByUUIDs(uuids, updates)
+func MarshalDimensionsForUpdate(v interface{}) (dimensions map[string]interface{}, data map[string]interface{}, err error) {
+	val := reflect.ValueOf(v)
+	if val.Kind() == reflect.Ptr {
+		val = val.Elem()
+	}
+
+	if val.Kind() != reflect.Struct {
+		return nil, nil, fmt.Errorf("expected struct, got %s", val.Kind())
+	}
+
+	typ := val.Type()
+	dimensions = make(map[string]interface{})
+	data = make(map[string]interface{})
+
+	for i := 0; i < typ.NumField(); i++ {
+		field := typ.Field(i)
+		fieldVal := val.Field(i)
+
+		// Skip unexported fields
+		if !fieldVal.CanInterface() {
+			continue
+		}
+
+		// Skip embedded Document field
+		if field.Anonymous && field.Type == reflect.TypeOf(nanostore.Document{}) {
+			continue
+		}
+
+		// Get the value
+		value := fieldVal.Interface()
+
+		// Check for dimension tag
+		dimTag := field.Tag.Get("dimension")
+		isDimension := false
+
+		if dimTag != "" {
+			isDimension = true
+		} else if field.Tag.Get("values") != "" {
+			// Also check for values tag (declarative API style)
+			dimTag = strings.ToLower(field.Name)
+			isDimension = true
+		}
+
+		if isDimension {
+			// Handle dimension:"name,options" format
+			parts := strings.Split(dimTag, ",")
+			dimName := parts[0]
+
+			// Skip if dimension name is "-"
+			if dimName == "-" {
+				continue
+			}
+
+			// For dimension fields, we need to be careful about zero values
+			// Skip zero values for enumerated dimensions to avoid validation errors
+			// But allow zero values for non-enumerated dimensions (like refs)
+			if isZeroValue(fieldVal) && field.Tag.Get("values") != "" {
+				// Skip zero values for enumerated dimensions (they would fail validation)
+				continue
+			}
+
+			// Validate that the dimension value is a simple type
+			if err = ValidateSimpleType(value, dimName); err != nil {
+				return nil, nil, err
+			}
+
+			// For values tag style, use lowercase field name as dimension name
+			if field.Tag.Get("values") != "" && dimTag == strings.ToLower(field.Name) {
+				dimName = strings.ToLower(field.Name)
+			}
+
+			dimensions[dimName] = value
+		} else {
+			// Non-dimension field - store in data map
+			// For updates, preserve zero values to allow field clearing
+			data[field.Name] = value
+		}
+	}
+
+	return dimensions, data, nil
+}
+
 // UnmarshalDimensions populates a struct from a Document, mapping dimensions to tagged fields
 func UnmarshalDimensions(doc nanostore.Document, v interface{}) error {
 	val := reflect.ValueOf(v)
@@ -284,6 +390,33 @@ func setFieldFromInterface(field reflect.Value, value interface{}) error {
 	// Otherwise convert through string for simple types
 	strVal := fmt.Sprintf("%v", value)
 	return setFieldValue(field, strVal)
+}
+
+// extractDocumentFields extracts Document fields from an embedded nanostore.Document
+func extractDocumentFields(v interface{}) (title string, body string, found bool) {
+	val := reflect.ValueOf(v)
+	if val.Kind() == reflect.Ptr {
+		val = val.Elem()
+	}
+
+	if val.Kind() != reflect.Struct {
+		return "", "", false
+	}
+
+	typ := val.Type()
+	for i := 0; i < typ.NumField(); i++ {
+		field := typ.Field(i)
+		fieldVal := val.Field(i)
+
+		// Look for embedded Document field
+		if field.Anonymous && field.Type == reflect.TypeOf(nanostore.Document{}) {
+			// Extract the Document value
+			doc := fieldVal.Interface().(nanostore.Document)
+			return doc.Title, doc.Body, true
+		}
+	}
+
+	return "", "", false
 }
 
 // ValidateSimpleType ensures a dimension value is a simple type (string, number, bool)
