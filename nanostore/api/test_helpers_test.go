@@ -20,4 +20,12 @@ type TodoItem struct {
 	Priority string `values:"low,medium,high" prefix:"high=h" default:"medium"`
 	Activity string `values:"active,archived,deleted" default:"active"`
 	ParentID string `dimension:"parent_id,ref"`
+
+	// Data fields - these are used in various tests for data field queries
+	Assignee   string
+	Tags       string
+	Estimate   int
+	Team       string
+	Score      int
+	Complexity string
 }

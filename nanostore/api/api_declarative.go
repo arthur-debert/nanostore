@@ -1844,6 +1844,80 @@ func (tq *TypedQuery[T]) getDimensionConfig() (*nanostore.Config, error) {
 	return &config, nil
 }
 
+// validateDataFieldReferences checks all data field references in the query options.
+//
+// This function is critical for eliminating silent failures in data field queries.
+// It validates all field names used in Data(), DataIn(), DataNot(), DataNotIn(),
+// OrderByData(), and OrderByDataDesc() methods against the actual Go struct fields.
+//
+// Key benefits:
+// - **Prevents silent failures**: Invalid field names now return clear errors instead of empty results
+// - **Case-insensitive queries**: Users can use any case for field names (e.g., "assignee" or "Assignee")
+// - **Helpful error messages**: Provides suggestions for typos and lists valid field names
+// - **Consistency**: Ensures all data field operations use the same validation logic
+//
+// This method should be called before executing any query to catch invalid field names early.
+func (tq *TypedQuery[T]) validateDataFieldReferences() error {
+	// Get valid data fields for type T
+	var zero T
+	validFields, err := getValidDataFields(zero)
+	if err != nil {
+		return fmt.Errorf("failed to get valid data fields: %w", err)
+	}
+
+	// Check filters for _data.* field references and normalize case
+	for key := range tq.options.Filters {
+		var fieldName, prefix string
+		var isDataField bool
+
+		if strings.HasPrefix(key, "_data.") {
+			fieldName = strings.TrimPrefix(key, "_data.")
+			prefix = "_data."
+			isDataField = true
+		} else if strings.HasPrefix(key, "__data_not__") {
+			fieldName = strings.TrimPrefix(key, "__data_not__")
+			prefix = "__data_not__"
+			isDataField = true
+		} else if strings.HasPrefix(key, "__data_not_in__") {
+			fieldName = strings.TrimPrefix(key, "__data_not_in__")
+			prefix = "__data_not_in__"
+			isDataField = true
+		}
+
+		if isDataField {
+			normalizedFieldName, err := validateDataFieldName(fieldName, validFields)
+			if err != nil {
+				return fmt.Errorf("invalid filter field: %w", err)
+			}
+
+			// If the field name was normalized, update the filter key
+			if normalizedFieldName != fieldName {
+				value := tq.options.Filters[key]
+				delete(tq.options.Filters, key)
+				tq.options.Filters[prefix+normalizedFieldName] = value
+			}
+		}
+	}
+
+	// Check OrderBy clauses for _data.* field references and normalize case
+	for i, orderClause := range tq.options.OrderBy {
+		if strings.HasPrefix(orderClause.Column, "_data.") {
+			fieldName := strings.TrimPrefix(orderClause.Column, "_data.")
+			correctFieldName, err := validateDataFieldName(fieldName, validFields)
+			if err != nil {
+				return fmt.Errorf("invalid order by field: %w", err)
+			}
+
+			// If the field name case was corrected, update the order clause
+			if correctFieldName != fieldName {
+				tq.options.OrderBy[i].Column = "_data." + correctFieldName
+			}
+		}
+	}
+
+	return nil
+}
+
 // getEnumeratedValues returns the valid values for an enumerated dimension
 // This method is CRITICAL for fixing the hardcoded values issue in NOT methods.
 // Instead of hardcoding ["pending", "active", "done"], we dynamically discover
@@ -2412,10 +2486,21 @@ func (tq *TypedQuery[T]) Offset(n int) *TypedQuery[T] {
 //
 // This is the primary terminal method for query execution. It performs several steps:
 //
-// 1. **Query Execution**: Executes the accumulated filters against the store
-// 2. **Post-Processing**: Applies filters that require client-side processing
-// 3. **Type Unmarshaling**: Converts raw documents back to typed structs
-// 4. **Result Assembly**: Builds the final []T slice for return
+// 1. **Field Validation**: Validates all data field names against the Go struct (NEW: eliminates silent failures)
+// 2. **Query Execution**: Executes the accumulated filters against the store
+// 3. **Post-Processing**: Applies filters that require client-side processing
+// 4. **Type Unmarshaling**: Converts raw documents back to typed structs
+// 5. **Result Assembly**: Builds the final []T slice for return
+//
+// # Field Validation (Issue #83 Fix)
+//
+// As of this implementation, Find() now validates all data field references before query execution.
+// This eliminates silent failures where invalid field names would return empty results instead of errors.
+//
+// - **Data field validation**: All Data(), DataIn(), DataNot(), DataNotIn() field names are validated
+// - **Ordering field validation**: All OrderByData(), OrderByDataDesc() field names are validated
+// - **Case-insensitive**: Field names like "assignee" and "Assignee" both work correctly
+// - **Helpful errors**: Invalid field names return clear error messages with suggestions
 //
 // # Post-Processing Filters
 //
@@ -2459,6 +2544,11 @@ func (tq *TypedQuery[T]) Offset(n int) *TypedQuery[T] {
 //	    Limit(10).
 //	    Find()
 func (tq *TypedQuery[T]) Find() ([]T, error) {
+	// Validate data field references before executing the query
+	if err := tq.validateDataFieldReferences(); err != nil {
+		return nil, err
+	}
+
 	// Check for special filters and extract them for post-processing
 	parentNotExists := false
 	if _, ok := tq.options.Filters["__parent_not_exists__"]; ok {

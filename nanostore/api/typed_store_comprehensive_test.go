@@ -154,8 +154,8 @@ func TestQueryOperationsWithComplexFiltering(t *testing.T) {
 			"status":         data.status,
 			"priority":       data.priority,
 			"activity":       data.activity,
-			"_data.assignee": data.data["assignee"],
-			"_data.estimate": data.data["estimate"],
+			"_data.Assignee": data.data["assignee"],
+			"_data.Estimate": data.data["estimate"],
 		})
 		if err != nil {
 			t.Fatalf("failed to create test document %q: %v", data.title, err)
@@ -283,7 +283,7 @@ func TestQueryOperationsWithComplexFiltering(t *testing.T) {
 
 	t.Run("DataFieldFiltering", func(t *testing.T) {
 		// Test custom data field filtering
-		aliceTasks, err := store.Query().Data("assignee", "alice").Find()
+		aliceTasks, err := store.Query().Data("Assignee", "alice").Find()
 		if err != nil {
 			t.Fatalf("failed to query Alice's tasks: %v", err)
 		}
@@ -293,7 +293,7 @@ func TestQueryOperationsWithComplexFiltering(t *testing.T) {
 			t.Errorf("expected %d tasks assigned to Alice, got %d", expectedAliceCount, len(aliceTasks))
 		}
 
-		lowEstimateTasks, err := store.Query().DataIn("estimate", 1, 2, 3).Find()
+		lowEstimateTasks, err := store.Query().DataIn("Estimate", 1, 2, 3).Find()
 		if err != nil {
 			t.Fatalf("failed to query low estimate tasks: %v", err)
 		}
@@ -310,7 +310,7 @@ func TestQueryOperationsWithComplexFiltering(t *testing.T) {
 			StatusIn("active", "pending").
 			PriorityNot("low").
 			Activity("active").
-			Data("assignee", "alice").
+			Data("Assignee", "alice").
 			Find()
 		if err != nil {
 			t.Fatalf("failed to execute complex query: %v", err)
@@ -367,7 +367,7 @@ func TestOrderingWithMultipleCriteria(t *testing.T) {
 			"status":         doc.status,
 			"priority":       doc.priority,
 			"activity":       "active",
-			"_data.estimate": doc.estimate,
+			"_data.Estimate": doc.estimate,
 		})
 		if err != nil {
 			t.Fatalf("failed to create document %s: %v", doc.title, err)
@@ -424,7 +424,7 @@ func TestOrderingWithMultipleCriteria(t *testing.T) {
 
 	t.Run("DataFieldOrdering", func(t *testing.T) {
 		// Test ordering by custom data fields
-		estimateOrderedTasks, err := store.Query().OrderByData("estimate").Find()
+		estimateOrderedTasks, err := store.Query().OrderByData("Estimate").Find()
 		if err != nil {
 			t.Fatalf("failed to query estimate ordered tasks: %v", err)
 		}
@@ -439,7 +439,7 @@ func TestOrderingWithMultipleCriteria(t *testing.T) {
 		}
 
 		// Test descending order
-		estimateDescTasks, err := store.Query().OrderByDataDesc("estimate").Find()
+		estimateDescTasks, err := store.Query().OrderByDataDesc("Estimate").Find()
 		if err != nil {
 			t.Fatalf("failed to query estimate desc ordered tasks: %v", err)
 		}

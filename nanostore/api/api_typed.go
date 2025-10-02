@@ -419,6 +419,96 @@ func extractDocumentFields(v interface{}) (title string, body string, found bool
 	return "", "", false
 }
 
+// getValidDataFields extracts the names of non-dimension fields (data fields) from a struct type
+// These are fields that don't have dimension tags and would be stored with "_data." prefix
+func getValidDataFields(v interface{}) ([]string, error) {
+	val := reflect.ValueOf(v)
+	if val.Kind() == reflect.Ptr {
+		val = val.Elem()
+	}
+
+	if val.Kind() != reflect.Struct {
+		return nil, fmt.Errorf("expected struct, got %s", val.Kind())
+	}
+
+	typ := val.Type()
+	var dataFields []string
+
+	for i := 0; i < typ.NumField(); i++ {
+		field := typ.Field(i)
+
+		// Skip unexported fields
+		if !field.IsExported() {
+			continue
+		}
+
+		// Skip embedded Document field
+		if field.Anonymous && field.Type == reflect.TypeOf(nanostore.Document{}) {
+			continue
+		}
+
+		// Check if this is a dimension field
+		dimTag := field.Tag.Get("dimension")
+		isEnumeratedDimension := field.Tag.Get("values") != ""
+
+		// If it's not a dimension field, it's a data field
+		if dimTag == "" && !isEnumeratedDimension {
+			dataFields = append(dataFields, field.Name)
+		}
+	}
+
+	return dataFields, nil
+}
+
+// validateDataFieldName checks if a field name is valid for data queries.
+//
+// This function eliminates silent failures in data field queries by validating field names
+// against the actual Go struct fields. Key features:
+//
+// - **Case-insensitive validation**: Accepts field names in any case (e.g., "assignee", "Assignee", "ASSIGNEE")
+// - **Auto-correction**: Returns the correct Go field name case for storage consistency
+// - **Helpful error messages**: Provides suggestions for typos and lists valid field names
+// - **No silent failures**: Invalid field names always return clear error messages
+//
+// Example:
+//   - Input: "assignee" → Output: "Assignee" (if struct has field named "Assignee")
+//   - Input: "assigne" → Error: "invalid data field name 'assigne', did you mean: [Assignee]?"
+//
+// Returns the correct case field name if valid, or an error with suggestions if invalid
+func validateDataFieldName(fieldName string, validFields []string) (string, error) {
+	// Convert field names to lowercase for case-insensitive comparison
+	fieldNameLower := strings.ToLower(fieldName)
+
+	for _, validField := range validFields {
+		if strings.ToLower(validField) == fieldNameLower {
+			// Field exists - return the actual Go field name (correct case) for storage consistency
+			return validField, nil
+		}
+	}
+
+	// Field doesn't exist - provide helpful error with suggestions
+	var suggestions []string
+	for _, validField := range validFields {
+		// Simple similarity check: if field name is contained in valid field or vice versa
+		if strings.Contains(strings.ToLower(validField), fieldNameLower) ||
+			strings.Contains(fieldNameLower, strings.ToLower(validField)) {
+			suggestions = append(suggestions, validField)
+		}
+	}
+
+	errMsg := fmt.Sprintf("invalid data field name %q", fieldName)
+
+	if len(suggestions) > 0 {
+		errMsg += fmt.Sprintf(", did you mean one of: %v?", suggestions)
+	} else if len(validFields) > 0 {
+		errMsg += fmt.Sprintf(", valid data fields are: %v", validFields)
+	} else {
+		errMsg += " (no data fields available for this type)"
+	}
+
+	return "", fmt.Errorf(errMsg)
+}
+
 // ValidateSimpleType ensures a dimension value is a simple type (string, number, bool)
 func ValidateSimpleType(value interface{}, dimensionName string) error {
 	if value == nil {

@@ -119,7 +119,7 @@ func TestComplexQueryPerformance(t *testing.T) {
 			"_data.assignee":   fmt.Sprintf("user_%d", rand.Intn(10)),
 			"_data.estimate":   rand.Intn(20) + 1,
 			"_data.complexity": rand.Intn(5) + 1,
-			"_data.department": fmt.Sprintf("dept_%d", rand.Intn(5)),
+			"_data.Team":       fmt.Sprintf("dept_%d", rand.Intn(5)),
 		})
 		if err != nil {
 			t.Fatalf("failed to create document %d: %v", i, err)
@@ -205,7 +205,7 @@ func TestComplexQueryPerformance(t *testing.T) {
 				query: func() ([]TodoItem, error) {
 					return store.Query().
 						Data("assignee", "user_1").
-						DataIn("department", "dept_0", "dept_1").
+						DataIn("Team", "dept_0", "dept_1").
 						Find()
 				},
 			},
