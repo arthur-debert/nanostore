@@ -542,7 +542,8 @@ func (ts *TypedStore[T]) DeleteByUUIDs(uuids []string) (int, error) {
 // Query returns a new typed query builder
 func (ts *TypedStore[T]) Query() *TypedQuery[T] {
 	return &TypedQuery[T]{
-		store: ts.store,
+		store:      ts.store,
+		typedStore: ts,
 		options: types.ListOptions{
 			Filters: make(map[string]interface{}),
 		},
@@ -569,9 +570,15 @@ func (ts *TypedStore[T]) ResolveUUID(simpleID string) (string, error) {
 // List returns documents based on the provided ListOptions, converted to typed structs
 // This provides direct access to the underlying store's List functionality while maintaining type safety
 func (ts *TypedStore[T]) List(opts types.ListOptions) ([]T, error) {
+	// Validate and transform field names in query options
+	transformedOpts, err := ts.validateAndTransformListOptions(opts)
+	if err != nil {
+		return nil, err
+	}
+
 	// Delegate to underlying store for actual querying
 	// The store handles all filtering, ordering, and pagination logic
-	docs, err := ts.store.List(opts)
+	docs, err := ts.store.List(transformedOpts)
 	if err != nil {
 		return nil, err
 	}
@@ -589,6 +596,117 @@ func (ts *TypedStore[T]) List(opts types.ListOptions) ([]T, error) {
 	}
 
 	return result, nil
+}
+
+// validateAndTransformListOptions validates field names and transforms them to the canonical storage format
+func (ts *TypedStore[T]) validateAndTransformListOptions(opts types.ListOptions) (types.ListOptions, error) {
+	// Create a copy to avoid modifying the original
+	transformedOpts := opts
+
+	// Get the type information for field validation
+	var zeroT T
+	typ := reflect.TypeOf(zeroT)
+	if typ.Kind() == reflect.Ptr {
+		typ = typ.Elem()
+	}
+
+	// Transform OrderBy field names
+	if len(opts.OrderBy) > 0 {
+		transformedOrderBy := make([]types.OrderClause, len(opts.OrderBy))
+		copy(transformedOrderBy, opts.OrderBy)
+
+		for i, clause := range transformedOrderBy {
+			if strings.HasPrefix(clause.Column, "_data.") {
+				// Extract the field name and validate/transform it
+				fieldName := strings.TrimPrefix(clause.Column, "_data.")
+
+				// Validate that the field exists in the struct
+				if err := ts.validateDataFieldName(typ, fieldName); err != nil {
+					return types.ListOptions{}, fmt.Errorf("invalid field in OrderBy: %w", err)
+				}
+
+				// Transform to snake_case for storage
+				snakeFieldName := normalizeFieldName(fieldName)
+				transformedOrderBy[i].Column = "_data." + snakeFieldName
+			}
+			// Note: Non-data fields (like "created_at", "title") are passed through unchanged
+		}
+
+		transformedOpts.OrderBy = transformedOrderBy
+	}
+
+	// Transform filter field names
+	if len(opts.Filters) > 0 {
+		transformedFilters := make(map[string]interface{})
+
+		for key, value := range opts.Filters {
+			if strings.HasPrefix(key, "_data.") {
+				// Extract the field name and validate/transform it
+				fieldName := strings.TrimPrefix(key, "_data.")
+
+				// Validate that the field exists in the struct
+				if err := ts.validateDataFieldName(typ, fieldName); err != nil {
+					return types.ListOptions{}, fmt.Errorf("invalid field in Filters: %w", err)
+				}
+
+				// Transform to snake_case for storage
+				snakeFieldName := normalizeFieldName(fieldName)
+				transformedFilters["_data."+snakeFieldName] = value
+			} else {
+				// Non-data filters are passed through unchanged
+				transformedFilters[key] = value
+			}
+		}
+
+		transformedOpts.Filters = transformedFilters
+	}
+
+	return transformedOpts, nil
+}
+
+// validateDataFieldName checks if a field name (either snake_case or PascalCase) exists in the struct
+func (ts *TypedStore[T]) validateDataFieldName(typ reflect.Type, fieldName string) error {
+	// Try to find the field by name (supports both conventions)
+	if _, found := findFieldByName(typ, fieldName); found {
+		return nil
+	}
+
+	// Field not found - provide helpful error message
+	availableFields := ts.getAvailableDataFields(typ)
+	return fmt.Errorf("field '%s' not found in %s, available data fields: %v",
+		fieldName, typ.Name(), availableFields)
+}
+
+// getAvailableDataFields returns a list of available data field names (non-dimension fields)
+func (ts *TypedStore[T]) getAvailableDataFields(typ reflect.Type) []string {
+	var fields []string
+
+	for i := 0; i < typ.NumField(); i++ {
+		field := typ.Field(i)
+
+		// Skip unexported fields
+		if !field.IsExported() {
+			continue
+		}
+
+		// Skip embedded Document field
+		if field.Anonymous && field.Type == reflect.TypeOf(nanostore.Document{}) {
+			continue
+		}
+
+		// Skip dimension fields (fields with dimension or values tags)
+		dimTag := field.Tag.Get("dimension")
+		valuesTag := field.Tag.Get("values")
+		if dimTag != "" || valuesTag != "" {
+			continue
+		}
+
+		// Add both snake_case and PascalCase versions for clarity
+		snakeName := normalizeFieldName(field.Name)
+		fields = append(fields, snakeName, field.Name)
+	}
+
+	return fields
 }
 
 // GetRaw retrieves a document by ID and returns the raw document structure.
@@ -1687,8 +1805,9 @@ func (ts *TypedStore[T]) ModifyDimensionDefault(dimensionName, newDefault string
 }
 
 type TypedQuery[T any] struct {
-	store   nanostore.Store   // Underlying store for query execution
-	options types.ListOptions // Accumulated query options
+	store      nanostore.Store   // Underlying store for query execution
+	typedStore *TypedStore[T]    // Parent TypedStore for validation
+	options    types.ListOptions // Accumulated query options
 }
 
 // getDimensionConfig returns the dimension configuration for type T
@@ -2023,7 +2142,24 @@ func (tq *TypedQuery[T]) PriorityNotIn(values ...string) *TypedQuery[T] {
 // Performance Note: Data field queries may be slower than dimension queries
 // since they typically cannot leverage specialized indexes.
 func (tq *TypedQuery[T]) Data(field string, value interface{}) *TypedQuery[T] {
-	tq.options.Filters["_data."+field] = value
+	// Validate and transform field name immediately for better error reporting
+	var zeroT T
+	typ := reflect.TypeOf(zeroT)
+	if typ.Kind() == reflect.Ptr {
+		typ = typ.Elem()
+	}
+
+	// Validate field exists
+	if err := tq.typedStore.validateDataFieldName(typ, field); err != nil {
+		// For now, we'll store the error to be returned during Find()
+		// In the future, we could return an error-carrying TypedQuery
+		tq.options.Filters["__validation_error__"] = fmt.Errorf("Data field validation: %w", err)
+		return tq
+	}
+
+	// Transform to snake_case for storage
+	snakeField := normalizeFieldName(field)
+	tq.options.Filters["_data."+snakeField] = value
 	return tq
 }
 
@@ -2041,7 +2177,23 @@ func (tq *TypedQuery[T]) Data(field string, value interface{}) *TypedQuery[T] {
 //	// Find documents with multiple possible tags
 //	results, err := store.Query().DataIn("category", "urgent", "important").Find()
 func (tq *TypedQuery[T]) DataIn(field string, values ...interface{}) *TypedQuery[T] {
-	tq.options.Filters["_data."+field] = values
+	// Validate and transform field name immediately for better error reporting
+	var zeroT T
+	typ := reflect.TypeOf(zeroT)
+	if typ.Kind() == reflect.Ptr {
+		typ = typ.Elem()
+	}
+
+	// Validate field exists
+	if err := tq.typedStore.validateDataFieldName(typ, field); err != nil {
+		// Store error to be returned during Find()
+		tq.options.Filters["__validation_error__"] = fmt.Errorf("DataIn field validation: %w", err)
+		return tq
+	}
+
+	// Transform to snake_case for storage
+	snakeField := normalizeFieldName(field)
+	tq.options.Filters["_data."+snakeField] = values
 	return tq
 }
 
@@ -2062,8 +2214,23 @@ func (tq *TypedQuery[T]) DataIn(field string, values ...interface{}) *TypedQuery
 //	// Find documents NOT tagged as urgent
 //	results, err := store.Query().DataNot("tags", "urgent").Find()
 func (tq *TypedQuery[T]) DataNot(field string, value interface{}) *TypedQuery[T] {
-	// Use special filter key to mark for post-processing
-	tq.options.Filters["__data_not__"+field] = value
+	// Validate and transform field name immediately for better error reporting
+	var zeroT T
+	typ := reflect.TypeOf(zeroT)
+	if typ.Kind() == reflect.Ptr {
+		typ = typ.Elem()
+	}
+
+	// Validate field exists
+	if err := tq.typedStore.validateDataFieldName(typ, field); err != nil {
+		// Store error to be returned during Find()
+		tq.options.Filters["__validation_error__"] = fmt.Errorf("DataNot field validation: %w", err)
+		return tq
+	}
+
+	// Transform to snake_case for storage - use snake_case in special filter key
+	snakeField := normalizeFieldName(field)
+	tq.options.Filters["__data_not__"+snakeField] = value
 	return tq
 }
 
@@ -2077,8 +2244,23 @@ func (tq *TypedQuery[T]) DataNot(field string, value interface{}) *TypedQuery[T]
 //	// Find documents NOT assigned to Alice or Bob
 //	results, err := store.Query().DataNotIn("assignee", "alice", "bob").Find()
 func (tq *TypedQuery[T]) DataNotIn(field string, values ...interface{}) *TypedQuery[T] {
-	// Use special filter key to mark for post-processing
-	tq.options.Filters["__data_not_in__"+field] = values
+	// Validate and transform field name immediately for better error reporting
+	var zeroT T
+	typ := reflect.TypeOf(zeroT)
+	if typ.Kind() == reflect.Ptr {
+		typ = typ.Elem()
+	}
+
+	// Validate field exists
+	if err := tq.typedStore.validateDataFieldName(typ, field); err != nil {
+		// Store error to be returned during Find()
+		tq.options.Filters["__validation_error__"] = fmt.Errorf("DataNotIn field validation: %w", err)
+		return tq
+	}
+
+	// Transform to snake_case for storage - use snake_case in special filter key
+	snakeField := normalizeFieldName(field)
+	tq.options.Filters["__data_not_in__"+snakeField] = values
 	return tq
 }
 
@@ -2236,8 +2418,24 @@ func (tq *TypedQuery[T]) OrderByDesc(column string) *TypedQuery[T] {
 // Performance Note: Ordering by data fields may be slower than dimension ordering
 // since they typically cannot leverage specialized indexes.
 func (tq *TypedQuery[T]) OrderByData(field string) *TypedQuery[T] {
+	// Validate and transform field name immediately for better error reporting
+	var zeroT T
+	typ := reflect.TypeOf(zeroT)
+	if typ.Kind() == reflect.Ptr {
+		typ = typ.Elem()
+	}
+
+	// Validate field exists
+	if err := tq.typedStore.validateDataFieldName(typ, field); err != nil {
+		// Store error to be returned during Find()
+		tq.options.Filters["__validation_error__"] = fmt.Errorf("OrderByData field validation: %w", err)
+		return tq
+	}
+
+	// Transform to snake_case for storage
+	snakeField := normalizeFieldName(field)
 	tq.options.OrderBy = append(tq.options.OrderBy, types.OrderClause{
-		Column:     "_data." + field,
+		Column:     "_data." + snakeField,
 		Descending: false,
 	})
 	return tq
@@ -2256,8 +2454,24 @@ func (tq *TypedQuery[T]) OrderByData(field string) *TypedQuery[T] {
 //	// Order by last update timestamp (most recent first)
 //	results, err := store.Query().OrderByDataDesc("last_updated").Find()
 func (tq *TypedQuery[T]) OrderByDataDesc(field string) *TypedQuery[T] {
+	// Validate and transform field name immediately for better error reporting
+	var zeroT T
+	typ := reflect.TypeOf(zeroT)
+	if typ.Kind() == reflect.Ptr {
+		typ = typ.Elem()
+	}
+
+	// Validate field exists
+	if err := tq.typedStore.validateDataFieldName(typ, field); err != nil {
+		// Store error to be returned during Find()
+		tq.options.Filters["__validation_error__"] = fmt.Errorf("OrderByDataDesc field validation: %w", err)
+		return tq
+	}
+
+	// Transform to snake_case for storage
+	snakeField := normalizeFieldName(field)
 	tq.options.OrderBy = append(tq.options.OrderBy, types.OrderClause{
-		Column:     "_data." + field,
+		Column:     "_data." + snakeField,
 		Descending: true,
 	})
 	return tq
@@ -2326,6 +2540,14 @@ func (tq *TypedQuery[T]) Offset(n int) *TypedQuery[T] {
 //	    Limit(10).
 //	    Find()
 func (tq *TypedQuery[T]) Find() ([]T, error) {
+	// Check for validation errors first
+	if validationErr, ok := tq.options.Filters["__validation_error__"]; ok {
+		delete(tq.options.Filters, "__validation_error__")
+		if err, isErr := validationErr.(error); isErr {
+			return nil, err
+		}
+	}
+
 	// Check for special filters and extract them for post-processing
 	parentNotExists := false
 	if _, ok := tq.options.Filters["__parent_not_exists__"]; ok {

@@ -11,6 +11,7 @@ package api_test
 
 import (
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/arthur-debert/nanostore/nanostore/api"
@@ -541,15 +542,18 @@ func TestTypedQueryDataNOTOperations(t *testing.T) {
 	})
 
 	t.Run("DataNotWithNonExistentField", func(t *testing.T) {
-		// DataNot with field that doesn't exist on any document
-		tasks, err := store.Query().DataNot("nonexistent", "value").Find()
-		if err != nil {
-			t.Fatalf("failed to filter with DataNot on nonexistent field: %v", err)
+		// DataNot with field that doesn't exist - should now return validation error
+		_, err := store.Query().DataNot("nonexistent", "value").Find()
+		if err == nil {
+			t.Error("expected validation error for nonexistent field in DataNot, but got none")
 		}
 
-		// Should return all tasks since none have the nonexistent field
-		if len(tasks) != 5 {
-			t.Errorf("expected 5 tasks when filtering nonexistent field, got %d", len(tasks))
+		if err != nil {
+			// Verify it's a validation error
+			errMsg := err.Error()
+			if !strings.Contains(errMsg, "nonexistent") {
+				t.Errorf("Error should mention the invalid field name, got: %s", errMsg)
+			}
 		}
 	})
 

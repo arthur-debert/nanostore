@@ -11,6 +11,7 @@ package api_test
 
 import (
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/arthur-debert/nanostore/nanostore/api"
@@ -158,14 +159,21 @@ func TestTypedQueryData(t *testing.T) {
 	})
 
 	t.Run("FilterByNonExistentDataField", func(t *testing.T) {
-		// Filter by field that doesn't exist
-		noTasks, err := store.Query().Data("nonexistent", "value").Find()
-		if err != nil {
-			t.Fatalf("failed to filter by nonexistent field: %v", err)
+		// Filter by field that doesn't exist - should now return validation error
+		_, err := store.Query().Data("nonexistent", "value").Find()
+		if err == nil {
+			t.Error("expected validation error for nonexistent field, but got none")
 		}
 
-		if len(noTasks) != 0 {
-			t.Errorf("expected 0 tasks for nonexistent field, got %d", len(noTasks))
+		if err != nil {
+			// Verify it's a validation error with helpful message
+			errMsg := err.Error()
+			if !strings.Contains(errMsg, "nonexistent") {
+				t.Errorf("Error should mention the invalid field name, got: %s", errMsg)
+			}
+			if !strings.Contains(errMsg, "not found") {
+				t.Errorf("Error should indicate field not found, got: %s", errMsg)
+			}
 		}
 	})
 
@@ -407,18 +415,21 @@ func TestTypedQueryOrderByData(t *testing.T) {
 	})
 
 	t.Run("OrderByNonExistentDataField", func(t *testing.T) {
-		// Order by field that doesn't exist - should still work but ordering undefined
-		tasks, err := store.Query().
+		// Order by field that doesn't exist - should now return validation error
+		_, err := store.Query().
 			Status("active").
 			OrderByData("nonexistent").
 			Find()
-		if err != nil {
-			t.Fatalf("failed to order by nonexistent data field: %v", err)
+		if err == nil {
+			t.Error("expected validation error for nonexistent field in OrderByData, but got none")
 		}
 
-		// Should still return all tasks, even if ordering is undefined
-		if len(tasks) != 3 {
-			t.Errorf("expected 3 tasks even with nonexistent ordering field, got %d", len(tasks))
+		if err != nil {
+			// Verify it's a validation error
+			errMsg := err.Error()
+			if !strings.Contains(errMsg, "nonexistent") {
+				t.Errorf("Error should mention the invalid field name, got: %s", errMsg)
+			}
 		}
 	})
 }

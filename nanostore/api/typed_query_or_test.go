@@ -11,6 +11,7 @@ package api_test
 
 import (
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/arthur-debert/nanostore/nanostore/api"
@@ -501,14 +502,18 @@ func TestTypedQueryDataIn(t *testing.T) {
 	})
 
 	t.Run("DataInNonExistentField", func(t *testing.T) {
-		// Test DataIn with field that doesn't exist
-		tasks, err := store.Query().DataIn("nonexistent", "alice", "bob").Find()
-		if err != nil {
-			t.Fatalf("failed to filter with nonexistent DataIn field: %v", err)
+		// Test DataIn with field that doesn't exist - should now return validation error
+		_, err := store.Query().DataIn("nonexistent", "alice", "bob").Find()
+		if err == nil {
+			t.Error("expected validation error for nonexistent field in DataIn, but got none")
 		}
 
-		if len(tasks) != 0 {
-			t.Errorf("expected 0 tasks with nonexistent DataIn field, got %d", len(tasks))
+		if err != nil {
+			// Verify it's a validation error
+			errMsg := err.Error()
+			if !strings.Contains(errMsg, "nonexistent") {
+				t.Errorf("Error should mention the invalid field name, got: %s", errMsg)
+			}
 		}
 	})
 }
