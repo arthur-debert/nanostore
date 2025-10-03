@@ -192,7 +192,6 @@ func TestStructTagValidation(t *testing.T) {
 	})
 
 	t.Run("Empty default tag should be rejected", func(t *testing.T) {
-		t.Skip("TODO: Implement proper empty default tag validation")
 		tmpfile, err := os.CreateTemp("", "test_empty_default*.json")
 		if err != nil {
 			t.Fatal(err)
@@ -266,7 +265,6 @@ func TestStructTagValidation(t *testing.T) {
 	})
 
 	t.Run("Empty prefix tag should be rejected", func(t *testing.T) {
-		t.Skip("TODO: Implement proper empty prefix tag validation")
 		tmpfile, err := os.CreateTemp("", "test_empty_prefix_tag*.json")
 		if err != nil {
 			t.Fatal(err)

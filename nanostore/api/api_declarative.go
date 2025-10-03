@@ -4051,14 +4051,14 @@ func generateConfigFromType(typ reflect.Type) (nanostore.Config, error) {
 			}
 
 			// Parse and validate default tag
-			if defaultVal := field.Tag.Get("default"); defaultVal != "" {
+			if defaultVal, defaultExists := field.Tag.Lookup("default"); defaultExists {
 				if err := parseDefaultTag(defaultVal, &dimConfig, field.Name); err != nil {
 					return config, fmt.Errorf("field '%s': %w", field.Name, err)
 				}
 			}
 
 			// Parse and validate prefix tag
-			if prefixTag := field.Tag.Get("prefix"); prefixTag != "" {
+			if prefixTag, prefixExists := field.Tag.Lookup("prefix"); prefixExists {
 				if err := parsePrefixTag(prefixTag, &dimConfig, field.Name); err != nil {
 					return config, fmt.Errorf("field '%s': %w", field.Name, err)
 				}
