@@ -83,16 +83,16 @@ func TestDeclarativeRobustness(t *testing.T) {
 		defer func() { _ = os.Remove(tmpfile.Name()) }()
 		_ = tmpfile.Close()
 
-		_, err = api.NewFromType[EdgeCaseItem](tmpfile.Name())
-		if err == nil {
-			t.Fatal("expected error for pointer field, got nil")
+		// Note: Pointer fields in data fields (non-dimensions) are now supported
+		// This struct has a *string data field which should be fine
+		store, err := api.NewFromType[EdgeCaseItem](tmpfile.Name())
+		if err != nil {
+			t.Fatalf("expected success for data field pointer, got error: %v", err)
 		}
-		if !strings.Contains(err.Error(), "pointer fields are not supported") {
-			t.Fatalf("expected pointer field error, got: %v", err)
-		}
+		defer func() { _ = store.Close() }()
 
-		// Test passes - pointer fields are properly rejected
-		t.Log("Pointer fields correctly rejected with error")
+		// Test passes - pointer data fields are now supported
+		t.Log("Pointer data fields correctly supported")
 	})
 
 	// Test 2: Invalid struct tags handling

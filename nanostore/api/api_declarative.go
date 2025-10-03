@@ -2337,11 +2337,12 @@ func (ts *TypedStore[T]) GetTypeSchema() (*TypeSchema, error) {
 				Tags:          string(field.Tag),
 			}
 
-			if dimConfig.Type == nanostore.Enumerated {
+			switch dimConfig.Type {
+			case nanostore.Enumerated:
 				dimField.AllowedValues = dimConfig.Values
 				dimField.DefaultValue = dimConfig.DefaultValue
 				dimField.PrefixMappings = dimConfig.Prefixes
-			} else if dimConfig.Type == nanostore.Hierarchical {
+			case nanostore.Hierarchical:
 				dimField.RefField = dimConfig.RefField
 			}
 
@@ -3906,7 +3907,7 @@ func (tq *TypedQuery[T]) GetQueryPlan() (*QueryPlan, error) {
 			"WHERE clause without indexed filters may be slow - add dimensional filters if possible")
 	}
 
-	if tq.options.OrderBy != nil && len(tq.options.OrderBy) > 0 && plan.TotalFilters > 0 {
+	if len(tq.options.OrderBy) > 0 && plan.TotalFilters > 0 {
 		plan.OptimizationSuggestions = append(plan.OptimizationSuggestions,
 			"Ordering with filtering - ensure ORDER BY columns are indexed for best performance")
 	}
@@ -4018,13 +4019,25 @@ func generateConfigFromType(typ reflect.Type) (nanostore.Config, error) {
 			continue
 		}
 
-		// Check for pointer fields (not allowed)
+		// Check for pointer fields and validate supported types
 		if field.Type.Kind() == reflect.Ptr {
-			return config, fmt.Errorf("field %s: pointer fields are not supported", field.Name)
+			// Check if the underlying type is supported
+			elemType := field.Type.Elem()
+			switch elemType.Kind() {
+			case reflect.String, reflect.Bool, reflect.Int, reflect.Int64, reflect.Float64:
+				// Basic pointer types are supported
+			default:
+				// Check for time.Time specifically
+				if elemType == reflect.TypeOf(time.Time{}) {
+					// *time.Time is supported
+				} else {
+					return config, fmt.Errorf("field %s: pointer type %s is not supported (supported: *string, *bool, *int, *int64, *float64, *time.Time)", field.Name, field.Type)
+				}
+			}
 		}
 
 		// Look for field tags in different formats
-		if tagValue := field.Tag.Get("values"); tagValue != "" {
+		if tagValue, tagExists := field.Tag.Lookup("values"); tagExists {
 			// Parse enumerated dimension from tags like:
 			// `values:"pending,active,done" prefix:"done=d" default:"pending"`
 			dimConfig := nanostore.DimensionConfig{
@@ -4072,6 +4085,12 @@ func generateConfigFromType(typ reflect.Type) (nanostore.Config, error) {
 					Name:     field.Name + "_hierarchy",
 					Type:     nanostore.Hierarchical,
 					RefField: dimName,
+				})
+			} else {
+				// Regular dimension (simple value dimension)
+				config.Dimensions = append(config.Dimensions, nanostore.DimensionConfig{
+					Name: dimName,
+					Type: nanostore.Enumerated, // Use enumerated type for simple values
 				})
 			}
 		}
@@ -4219,9 +4238,11 @@ func validateStructTagConfiguration(config nanostore.Config) error {
 
 // validateEnumeratedDimensionConfig validates enumerated dimension configuration
 func validateEnumeratedDimensionConfig(dim nanostore.DimensionConfig) error {
-	// Check that values list is not empty
+	// Allow empty values list for simple dimensions (e.g., pointer types like *time.Time)
+	// These dimensions can accept any value, unlike traditional enumerated dimensions
 	if len(dim.Values) == 0 {
-		return fmt.Errorf("enumerated dimension must have at least one value")
+		// For simple dimensions with no predefined values, skip validation
+		return nil
 	}
 
 	// Check for empty values
@@ -4316,10 +4337,12 @@ func extractTypeInfo(typ reflect.Type) TypeDebugInfo {
 		}
 
 		// Check if this field is a dimension
-		if field.Tag.Get("values") != "" || field.Tag.Get("dimension") != "" {
+		valuesValue, valuesExists := field.Tag.Lookup("values")
+		_, dimensionExists := field.Tag.Lookup("dimension")
+		if valuesExists || dimensionExists {
 			fieldInfo.IsDimension = true
-			if values := field.Tag.Get("values"); values != "" {
-				fieldInfo.DimensionTag = fmt.Sprintf("values:%s", values)
+			if valuesExists {
+				fieldInfo.DimensionTag = fmt.Sprintf("values:%s", valuesValue)
 				if prefix := field.Tag.Get("prefix"); prefix != "" {
 					fieldInfo.DimensionTag += fmt.Sprintf(" prefix:%s", prefix)
 				}

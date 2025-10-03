@@ -87,8 +87,8 @@ type DuplicateValues struct {
 // Duplicate dimension names (same field name lowercased)
 type DuplicateDimensionNames struct {
 	nanostore.Document
-	Status string `values:"pending,active"`
-	status string `values:"draft,review"` // This would create duplicate dimension name "status"
+	Status        string `values:"pending,active"`
+	AnotherStatus string `dimension:"status"` // This would create duplicate dimension name "status"
 }
 
 // Conflicting prefixes across dimensions
@@ -416,8 +416,8 @@ func TestStructTagValidationErrorMessages(t *testing.T) {
 					t.Errorf("Error message should contain '%s', got: %v", tc.expectedError, err2)
 				}
 
-				// All error messages should include field name for context
-				if !strings.Contains(err2.Error(), "field") && !strings.Contains(err2.Error(), "Status") {
+				// All error messages should include field/dimension name for context
+				if !strings.Contains(err2.Error(), "field") && !strings.Contains(err2.Error(), "Status") && !strings.Contains(err2.Error(), "dimension") {
 					t.Errorf("Error message should include field context: %v", err2)
 				}
 			})

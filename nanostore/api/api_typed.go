@@ -39,8 +39,27 @@ func MarshalDimensions(v interface{}) (dimensions map[string]interface{}, data m
 			continue
 		}
 
-		// Get the value
-		value := fieldVal.Interface()
+		// Get the value, handling pointer types
+		var value interface{}
+		if fieldVal.Kind() == reflect.Ptr {
+			if fieldVal.IsNil() {
+				// nil pointer - store as nil (will be handled appropriately later)
+				value = nil
+			} else {
+				// non-nil pointer - get the pointed-to value
+				value = fieldVal.Elem().Interface()
+			}
+		} else {
+			// non-pointer value
+			value = fieldVal.Interface()
+		}
+
+		// Convert time.Time values to RFC3339 string format for storage
+		if value != nil {
+			if t, ok := value.(time.Time); ok {
+				value = t.Format(time.RFC3339)
+			}
+		}
 
 		// Check for dimension tag
 		dimTag := field.Tag.Get("dimension")
@@ -164,8 +183,27 @@ func MarshalDimensionsForUpdate(v interface{}) (dimensions map[string]interface{
 			continue
 		}
 
-		// Get the value
-		value := fieldVal.Interface()
+		// Get the value, handling pointer types
+		var value interface{}
+		if fieldVal.Kind() == reflect.Ptr {
+			if fieldVal.IsNil() {
+				// nil pointer - store as nil (will be handled appropriately later)
+				value = nil
+			} else {
+				// non-nil pointer - get the pointed-to value
+				value = fieldVal.Elem().Interface()
+			}
+		} else {
+			// non-pointer value
+			value = fieldVal.Interface()
+		}
+
+		// Convert time.Time values to RFC3339 string format for storage
+		if value != nil {
+			if t, ok := value.(time.Time); ok {
+				value = t.Format(time.RFC3339)
+			}
+		}
 
 		// Check for dimension tag
 		dimTag := field.Tag.Get("dimension")
@@ -387,6 +425,17 @@ func setFieldValue(field reflect.Value, value string) error {
 			return err
 		}
 		field.SetFloat(f)
+	case reflect.Struct:
+		// Handle time.Time specially
+		if field.Type() == reflect.TypeOf(time.Time{}) {
+			t, err := time.Parse(time.RFC3339, value)
+			if err != nil {
+				return fmt.Errorf("failed to parse time value '%s': %w", value, err)
+			}
+			field.Set(reflect.ValueOf(t))
+			return nil
+		}
+		return fmt.Errorf("unsupported struct type: %s", field.Type())
 	default:
 		return fmt.Errorf("unsupported field type: %s", field.Kind())
 	}
@@ -396,6 +445,26 @@ func setFieldValue(field reflect.Value, value string) error {
 // setFieldFromInterface sets a field value from an interface{}
 func setFieldFromInterface(field reflect.Value, value interface{}) error {
 	if value == nil {
+		// For pointer types, set to nil. For non-pointer types, leave as zero value.
+		if field.Kind() == reflect.Ptr {
+			field.Set(reflect.Zero(field.Type()))
+		}
+		return nil
+	}
+
+	// Handle pointer types
+	if field.Kind() == reflect.Ptr {
+		// Create a new instance of the pointed-to type
+		elemType := field.Type().Elem()
+		newPtr := reflect.New(elemType)
+
+		// Set the value on the pointed-to element
+		if err := setFieldFromInterface(newPtr.Elem(), value); err != nil {
+			return err
+		}
+
+		// Set the pointer
+		field.Set(newPtr)
 		return nil
 	}
 
@@ -558,7 +627,7 @@ func ValidateSimpleType(value interface{}, dimensionName string) error {
 		if _, ok := value.(time.Time); ok {
 			return nil
 		}
-		return fmt.Errorf("dimension '%s' cannot be a struct type, got %T", dimensionName, value)
+		return fmt.Errorf("dimension '%s' cannot be a struct type, got %T (time.Time check failed)", dimensionName, value)
 	case reflect.Ptr, reflect.Interface:
 		// Dereference and check the underlying type
 		if v.IsNil() {
