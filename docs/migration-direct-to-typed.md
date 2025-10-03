@@ -551,11 +551,73 @@ status := task.Status
 ### Q: Is performance the same or better?
 **A: Better!** TypedStore includes performance optimizations like intelligent caching and reduced reflection overhead.
 
+## Field Naming Changes (v0.11+)
+
+Starting with v0.11, the TypedAPI uses consistent snake_case naming for data fields:
+
+### Before (Inconsistent Naming)
+```go
+// Different methods required different field name formats
+store.List(types.ListOptions{
+    OrderBy: []types.OrderClause{
+        {Column: "_data.DeletedAt"},  // Required PascalCase
+    },
+})
+
+store.Query().Data("deletedAt", "value")  // Required camelCase sometimes
+```
+
+### After (Consistent snake_case)
+```go
+// All methods use consistent snake_case
+store.List(types.ListOptions{
+    OrderBy: []types.OrderClause{
+        {Column: "_data.deleted_at"},  // snake_case
+    },
+})
+
+store.Query().Data("deleted_at", "value")  // snake_case
+store.Query().OrderByData("created_by")    // snake_case
+```
+
+### Validation Improvements
+
+Field names are now validated to prevent silent failures:
+
+```go
+// Before: Silent failure - wrong results
+tasks, err := store.Query().Data("nonexistent", "value").Find()
+// err == nil, but wrong results
+
+// After: Clear validation error
+tasks, err := store.Query().Data("nonexistent", "value").Find()  
+// err: "field 'nonexistent' not found in Task, available fields: [created_by, assigned_to]"
+```
+
+### Backward Compatibility
+
+PascalCase field names still work for compatibility:
+
+```go
+// ✅ Both formats work
+store.Query().Data("created_by", "alice")   // Recommended snake_case
+store.Query().Data("CreatedBy", "alice")    // PascalCase (compatibility)
+```
+
+### Migration Notes
+
+This is a **critical bug fix** that may reveal previously hidden errors:
+- Some code that "worked" (with wrong results) will now fail with validation errors
+- This is the correct behavior - silent failures were bugs
+- Use validation error messages to identify and fix incorrect field names
+- The new consistent naming improves API predictability
+
 ## Getting Help
 
 - Check the [TypedStore API Reference](./typed-api.md)
 - Review [sample applications](../samples/) for complete examples
 - See the [GitHub issue #76](https://github.com/arthur-debert/nanostore/issues/76) for implementation details
+- See the [GitHub issue #80](https://github.com/arthur-debert/nanostore/issues/80) for field naming fixes
 - Ask questions in GitHub Discussions
 
 Happy migrating! 🚀

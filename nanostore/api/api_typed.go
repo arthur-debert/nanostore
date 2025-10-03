@@ -3,6 +3,7 @@ package api
 import (
 	"fmt"
 	"reflect"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -122,8 +123,9 @@ func MarshalDimensions(v interface{}) (dimensions map[string]interface{}, data m
 			// Non-dimension field - store in data map
 			// Skip zero values to avoid storing empty data
 			if !isZeroValue(fieldVal) {
-				// Store all non-dimension fields in data map
-				data[field.Name] = value
+				// Store all non-dimension fields in data map using snake_case
+				snakeFieldName := normalizeFieldName(field.Name)
+				data[snakeFieldName] = value
 			}
 		}
 	}
@@ -256,7 +258,9 @@ func MarshalDimensionsForUpdate(v interface{}) (dimensions map[string]interface{
 		} else {
 			// Non-dimension field - store in data map
 			// For updates, preserve zero values to allow field clearing
-			data[field.Name] = value
+			// Store all non-dimension fields in data map using snake_case
+			snakeFieldName := normalizeFieldName(field.Name)
+			data[snakeFieldName] = value
 		}
 	}
 
@@ -363,7 +367,19 @@ func UnmarshalDimensions(doc nanostore.Document, v interface{}) error {
 			}
 		} else {
 			// Non-dimension field - check our extracted data map
-			if dataValue, exists := dataMap[field.Name]; exists {
+			// Try both snake_case and PascalCase versions
+			snakeFieldName := normalizeFieldName(field.Name)
+
+			var dataValue interface{}
+			var exists bool
+
+			// First try snake_case (canonical storage format)
+			if dataValue, exists = dataMap[snakeFieldName]; !exists {
+				// Then try original PascalCase (for backward compatibility)
+				dataValue, exists = dataMap[field.Name]
+			}
+
+			if exists {
 				if err := setFieldFromInterface(fieldVal, dataValue); err != nil {
 					return fmt.Errorf("failed to set data field %s: %w", field.Name, err)
 				}
@@ -375,6 +391,64 @@ func UnmarshalDimensions(doc nanostore.Document, v interface{}) error {
 }
 
 // Helper functions
+
+// toSnakeCase converts PascalCase/camelCase to snake_case
+func toSnakeCase(s string) string {
+	// Handle edge cases
+	if s == "" {
+		return s
+	}
+
+	// Regular expression to find capital letters that should have underscores before them
+	re := regexp.MustCompile("([a-z0-9])([A-Z])")
+	snake := re.ReplaceAllString(s, "${1}_${2}")
+	return strings.ToLower(snake)
+}
+
+// fromSnakeCase converts snake_case to PascalCase
+func fromSnakeCase(s string) string {
+	if s == "" {
+		return s
+	}
+
+	parts := strings.Split(s, "_")
+	for i, part := range parts {
+		if len(part) > 0 {
+			parts[i] = strings.ToUpper(part[:1]) + part[1:]
+		}
+	}
+	return strings.Join(parts, "")
+}
+
+// normalizeFieldName converts a field name to the canonical storage format (snake_case)
+func normalizeFieldName(fieldName string) string {
+	return toSnakeCase(fieldName)
+}
+
+// findFieldByName attempts to find a struct field by either snake_case or PascalCase name
+func findFieldByName(typ reflect.Type, fieldName string) (reflect.StructField, bool) {
+	// First try exact match
+	if field, ok := typ.FieldByName(fieldName); ok {
+		return field, true
+	}
+
+	// Try converting snake_case to PascalCase
+	pascalName := fromSnakeCase(fieldName)
+	if field, ok := typ.FieldByName(pascalName); ok {
+		return field, true
+	}
+
+	// Try converting PascalCase to snake_case and looking for that
+	snakeName := toSnakeCase(fieldName)
+	for i := 0; i < typ.NumField(); i++ {
+		field := typ.Field(i)
+		if toSnakeCase(field.Name) == snakeName {
+			return field, true
+		}
+	}
+
+	return reflect.StructField{}, false
+}
 
 // isZeroValue checks if a reflect.Value is a zero value
 func isZeroValue(v reflect.Value) bool {
@@ -548,7 +622,12 @@ func getValidDataFields(v interface{}) ([]string, error) {
 
 		// If it's not a dimension field, it's a data field
 		if dimTag == "" && !isEnumeratedDimension {
+			// Add both PascalCase (Go field name) and snake_case (storage format)
 			dataFields = append(dataFields, field.Name)
+			snakeFieldName := normalizeFieldName(field.Name)
+			if snakeFieldName != field.Name {
+				dataFields = append(dataFields, snakeFieldName)
+			}
 		}
 	}
 
@@ -576,8 +655,8 @@ func validateDataFieldName(fieldName string, validFields []string) (string, erro
 
 	for _, validField := range validFields {
 		if strings.ToLower(validField) == fieldNameLower {
-			// Field exists - return the actual Go field name (correct case) for storage consistency
-			return validField, nil
+			// Field exists - return the snake_case version for storage consistency
+			return normalizeFieldName(validField), nil
 		}
 	}
 

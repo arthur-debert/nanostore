@@ -505,12 +505,15 @@ func TestTypedQueryDataIn(t *testing.T) {
 		// Test DataIn with field that doesn't exist - should now return validation error
 		_, err := store.Query().DataIn("nonexistent", "alice", "bob").Find()
 		if err == nil {
-			t.Error("expected validation error for nonexistent DataIn field, but got none")
+			t.Error("expected validation error for nonexistent field in DataIn, but got none")
 		}
 
-		// Verify error mentions the invalid field
-		if err != nil && !strings.Contains(err.Error(), "nonexistent") {
-			t.Errorf("expected error to mention invalid field name, got: %v", err)
+		if err != nil {
+			// Verify it's a validation error
+			errMsg := err.Error()
+			if !strings.Contains(errMsg, "nonexistent") {
+				t.Errorf("Error should mention the invalid field name, got: %s", errMsg)
+			}
 		}
 	})
 }

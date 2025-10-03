@@ -165,9 +165,15 @@ func TestTypedQueryData(t *testing.T) {
 			t.Error("expected validation error for nonexistent field, but got none")
 		}
 
-		// Verify error mentions the invalid field
-		if err != nil && !strings.Contains(err.Error(), "nonexistent") {
-			t.Errorf("expected error to mention invalid field name, got: %v", err)
+		if err != nil {
+			// Verify it's a validation error with helpful message
+			errMsg := err.Error()
+			if !strings.Contains(errMsg, "nonexistent") {
+				t.Errorf("Error should mention the invalid field name, got: %s", errMsg)
+			}
+			if !strings.Contains(errMsg, "not found") {
+				t.Errorf("Error should indicate field not found, got: %s", errMsg)
+			}
 		}
 	})
 
@@ -415,12 +421,15 @@ func TestTypedQueryOrderByData(t *testing.T) {
 			OrderByData("nonexistent").
 			Find()
 		if err == nil {
-			t.Error("expected validation error for nonexistent ordering field, but got none")
+			t.Error("expected validation error for nonexistent field in OrderByData, but got none")
 		}
 
-		// Verify error mentions the invalid field
-		if err != nil && !strings.Contains(err.Error(), "nonexistent") {
-			t.Errorf("expected error to mention invalid field name, got: %v", err)
+		if err != nil {
+			// Verify it's a validation error
+			errMsg := err.Error()
+			if !strings.Contains(errMsg, "nonexistent") {
+				t.Errorf("Error should mention the invalid field name, got: %s", errMsg)
+			}
 		}
 	})
 }
