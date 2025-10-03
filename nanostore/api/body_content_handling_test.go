@@ -194,7 +194,7 @@ func TestBodyContentHandlingInCreate(t *testing.T) {
 		}
 
 		retrieved.Body = "Body added after creation"
-		err = store.Update(id, retrieved)
+		_, err = store.Update(id, retrieved)
 		if err != nil {
 			t.Fatalf("Update failed: %v", err)
 		}

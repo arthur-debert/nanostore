@@ -60,7 +60,7 @@ func TestTypedStoreUpdateWithSmartIDMigrated(t *testing.T) {
 	simpleID := tasks[0].SimpleID
 
 	t.Run("UpdateUsingUUID", func(t *testing.T) {
-		err = store.Update(uuid, &TestTaskMigrated{
+		_, err = store.Update(uuid, &TestTaskMigrated{
 			Document: nanostore.Document{Title: "Updated via UUID"},
 			Status:   "done",
 			Priority: "high",
@@ -80,13 +80,16 @@ func TestTypedStoreUpdateWithSmartIDMigrated(t *testing.T) {
 	})
 
 	t.Run("UpdateUsingSimpleID", func(t *testing.T) {
-		err = store.Update(simpleID, &TestTaskMigrated{
+		count, err := store.Update(simpleID, &TestTaskMigrated{
 			Document: nanostore.Document{Title: "Updated via SimpleID"},
 			Status:   "todo",
 			Priority: "low",
 		})
 		if err != nil {
 			t.Errorf("Update with SimpleID failed: %v", err)
+		}
+		if count != 1 {
+			t.Errorf("Expected 1 document updated, got %d", count)
 		}
 
 		// Verify update
@@ -100,9 +103,12 @@ func TestTypedStoreUpdateWithSmartIDMigrated(t *testing.T) {
 	})
 
 	t.Run("UpdateWithInvalidID", func(t *testing.T) {
-		err = store.Update("invalid-id", &TestTaskMigrated{})
+		count, err := store.Update("invalid-id", &TestTaskMigrated{})
 		if err == nil {
 			t.Error("expected error for invalid ID, got nil")
+		}
+		if count != 0 {
+			t.Errorf("Expected 0 documents updated for invalid ID, got %d", count)
 		}
 	})
 }

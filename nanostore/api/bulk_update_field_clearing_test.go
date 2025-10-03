@@ -177,7 +177,7 @@ func TestBulkUpdateFieldClearing(t *testing.T) {
 				t.Fatal(err)
 			}
 			retrieved.Assignee = "test-assignee"
-			err = store.Update(uuid, retrieved)
+			_, err = store.Update(uuid, retrieved)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -223,7 +223,7 @@ func TestBulkUpdateFieldClearing(t *testing.T) {
 			t.Fatal(err)
 		}
 		retrieved.Assignee = "individual-test"
-		err = store.Update(uuid1, retrieved)
+		_, err = store.Update(uuid1, retrieved)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -239,7 +239,7 @@ func TestBulkUpdateFieldClearing(t *testing.T) {
 
 		// Now clear it with individual update
 		retrieved.Assignee = ""
-		err = store.Update(uuid1, retrieved)
+		_, err = store.Update(uuid1, retrieved)
 		if err != nil {
 			t.Fatalf("Individual update failed: %v", err)
 		}

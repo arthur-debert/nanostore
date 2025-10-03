@@ -30,7 +30,7 @@ type EdgeCaseItem struct {
 	PointerField *string
 
 	// Dimension with special characters in tag
-	WeirdDimension string `dimension:"weird-dimension!@#" values:"val1,val2,val3"`
+	WeirdDimension string `dimension:"weird-dimension!@#" values:"val1,val2,val3" default:"val1"`
 
 	// Multiple tags
 	MultiTag string `values:"a,b,c" prefix:"a=x,b=y" default:"a" dimension:"multi_tag"`
@@ -47,7 +47,7 @@ type SafeEdgeCaseItem struct {
 	FloatField  float64 `default:"3.14"`
 
 	// Dimension with special characters in tag
-	WeirdDimension string `dimension:"weird-dimension!@#" values:"val1,val2,val3"`
+	WeirdDimension string `dimension:"weird-dimension!@#" values:"val1,val2,val3" default:"val1"`
 
 	// Multiple tags
 	MultiTag string `values:"a,b,c" prefix:"a=x,b=y" default:"a" dimension:"multi_tag"`
@@ -243,7 +243,7 @@ func TestDeclarativeRobustness(t *testing.T) {
 
 		for _, test := range updateTests {
 			t.Run(test.name, func(t *testing.T) {
-				err := store.Update(id, &test.update)
+				_, err := store.Update(id, &test.update)
 				if err != nil {
 					t.Fatalf("update failed: %v", err)
 				}
@@ -308,7 +308,7 @@ func TestDeclarativeRobustness(t *testing.T) {
 				"interleaved updates",
 				func() error {
 					for i, id := range ids {
-						err := store.Update(id, &SafeEdgeCaseItem{IntField: i * 2})
+						_, err := store.Update(id, &SafeEdgeCaseItem{IntField: i * 2})
 						if err != nil {
 							return err
 						}

@@ -167,7 +167,7 @@ func TestSetTimeFunc(t *testing.T) {
 		}
 
 		// Update the document
-		err = store.Update(id, &TodoItem{
+		_, err = store.Update(id, &TodoItem{
 			Status:   "active",
 			Priority: "high",
 			Activity: "active",

@@ -64,9 +64,21 @@ func MarshalDimensions(v interface{}) (dimensions map[string]interface{}, data m
 				continue
 			}
 
-			// Skip zero values for dimensions (except false for bools)
+			// Handle default values for enumerated dimensions with zero values
 			if isZeroValue(fieldVal) && fieldVal.Kind() != reflect.Bool {
-				continue
+				valuesTag := field.Tag.Get("values")
+				defaultTag := field.Tag.Get("default")
+
+				// If this is an enumerated dimension with a default value, use the default
+				if valuesTag != "" && defaultTag != "" {
+					value = defaultTag
+				} else if valuesTag != "" {
+					// Enumerated dimension without default - validate the empty value (will be rejected)
+					// Don't skip, let validation handle it
+				} else {
+					// Skip non-enumerated zero values
+					continue
+				}
 			}
 
 			// Validate that the dimension value is a simple type
@@ -77,6 +89,13 @@ func MarshalDimensions(v interface{}) (dimensions map[string]interface{}, data m
 			// For values tag style, use lowercase field name as dimension name
 			if field.Tag.Get("values") != "" && dimTag == strings.ToLower(field.Name) {
 				dimName = strings.ToLower(field.Name)
+			}
+
+			// Validate enumerated dimension values against their allowed values
+			if valuesTag := field.Tag.Get("values"); valuesTag != "" {
+				if err = validateEnumeratedValue(value, valuesTag, field.Name); err != nil {
+					return nil, nil, err
+				}
 			}
 
 			dimensions[dimName] = value
@@ -186,6 +205,13 @@ func MarshalDimensionsForUpdate(v interface{}) (dimensions map[string]interface{
 			// For values tag style, use lowercase field name as dimension name
 			if field.Tag.Get("values") != "" && dimTag == strings.ToLower(field.Name) {
 				dimName = strings.ToLower(field.Name)
+			}
+
+			// Validate enumerated dimension values against their allowed values
+			if valuesTag := field.Tag.Get("values"); valuesTag != "" {
+				if err = validateEnumeratedValue(value, valuesTag, field.Name); err != nil {
+					return nil, nil, err
+				}
 			}
 
 			dimensions[dimName] = value
@@ -496,7 +522,7 @@ func validateDataFieldName(fieldName string, validFields []string) (string, erro
 		}
 	}
 
-	errMsg := fmt.Sprintf("invalid data field name %q", fieldName)
+	errMsg := fmt.Sprintf("invalid data field name '%s'", fieldName)
 
 	if len(suggestions) > 0 {
 		errMsg += fmt.Sprintf(", did you mean one of: %v?", suggestions)
@@ -542,4 +568,38 @@ func ValidateSimpleType(value interface{}, dimensionName string) error {
 	default:
 		return fmt.Errorf("dimension '%s' must be a simple type (string, number, or bool), got %T", dimensionName, value)
 	}
+}
+
+// validateEnumeratedValue validates that a field value is one of the allowed enumerated values
+// specified in the "values" struct tag. This prevents invalid enumerated dimension values
+// from being stored in the system.
+//
+// Parameters:
+//   - value: The actual field value to validate
+//   - valuesTag: The "values" tag content (e.g., "pending,active,done")
+//   - fieldName: The struct field name for error reporting
+//
+// Returns an error if the value is not in the allowed values list.
+func validateEnumeratedValue(value interface{}, valuesTag, fieldName string) error {
+	// Convert value to string for comparison
+	valueStr := fmt.Sprintf("%v", value)
+
+	// Parse the allowed values from the tag
+	allowedValues := strings.Split(valuesTag, ",")
+
+	// Trim whitespace from each allowed value
+	for i, v := range allowedValues {
+		allowedValues[i] = strings.TrimSpace(v)
+	}
+
+	// Check if the value is in the allowed list
+	for _, allowed := range allowedValues {
+		if valueStr == allowed {
+			return nil // Value is valid
+		}
+	}
+
+	// Value is not in the allowed list - return standardized error message
+	return fmt.Errorf("invalid value '%s' for field '%s': must be one of [%s]",
+		valueStr, fieldName, strings.Join(allowedValues, ", "))
 }
