@@ -232,6 +232,12 @@ func (cli *ViperCLI) executeListCommand(cmd *cobra.Command) error {
 	nullFields := cli.viperInst.GetStringSlice("null-fields")
 	notNullFields := cli.viperInst.GetStringSlice("not-null-fields")
 
+	// Text search flags
+	searchText := cli.viperInst.GetString("search")
+	titleContains := cli.viperInst.GetString("title-contains")
+	bodyContains := cli.viperInst.GetString("body-contains")
+	caseSensitive := cli.viperInst.GetBool("search-case-sensitive")
+
 	sort := cli.viperInst.GetString("sort")
 	limit := cli.viperInst.GetInt("limit")
 	offset := cli.viperInst.GetInt("offset")
@@ -252,16 +258,17 @@ func (cli *ViperCLI) executeListCommand(cmd *cobra.Command) error {
 	var documents interface{}
 	var err error
 
-	// Build date and NULL WHERE clauses
-	dateNullWhere, dateNullArgs, err := cli.reflectionExec.buildDateAndNullWhere(
+	// Build date, NULL, and text search WHERE clauses
+	filterWhere, filterArgs, err := cli.reflectionExec.buildFilterWhere(
 		createdAfter, createdBefore, updatedAfter, updatedBefore,
-		nullFields, notNullFields)
+		nullFields, notNullFields,
+		searchText, titleContains, bodyContains, caseSensitive)
 	if err != nil {
-		return fmt.Errorf("failed to build date/NULL filters: %w", err)
+		return fmt.Errorf("failed to build filters: %w", err)
 	}
 
-	// Check if we need to use complex querying (WHERE clauses, dates, or NULL checks)
-	needsComplexQuery := whereClause != "" || dateNullWhere != ""
+	// Check if we need to use complex querying (WHERE clauses, dates, NULL checks, or text search)
+	needsComplexQuery := whereClause != "" || filterWhere != ""
 
 	if needsComplexQuery {
 		// Convert string args to interface{} slice for explicit WHERE clause
@@ -270,9 +277,9 @@ func (cli *ViperCLI) executeListCommand(cmd *cobra.Command) error {
 			explicitArgs[i] = arg
 		}
 
-		// Combine explicit WHERE clause with date/NULL filters
+		// Combine explicit WHERE clause with all filters
 		finalWhere, finalArgs := cli.reflectionExec.combineWhereClauses(
-			whereClause, explicitArgs, dateNullWhere, dateNullArgs)
+			whereClause, explicitArgs, filterWhere, filterArgs)
 
 		// Execute complex query
 		documents, err = cli.reflectionExec.ExecuteQuery(typeName, dbPath, finalWhere, finalArgs, sort, limit, offset)

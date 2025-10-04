@@ -303,6 +303,11 @@ Examples:
   nanostore --type Task list --null-fields assignee,due_date
   nanostore --type Task list --not-null-fields assignee --created-after "2024-01-01T00:00:00Z"
   
+  # Text search in title and body
+  nanostore --type Task list --search "urgent"
+  nanostore --type Task list --title-contains "meeting" --body-contains "quarterly"
+  nanostore --type Task list --search "bug" --search-case-sensitive
+  
   # Complex WHERE clauses with dates
   nanostore --type Task list --where "created_at > ? AND status = ?" --where-args "2024-01-01T00:00:00Z" --where-args active
   
@@ -329,12 +334,18 @@ Examples:
 	listCmd.Flags().StringSlice("null-fields", []string{}, "Find documents where specified fields are NULL")
 	listCmd.Flags().StringSlice("not-null-fields", []string{}, "Find documents where specified fields are NOT NULL")
 
+	// Text search flags
+	listCmd.Flags().String("search", "", "Search for text in both title and body fields")
+	listCmd.Flags().String("title-contains", "", "Find documents where title contains specified text")
+	listCmd.Flags().String("body-contains", "", "Find documents where body contains specified text")
+	listCmd.Flags().Bool("search-case-sensitive", false, "Make text searches case-sensitive (default: case-insensitive)")
+
 	listCmd.Flags().String("sort", "", "Sort field")
 	listCmd.Flags().Int("limit", 0, "Limit number of results")
 	listCmd.Flags().Int("offset", 0, "Offset for pagination")
 
 	// Bind flags
-	for _, flag := range []string{"filter", "where", "where-args", "created-after", "created-before", "updated-after", "updated-before", "null-fields", "not-null-fields", "sort", "limit", "offset"} {
+	for _, flag := range []string{"filter", "where", "where-args", "created-after", "created-before", "updated-after", "updated-before", "null-fields", "not-null-fields", "search", "title-contains", "body-contains", "search-case-sensitive", "sort", "limit", "offset"} {
 		_ = cli.viperInst.BindPFlag(flag, listCmd.Flags().Lookup(flag))
 	}
 

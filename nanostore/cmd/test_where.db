@@ -1,0 +1,48 @@
+{
+  "documents": [
+    {
+      "UUID": "3c73e94d-942c-4d80-9f9b-3ff4e0c083d4",
+      "SimpleID": "",
+      "Title": "Active High Priority Task",
+      "Body": "",
+      "Dimensions": {
+        "_data.assignee": "",
+        "_data.description": "",
+        "parent_id": "",
+        "priority": "high",
+        "status": "active"
+      },
+      "CreatedAt": "2025-10-04T16:28:48.025526-03:00",
+      "UpdatedAt": "2025-10-04T16:28:56.813373-03:00"
+    },
+    {
+      "UUID": "98ed83da-5da6-418a-ae4c-8376a2fdde76",
+      "SimpleID": "",
+      "Title": "Pending Medium Task",
+      "Body": "",
+      "Dimensions": {
+        "priority": "medium",
+        "status": "pending"
+      },
+      "CreatedAt": "2025-10-04T16:29:01.417191-03:00",
+      "UpdatedAt": "2025-10-04T16:29:01.417191-03:00"
+    },
+    {
+      "UUID": "0869098b-0905-4f24-9389-8e3e24c26b53",
+      "SimpleID": "",
+      "Title": "Done Low Priority Task",
+      "Body": "",
+      "Dimensions": {
+        "priority": "medium",
+        "status": "pending"
+      },
+      "CreatedAt": "2025-10-04T16:29:21.627206-03:00",
+      "UpdatedAt": "2025-10-04T16:29:21.627206-03:00"
+    }
+  ],
+  "metadata": {
+    "version": "1.0",
+    "created_at": "2025-10-04T16:28:48.025374-03:00",
+    "updated_at": "2025-10-04T16:29:21.627219-03:00"
+  }
+}

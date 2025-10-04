@@ -528,8 +528,8 @@ func (re *ReflectionExecutor) parseListOptions(filters []string, sort string, li
 	return options
 }
 
-// buildDateAndNullWhere builds WHERE clauses from date range and NULL flags
-func (re *ReflectionExecutor) buildDateAndNullWhere(createdAfter, createdBefore, updatedAfter, updatedBefore string, nullFields, notNullFields []string) (string, []interface{}, error) {
+// buildFilterWhere builds WHERE clauses from date range, NULL, and text search flags
+func (re *ReflectionExecutor) buildFilterWhere(createdAfter, createdBefore, updatedAfter, updatedBefore string, nullFields, notNullFields []string, searchText, titleContains, bodyContains string, caseSensitive bool) (string, []interface{}, error) {
 	var clauses []string
 	var args []interface{}
 
@@ -591,6 +591,37 @@ func (re *ReflectionExecutor) buildDateAndNullWhere(createdAfter, createdBefore,
 		}
 		clauses = append(clauses, fmt.Sprintf("%s != ?", fieldName))
 		args = append(args, "__NULL_CHECK__")
+	}
+
+	// Handle text search filters using LIKE operator
+	if searchText != "" {
+		// Create pattern with wildcards
+		pattern := "%" + searchText + "%"
+		// For case-insensitive search, convert to lowercase (WhereEvaluator will handle case)
+		if !caseSensitive {
+			pattern = strings.ToLower(pattern)
+		}
+		// Use special search marker for title OR body matching
+		clauses = append(clauses, "__SEARCH_TITLE_OR_BODY__ LIKE ?")
+		args = append(args, pattern)
+	}
+
+	if titleContains != "" {
+		pattern := "%" + titleContains + "%"
+		if !caseSensitive {
+			pattern = strings.ToLower(pattern)
+		}
+		clauses = append(clauses, "title LIKE ?")
+		args = append(args, pattern)
+	}
+
+	if bodyContains != "" {
+		pattern := "%" + bodyContains + "%"
+		if !caseSensitive {
+			pattern = strings.ToLower(pattern)
+		}
+		clauses = append(clauses, "body LIKE ?")
+		args = append(args, pattern)
 	}
 
 	if len(clauses) == 0 {

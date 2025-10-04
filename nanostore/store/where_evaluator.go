@@ -315,6 +315,10 @@ func (we *WhereEvaluator) getDocumentValue(doc *types.Document, field string) (i
 		return doc.CreatedAt, nil
 	case "updated_at":
 		return doc.UpdatedAt, nil
+	case "__SEARCH_TITLE_OR_BODY__":
+		// Special field for searching both title and body
+		combined := doc.Title + " " + doc.Body
+		return combined, nil
 	default:
 		// Handle _data. prefixed fields - they're stored directly in Dimensions with the _data. prefix
 		if strings.HasPrefix(field, "_data.") {
@@ -441,6 +445,11 @@ func (we *WhereEvaluator) compareNumerically(actual, expected string, cmp func(f
 
 // matchLike implements simple LIKE pattern matching with proper regex escaping
 func (we *WhereEvaluator) matchLike(actual, pattern string) (bool, error) {
+	// Check if this is a case-insensitive search (pattern is all lowercase)
+	if pattern == strings.ToLower(pattern) && pattern != strings.ToUpper(pattern) {
+		// If pattern is lowercase, make comparison case-insensitive
+		actual = strings.ToLower(actual)
+	}
 	// Convert SQL LIKE pattern to regex
 	// % matches any sequence of characters
 	// _ matches any single character
