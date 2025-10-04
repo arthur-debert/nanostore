@@ -11,6 +11,7 @@ package api_test
 
 import (
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/arthur-debert/nanostore/nanostore/api"
@@ -303,9 +304,9 @@ func TestTypedQueryDataIn(t *testing.T) {
 		"status":         "active",
 		"priority":       "high",
 		"activity":       "active",
-		"_data.assignee": "alice",
-		"_data.team":     "backend",
-		"_data.estimate": 5,
+		"_data.Assignee": "alice",
+		"_data.Team":     "backend",
+		"_data.Estimate": 5,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -315,9 +316,9 @@ func TestTypedQueryDataIn(t *testing.T) {
 		"status":         "pending",
 		"priority":       "medium",
 		"activity":       "active",
-		"_data.assignee": "bob",
-		"_data.team":     "frontend",
-		"_data.estimate": 3,
+		"_data.Assignee": "bob",
+		"_data.Team":     "frontend",
+		"_data.Estimate": 3,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -327,9 +328,9 @@ func TestTypedQueryDataIn(t *testing.T) {
 		"status":         "done",
 		"priority":       "low",
 		"activity":       "active",
-		"_data.assignee": "charlie",
-		"_data.team":     "backend",
-		"_data.estimate": 8,
+		"_data.Assignee": "charlie",
+		"_data.Team":     "backend",
+		"_data.Estimate": 8,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -339,9 +340,9 @@ func TestTypedQueryDataIn(t *testing.T) {
 		"status":         "active",
 		"priority":       "medium",
 		"activity":       "active",
-		"_data.assignee": "alice",
-		"_data.team":     "devops",
-		"_data.estimate": 5,
+		"_data.Assignee": "alice",
+		"_data.Team":     "devops",
+		"_data.Estimate": 5,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -349,7 +350,7 @@ func TestTypedQueryDataIn(t *testing.T) {
 
 	t.Run("DataInString", func(t *testing.T) {
 		// Find tasks assigned to Alice or Bob
-		tasks, err := store.Query().DataIn("assignee", "alice", "bob").Find()
+		tasks, err := store.Query().DataIn("Assignee", "alice", "bob").Find()
 		if err != nil {
 			t.Fatalf("failed to filter with DataIn string: %v", err)
 		}
@@ -380,7 +381,7 @@ func TestTypedQueryDataIn(t *testing.T) {
 
 	t.Run("DataInNumeric", func(t *testing.T) {
 		// Find tasks with estimate 3 or 5
-		tasks, err := store.Query().DataIn("estimate", 3, 5).Find()
+		tasks, err := store.Query().DataIn("Estimate", 3, 5).Find()
 		if err != nil {
 			t.Fatalf("failed to filter with DataIn numeric: %v", err)
 		}
@@ -413,7 +414,7 @@ func TestTypedQueryDataIn(t *testing.T) {
 		// Combine DataIn with StatusIn
 		tasks, err := store.Query().
 			StatusIn("active", "done").
-			DataIn("assignee", "alice", "charlie").
+			DataIn("Assignee", "alice", "charlie").
 			Find()
 		if err != nil {
 			t.Fatalf("failed to combine DataIn with StatusIn: %v", err)
@@ -445,7 +446,7 @@ func TestTypedQueryDataIn(t *testing.T) {
 
 	t.Run("DataInSingleValue", func(t *testing.T) {
 		// Test DataIn with single value
-		tasks, err := store.Query().DataIn("team", "backend").Find()
+		tasks, err := store.Query().DataIn("Team", "backend").Find()
 		if err != nil {
 			t.Fatalf("failed to filter with single DataIn value: %v", err)
 		}
@@ -476,7 +477,7 @@ func TestTypedQueryDataIn(t *testing.T) {
 
 	t.Run("DataInMixedTypes", func(t *testing.T) {
 		// Test DataIn with mixed types (string and number)
-		tasks, err := store.Query().DataIn("estimate", 3, "5").Find()
+		tasks, err := store.Query().DataIn("Estimate", 3, "5").Find()
 		if err != nil {
 			t.Fatalf("failed to filter with mixed type DataIn: %v", err)
 		}
@@ -490,7 +491,7 @@ func TestTypedQueryDataIn(t *testing.T) {
 
 	t.Run("DataInEmptyValues", func(t *testing.T) {
 		// Test DataIn with no values
-		tasks, err := store.Query().DataIn("assignee").Find()
+		tasks, err := store.Query().DataIn("Assignee").Find()
 		if err != nil {
 			t.Fatalf("failed to filter with empty DataIn: %v", err)
 		}
@@ -501,14 +502,18 @@ func TestTypedQueryDataIn(t *testing.T) {
 	})
 
 	t.Run("DataInNonExistentField", func(t *testing.T) {
-		// Test DataIn with field that doesn't exist
-		tasks, err := store.Query().DataIn("nonexistent", "alice", "bob").Find()
-		if err != nil {
-			t.Fatalf("failed to filter with nonexistent DataIn field: %v", err)
+		// Test DataIn with field that doesn't exist - should now return validation error
+		_, err := store.Query().DataIn("nonexistent", "alice", "bob").Find()
+		if err == nil {
+			t.Error("expected validation error for nonexistent field in DataIn, but got none")
 		}
 
-		if len(tasks) != 0 {
-			t.Errorf("expected 0 tasks with nonexistent DataIn field, got %d", len(tasks))
+		if err != nil {
+			// Verify it's a validation error
+			errMsg := err.Error()
+			if !strings.Contains(errMsg, "nonexistent") {
+				t.Errorf("Error should mention the invalid field name, got: %s", errMsg)
+			}
 		}
 	})
 }

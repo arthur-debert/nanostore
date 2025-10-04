@@ -171,7 +171,7 @@ func TestTypedStoreGetDimensions(t *testing.T) {
 		if err == nil {
 			t.Error("expected error for non-existent document")
 		}
-		if err.Error() != "document with ID non-existent-uuid not found" {
+		if err.Error() != "document with ID 'non-existent-uuid' not found" {
 			t.Errorf("unexpected error message: %v", err)
 		}
 	})

@@ -70,9 +70,12 @@ func TestUpdateMethodsAfterRefactoring(t *testing.T) {
 			Priority: "high",
 			Activity: "archived",
 		}
-		err := store.Update(task1ID, updateData)
+		count, err := store.Update(task1ID, updateData)
 		if err != nil {
 			t.Fatalf("Update failed: %v", err)
+		}
+		if count != 1 {
+			t.Errorf("Expected 1 document updated, got %d", count)
 		}
 
 		// Verify the update

@@ -56,7 +56,7 @@ func TestMetadataExport(t *testing.T) {
 	}
 
 	// Mark first todo as done
-	err = app.store.Update(todo1ID, &TodoItem{
+	_, err = app.store.Update(todo1ID, &TodoItem{
 		Status: "done",
 	})
 	if err != nil {

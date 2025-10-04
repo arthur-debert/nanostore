@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
+	"time"
 
 	"github.com/arthur-debert/nanostore/types"
 )
@@ -63,9 +64,12 @@ func Validate(ds *types.DimensionSet) error {
 
 // validateEnumeratedDim validates an enumerated dimension
 func validateEnumeratedDim(dim *types.Dimension, prefixesSeen map[string]string) error {
-	// Must have at least one value
+	// For enumerated dimensions with predefined values, must have at least one value
+	// For simple dimensions (like pointer types), empty values array is allowed
 	if len(dim.Values) == 0 {
-		return fmt.Errorf("dimension %s: enumerated dimensions must have at least one value", dim.Name)
+		// Allow empty values for simple dimensions, but skip validation of values, defaults, and prefixes
+		// This supports pointer types like *time.Time, *int, etc. that can accept any value
+		return nil
 	}
 
 	// Check for duplicate values
@@ -190,6 +194,10 @@ func ValidateSimpleType(value interface{}, dimensionName string) error {
 		}
 		return ValidateSimpleType(v.Elem().Interface(), dimensionName)
 	case reflect.Struct:
+		// Allow time.Time as it's commonly used
+		if _, ok := value.(time.Time); ok {
+			return nil
+		}
 		return fmt.Errorf("dimension '%s' cannot be a struct type, got %T", dimensionName, value)
 	default:
 		return fmt.Errorf("dimension '%s' must be a simple type (string, number, or bool), got %T", dimensionName, value)

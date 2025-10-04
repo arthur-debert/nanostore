@@ -308,7 +308,9 @@ func (s *jsonFileStore) Add(title string, dimensions map[string]interface{}) (st
 				if val, exists := cmd.Dimensions[dimConfig.Name]; exists {
 					// Validate the value
 					strVal := fmt.Sprintf("%v", val)
-					if !contains(dimConfig.Values, strVal) {
+					// For dimensions with empty Values array (simple dimensions like pointer types),
+					// allow any value. Otherwise, validate against the predefined values.
+					if len(dimConfig.Values) > 0 && !contains(dimConfig.Values, strVal) {
 						return "", fmt.Errorf("invalid value %q for dimension %q", strVal, dimConfig.Name)
 					}
 					doc.Dimensions[dimConfig.Name] = strVal
@@ -461,7 +463,9 @@ func (s *jsonFileStore) Update(id string, updates types.UpdateRequest) error {
 				// Validate enumerated dimension values
 				if dimConfig.Type == types.Enumerated && value != nil {
 					strVal := fmt.Sprintf("%v", value)
-					if !contains(dimConfig.Values, strVal) {
+					// For dimensions with empty Values array (simple dimensions like pointer types),
+					// allow any value. Otherwise, validate against the predefined values.
+					if len(dimConfig.Values) > 0 && !contains(dimConfig.Values, strVal) {
 						return fmt.Errorf("invalid value %q for dimension %q", strVal, dimName)
 					}
 					doc.Dimensions[dimName] = strVal
@@ -850,7 +854,9 @@ func (s *jsonFileStore) UpdateByDimension(filters map[string]interface{}, update
 						// Validate enumerated dimension values
 						if dimConfig.Type == types.Enumerated && value != nil {
 							strVal := fmt.Sprintf("%v", value)
-							if !contains(dimConfig.Values, strVal) {
+							// For dimensions with empty Values array (simple dimensions like pointer types),
+							// allow any value. Otherwise, validate against the predefined values.
+							if len(dimConfig.Values) > 0 && !contains(dimConfig.Values, strVal) {
 								return 0, fmt.Errorf("invalid value %q for dimension %q", strVal, dimName)
 							}
 							doc.Dimensions[dimName] = strVal

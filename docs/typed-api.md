@@ -151,20 +151,69 @@ ParentID string `dimension:"parent_id,ref"`
 
 Fields without dimension tags are stored as custom data with `_data.` prefix automatically.
 
+## Field Naming Conventions
+
+The TypedAPI uses consistent snake_case naming for data field storage and queries:
+
+### Storage Format
+
+Go struct field names are automatically converted to snake_case when stored:
+
+```go
+type Task struct {
+    nanostore.Document
+    CreatedBy  string  // Stored as "_data.created_by"
+    AssignedTo string  // Stored as "_data.assigned_to"  
+    DeletedAt  string  // Stored as "_data.deleted_at"
+}
+```
+
+### Query Field Names
+
+All query operations accept snake_case field names for consistency:
+
+```go
+// ✅ Use snake_case in queries (recommended)
+tasks, err := store.Query().Data("created_by", "alice").Find()
+tasks, err := store.Query().OrderByData("assigned_to").Find()
+
+// ✅ Also works - PascalCase for backward compatibility
+tasks, err := store.Query().Data("CreatedBy", "alice").Find()
+
+// ✅ ListOptions also uses snake_case
+tasks, err := store.List(types.ListOptions{
+    OrderBy: []types.OrderClause{
+        {Column: "_data.created_by", Descending: true},
+    },
+})
+```
+
+### Field Validation
+
+Invalid field names return clear validation errors:
+
+```go
+// ❌ This returns a helpful error
+tasks, err := store.Query().Data("nonexistent_field", "value").Find()
+// Error: "field 'nonexistent_field' not found in Task, available data fields: [created_by, assigned_to, deleted_at]"
+```
+
 ## Implementation Details
 
 ### Marshaling (struct → dimensions)
 
 1. Extracts fields with `dimension` tags
-2. Skips zero values (except false for bools)
-3. Returns `map[string]interface{}` for use with store methods
+2. Converts data field names to snake_case for consistent storage
+3. Skips zero values (except false for bools)
+4. Returns `map[string]interface{}` for use with store methods
 
 ### Unmarshaling (document → struct)
 
 1. Populates embedded `Document` fields
 2. Maps dimensions to struct fields based on tags
-3. Applies defaults for missing dimensions
-4. Handles type conversions (string→bool, string→int, etc.)
+3. Supports both snake_case and PascalCase field names for backward compatibility
+4. Applies defaults for missing dimensions
+5. Handles type conversions (string→bool, string→int, etc.)
 
 ## TypedStore API
 

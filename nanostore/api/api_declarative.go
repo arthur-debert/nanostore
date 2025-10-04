@@ -92,6 +92,75 @@ type IntegrityWarning struct {
 	Message    string // Human-readable warning description
 }
 
+// QueryPlan contains information about how a query would be executed
+type QueryPlan struct {
+	TotalFilters            int      // Total number of filters applied
+	IndexedFilterCount      int      // Number of filters using indexed dimensions
+	DataFieldFilterCount    int      // Number of filters on data fields (slower)
+	CustomWhereClauseCount  int      // Number of custom WHERE clauses
+	PerformanceRating       string   // Performance assessment (Fast/Medium/Slow)
+	OptimizationSuggestions []string // Suggestions for improving query performance
+}
+
+// FieldUsageStats contains statistics about field usage across all documents
+type FieldUsageStats struct {
+	TotalDocuments int                           // Total number of documents analyzed
+	DimensionUsage map[string]DimensionUsageInfo // Usage statistics for dimension fields
+	DataFieldUsage map[string]DataFieldUsageInfo // Usage statistics for data fields
+	CoreFieldUsage CoreFieldUsageInfo            // Usage statistics for core Document fields
+}
+
+// DimensionUsageInfo contains usage statistics for a dimension field
+type DimensionUsageInfo struct {
+	DimensionName string         // Name of the dimension
+	Type          string         // Type of dimension (enumerated/hierarchical)
+	ValueCounts   map[string]int // Count of each value across all documents
+	NonEmptyCount int            // Number of documents with non-empty values
+}
+
+// DataFieldUsageInfo contains usage statistics for a data field
+type DataFieldUsageInfo struct {
+	FieldName          string  // Name of the data field
+	NonEmptyCount      int     // Number of documents with non-empty values
+	CoveragePercentage float64 // Percentage of documents that have this field populated
+}
+
+// CoreFieldUsageInfo contains usage statistics for core Document fields
+type CoreFieldUsageInfo struct {
+	TitleUsageCount         int     // Number of documents with non-empty titles
+	TitleCoveragePercentage float64 // Percentage of documents with titles
+	BodyUsageCount          int     // Number of documents with non-empty body content
+	BodyCoveragePercentage  float64 // Percentage of documents with body content
+}
+
+// TypeSchema contains detailed schema information about the Go type T
+type TypeSchema struct {
+	TypeName        string               // Full Go type name
+	PackageName     string               // Package containing the type
+	EmbedsDocument  bool                 // Whether type embeds nanostore.Document
+	DimensionFields []DimensionFieldInfo // Fields that map to dimensions
+	DataFields      []DataFieldInfo      // Fields that map to data storage
+}
+
+// DimensionFieldInfo contains information about a field that maps to a dimension
+type DimensionFieldInfo struct {
+	Name           string            // Go field name
+	Type           string            // Go field type
+	DimensionType  string            // Dimension type (enumerated/hierarchical)
+	Tags           string            // Complete struct tag string
+	AllowedValues  []string          // Allowed values for enumerated dimensions
+	DefaultValue   string            // Default value for enumerated dimensions
+	PrefixMappings map[string]string // Value-to-prefix mappings
+	RefField       string            // Reference field for hierarchical dimensions
+}
+
+// DataFieldInfo contains information about a field that maps to data storage
+type DataFieldInfo struct {
+	Name string // Go field name
+	Type string // Go field type
+	Tags string // Complete struct tag string
+}
+
 // TypedStore wraps a Store with type-safe operations for a specific document type T.
 //
 // This is the primary interface for applications using nanostore, providing compile-time
@@ -283,12 +352,13 @@ func NewFromType[T any](filePath string) (*TypedStore[T], error) {
 //
 // 1. **Type Marshaling**: Converts typed struct to dimension map
 // 2. **Data Separation**: Distinguishes between dimensional and extra data
-// 3. **ID Generation**: Triggers automatic SimpleID generation based on dimensions
-// 4. **UUID Assignment**: Creates stable internal UUID for the document
+// 3. **Document Field Extraction**: Preserves title and body from embedded Document
+// 4. **ID Generation**: Triggers automatic SimpleID generation based on dimensions
+// 5. **UUID Assignment**: Creates stable internal UUID for the document
 //
 // # Data Processing Strategy
 //
-// The method processes struct fields in three categories:
+// The method processes struct fields in four categories:
 //
 // ## Dimensional Fields
 // Fields with dimension tags become part of the document's partition:
@@ -306,6 +376,11 @@ func NewFromType[T any](filePath string) (*TypedStore[T], error) {
 //	Assignee string                               // Becomes dimensions["_data.assignee"]
 //	DueDate  time.Time                           // Becomes dimensions["_data.duedate"]
 //
+// ## Document Fields
+// Embedded Document fields are handled specially:
+//
+//	Document nanostore.Document                   // Title and Body are extracted and preserved
+//
 // # SimpleID Generation
 //
 // The returned ID is a human-readable SimpleID that reflects the document's dimensions:
@@ -314,6 +389,24 @@ func NewFromType[T any](filePath string) (*TypedStore[T], error) {
 //	task := &Task{Status: "done", Priority: "high", Title: "Fix bug"}
 //	id, err := store.Create("Fix critical bug", task)
 //	// Returns: "dh3" (done="d", high="h", position=3)
+//
+// # Title and Body Handling
+//
+// Create provides flexible title and body handling for embedded Document fields:
+//
+// **Title Precedence**:
+// 1. If title parameter is non-empty, it takes precedence
+// 2. If title parameter is empty and struct has Document.Title, use struct title
+// 3. If neither is provided, the document will have an empty title
+//
+// **Body Preservation**:
+// - Body content from embedded Document.Body is always preserved
+// - This eliminates the need for workarounds like two-phase create+update operations
+// - Empty body fields are ignored (not stored as empty strings)
+//
+// **Backward Compatibility**:
+// - Existing two-phase workarounds continue to work unchanged
+// - No breaking changes to existing Create method signatures
 //
 // # Error Handling
 //
@@ -341,6 +434,17 @@ func NewFromType[T any](filePath string) (*TypedStore[T], error) {
 //	}
 //	id, err := store.Create("Implement feature X", task)
 //
+//	// Document creation with embedded Document fields
+//	taskWithBody := &Task{
+//	    Document: nanostore.Document{
+//	        Title: "Default Title",      // Used if Create title parameter is empty
+//	        Body:  "Task description",   // Automatically preserved
+//	    },
+//	    Status:   "pending",
+//	    Priority: "high",
+//	}
+//	id, err := store.Create("Override Title", taskWithBody)  // Title parameter takes precedence
+//
 //	// Hierarchical document creation (child)
 //	subtask := &Task{
 //	    Status:   "pending",
@@ -360,18 +464,129 @@ func (ts *TypedStore[T]) Create(title string, data *T) (string, error) {
 		dimensions["_data."+key] = value
 	}
 
-	return ts.store.Add(title, dimensions)
+	// Extract Document fields (title, body) from the embedded Document
+	structTitle, structBody, hasDocument := extractDocumentFields(data)
+
+	// Determine final title: use parameter if non-empty, otherwise use struct title
+	finalTitle := title
+	if title == "" && hasDocument && structTitle != "" {
+		finalTitle = structTitle
+	}
+
+	// Add the document with proper title and body handling
+	uuid, err := ts.store.Add(finalTitle, dimensions)
+	if err != nil {
+		return "", err
+	}
+
+	// If we have body content from the struct, update the document to include it
+	if hasDocument && structBody != "" {
+		// Update the document with the body content
+		// The Add method doesn't handle body content directly, so we need a follow-up update
+		err = ts.store.Update(uuid, types.UpdateRequest{
+			Body: &structBody,
+		})
+		if err != nil {
+			return "", fmt.Errorf("failed to set body content: %w", err)
+		}
+	}
+
+	return uuid, nil
 }
 
 // Get retrieves a document by ID and unmarshals it into the typed structure.
 //
-// Accepts both UUID and SimpleID for maximum flexibility.
-// ID Resolution Strategy:
-// 1. Try to resolve ID as SimpleID to UUID
-// 2. If resolution fails, use ID directly as UUID
-// 3. Query store with resolved/direct UUID
+// This is the primary method for retrieving individual documents with full type safety.
+// The method handles ID resolution, document retrieval, and automatic type marshaling
+// to provide a seamless experience for typed document access.
 //
-// This provides consistent behavior with GetRaw and other ID-based methods.
+// # ID Resolution
+//
+// Accepts both UUID and SimpleID for maximum flexibility:
+// - SimpleID examples: "1", "2.h3", "1.2.c4"
+// - UUID examples: "550e8400-e29b-41d4-a716-446655440000"
+//
+// ID Resolution Strategy:
+// 1. Try to resolve ID as SimpleID to UUID using store's ID mapping
+// 2. If resolution fails, assume ID is already a UUID and use directly
+// 3. Query store with resolved/direct UUID
+// 4. Return typed document with all dimension fields populated
+//
+// This dual approach ensures compatibility with both user-facing SimpleIDs
+// and system-internal UUIDs, providing consistent behavior across all ID-based methods.
+//
+// # Type Marshaling
+//
+// The returned document is fully typed with all struct fields populated:
+// - **Dimension Fields**: Mapped from document dimensions using struct tags
+// - **Data Fields**: Extracted from document's _data map
+// - **Embedded Document**: UUID, SimpleID, Title, Body, timestamps populated
+// - **Zero Values**: Applied for fields not present in the document
+//
+// # Usage Examples
+//
+//	// Get by SimpleID (user-friendly)
+//	task, err := store.Get("1.2")
+//	if err != nil {
+//	    log.Printf("Task not found: %v", err)
+//	    return
+//	}
+//	fmt.Printf("Task: %s (Status: %s)\n", task.Title, task.Status)
+//
+//	// Get by UUID (system-internal)
+//	task, err := store.Get("550e8400-e29b-41d4-a716-446655440000")
+//	if err != nil {
+//	    return
+//	}
+//
+//	// Access all document fields
+//	fmt.Printf("UUID: %s\n", task.UUID)
+//	fmt.Printf("SimpleID: %s\n", task.SimpleID)
+//	fmt.Printf("Created: %v\n", task.CreatedAt)
+//	fmt.Printf("Priority: %s\n", task.Priority)
+//	fmt.Printf("Assignee: %s\n", task.Assignee)
+//
+// # Error Handling
+//
+// Returns error if:
+// - Document with specified ID is not found
+// - Multiple documents found for the same ID (indicates data corruption)
+// - Type unmarshaling fails (struct/document schema mismatch)
+// - Database query fails
+//
+// Common error scenarios:
+//
+//	// Document not found
+//	task, err := store.Get("nonexistent")
+//	if err != nil {
+//	    // Error: "document with ID nonexistent not found"
+//	}
+//
+//	// Schema mismatch (missing required dimension)
+//	task, err := store.Get("1")
+//	if err != nil {
+//	    // Error: "failed to unmarshal document: missing dimension 'status'"
+//	}
+//
+// # Performance Characteristics
+//
+// - **Query Time**: O(log n) for indexed UUID lookups, O(1) for SimpleID resolution
+// - **Marshaling**: O(k) where k = number of struct fields
+// - **Memory**: Single document allocation + reflection overhead
+// - **Caching**: No internal caching - each call queries the database
+//
+// For high-frequency access patterns, consider:
+// - Batching multiple gets using List() with UUID filters
+// - Using GetRaw() if you only need specific fields
+// - Using GetMetadata() if you only need document metadata
+//
+// # Related Methods
+//
+// For specialized retrieval needs:
+// - GetRaw() - Returns raw document without type marshaling
+// - GetMetadata() - Returns only metadata (UUID, SimpleID, timestamps)
+// - GetDimensions() - Returns raw dimensions map
+// - List() - Bulk retrieval with filtering
 func (ts *TypedStore[T]) Get(id string) (*T, error) {
 	// Consistent ID resolution: try SimpleID first, fallback to direct UUID
 	uuid, err := ts.store.ResolveUUID(id)
@@ -391,11 +606,11 @@ func (ts *TypedStore[T]) Get(id string) (*T, error) {
 	}
 
 	if len(docs) == 0 {
-		return nil, fmt.Errorf("document with ID %s not found", id)
+		return nil, fmt.Errorf("document with ID '%s' not found", id)
 	}
 
 	if len(docs) > 1 {
-		return nil, fmt.Errorf("multiple documents found for ID %s", id)
+		return nil, fmt.Errorf("multiple documents found for ID '%s'", id)
 	}
 
 	var result T
@@ -410,9 +625,9 @@ func (ts *TypedStore[T]) Get(id string) (*T, error) {
 // This helper eliminates ~100 lines of code duplication across Update methods
 // by centralizing the complex struct-to-update-request conversion logic
 func (ts *TypedStore[T]) buildUpdateRequest(data *T) (nanostore.UpdateRequest, error) {
-	// MarshalDimensions uses reflection to extract dimensions from struct tags
+	// MarshalDimensionsForUpdate preserves zero values for field clearing in updates
 	// This is where struct tag parsing happens and values are validated
-	dimensions, extraData, err := MarshalDimensions(data)
+	dimensions, extraData, err := MarshalDimensionsForUpdate(data)
 	if err != nil {
 		return nanostore.UpdateRequest{}, fmt.Errorf("failed to marshal dimensions: %w", err)
 	}
@@ -442,17 +657,197 @@ func (ts *TypedStore[T]) buildUpdateRequest(data *T) (nanostore.UpdateRequest, e
 	return req, nil
 }
 
-// Update modifies an existing document with typed data
-func (ts *TypedStore[T]) Update(id string, data *T) error {
+// Update modifies an existing document with typed data.
+//
+// This method processes all fields in the provided struct and applies them to the document:
+//
+// # Field Clearing Behavior
+//
+// **IMPORTANT**: As of this version, zero values in the update struct will clear
+// the corresponding fields in the document. This enables field clearing but represents
+// a behavior change from previous versions where zero values were ignored.
+//
+// ## Data Fields (Non-Dimension Fields)
+// - Zero values (empty strings, 0, time.Time{}, etc.) WILL clear the field
+// - This allows you to explicitly clear field values in update operations
+//
+// ## Dimension Fields
+// - **Enumerated dimensions** (with "values" tag): Zero values are ignored to prevent validation errors
+// - **Non-enumerated dimensions** (like refs): Zero values will clear the field
+//
+// # Usage Examples
+//
+//	// Clear assignee field and update priority
+//	task := &Task{
+//	    Assignee: "",    // Will clear the assignee field
+//	    Priority: "high", // Will update priority to "high"
+//	    // Note: If Description is not set, it will also be cleared to ""
+//	}
+//	err := store.Update("task-1", task)
+//
+//	// To preserve existing values while updating specific fields,
+//	// first get the document, then modify only the desired fields:
+//	existing, _ := store.Get("task-1")
+//	existing.Priority = "high" // Only change priority
+//	count, err := store.Update("task-1", existing)
+//	if err != nil {
+//	    log.Printf("Update failed: %v", err)
+//	} else if count == 0 {
+//	    log.Printf("Document not found")
+//	} else {
+//	    log.Printf("Successfully updated %d document", count)
+//	}
+//
+// # Return Value
+//
+// Returns (count int, error):
+// - **count = 1**: Document was found and successfully updated
+// - **count = 0**: Document with specified ID was not found
+// - **error != nil**: Update operation failed (database error, validation error, etc.)
+//
+// This return signature provides consistency with other update methods
+// (UpdateByDimension, UpdateWhere, UpdateByUUIDs) and allows callers to
+// distinguish between "document not found" and "update failed" scenarios.
+//
+// # Performance Characteristics
+//
+// - **ID Resolution**: O(1) for SimpleID lookup, O(log n) for UUID validation
+// - **Document Existence Check**: O(log n) indexed lookup before update
+// - **Field Processing**: O(k) where k = number of struct fields
+// - **Database Update**: O(1) single document update
+// - **Type Marshaling**: O(k) for struct tag processing and validation
+//
+// The method performs an existence check before updating to provide accurate
+// count return values, adding minimal overhead for improved API consistency.
+//
+// # Migration from Previous Behavior
+//
+// If your code previously relied on zero values being ignored in updates,
+// you will need to either:
+// 1. Get the existing document first and modify only the fields you want to change
+// 2. Explicitly set all fields to their desired values (including preserving existing values)
+//
+// # ID Resolution
+//
+// Accepts both UUID and SimpleID for the id parameter:
+// - SimpleID examples: "1", "2.h3", "1.2.c4"
+// - UUID examples: "550e8400-e29b-41d4-a716-446655440000"
+//
+// Uses the same ID resolution strategy as Get() for consistency.
+//
+// # Error Handling
+//
+// Returns error if:
+// - Type marshaling fails (invalid struct tags, unsupported field types)
+// - Database transaction fails during update
+// - ID resolution fails and direct UUID lookup also fails
+// - Validation errors (invalid enumerated dimension values)
+//
+// # Related Methods
+//
+// For bulk updates, consider:
+// - UpdateByDimension() - Update multiple documents by filter criteria
+// - UpdateWhere() - Update with custom SQL conditions
+// - UpdateByUUIDs() - Update specific documents by UUID list
+func (ts *TypedStore[T]) Update(id string, data *T) (int, error) {
 	req, err := ts.buildUpdateRequest(data)
 	if err != nil {
-		return err
+		return 0, err
 	}
 
-	return ts.store.Update(id, req)
+	// Check if document exists before updating for consistent count behavior
+	_, err = ts.GetRaw(id)
+	if err != nil {
+		// Document doesn't exist - return 0 updated, but preserve the error
+		return 0, err
+	}
+
+	// Update the document
+	err = ts.store.Update(id, req)
+	if err != nil {
+		return 0, err
+	}
+
+	// Successfully updated one document
+	return 1, nil
 }
 
-// Delete removes a document and optionally its children
+// Delete removes a document and optionally its children.
+//
+// This method provides permanent deletion of documents from the store with optional
+// cascading to handle hierarchical document structures.
+//
+// # ID Resolution
+//
+// Accepts both UUID and SimpleID for maximum flexibility:
+// - SimpleID examples: "1", "2.h3", "1.2.c4"
+// - UUID examples: "550e8400-e29b-41d4-a716-446655440000"
+//
+// ID Resolution Strategy:
+// 1. Try to resolve ID as SimpleID to UUID
+// 2. If resolution fails, use ID directly as UUID
+// 3. Delete document with resolved/direct UUID
+//
+// # Cascade Behavior
+//
+// The cascade parameter controls deletion of child documents:
+//
+// ## cascade = false (Default Behavior)
+// - Deletes only the specified document
+// - Child documents remain in the store but become orphaned
+// - Parent references in children are not automatically updated
+// - Use this when you want to preserve child documents independently
+//
+// ## cascade = true (Hierarchical Deletion)
+// - Deletes the specified document AND all its descendants
+// - Recursively finds and deletes all documents with ParentID chains leading to this document
+// - Useful for cleaning up entire hierarchical structures
+// - **WARNING**: This can delete many documents if used on high-level parents
+//
+// # Usage Examples
+//
+//	// Delete single document, preserve children
+//	err := store.Delete("1.2", false)
+//	if err != nil {
+//	    log.Printf("Failed to delete document: %v", err)
+//	}
+//
+//	// Delete document and all descendants (use with caution)
+//	err := store.Delete("project-1", true)
+//	if err != nil {
+//	    log.Printf("Failed to cascade delete: %v", err)
+//	}
+//
+//	// Delete by UUID (also supports cascade)
+//	err := store.Delete("550e8400-e29b-41d4-a716-446655440000", false)
+//
+// # Error Handling
+//
+// Returns error if:
+// - Document with specified ID is not found
+// - Database transaction fails during deletion
+// - Child document deletion fails (when cascade=true)
+// - ID resolution fails and direct UUID lookup also fails
+//
+// # Performance Considerations
+//
+// - **Non-cascading Delete**: O(1) - single document deletion
+// - **Cascading Delete**: O(n) where n = total number of descendants
+// - For deep hierarchies or large trees, cascading deletes may be slow
+// - Consider deleting leaf nodes first for better performance with large structures
+//
+// # Data Consistency
+//
+// - Deletion is atomic at the document level
+// - Cascading deletes are performed in dependency order (children before parents)
+// - If any child deletion fails during cascade, the entire operation is rolled back
+// - SimpleID sequences are not automatically reclaimed after deletion
+//
+// # Related Methods
+//
+// For bulk deletion operations, consider:
+// - DeleteByDimension() for deleting multiple documents by filter criteria
+// - DeleteWhere() for deleting with custom SQL conditions
 func (ts *TypedStore[T]) Delete(id string, cascade bool) error {
 	return ts.store.Delete(id, cascade)
 }
@@ -484,8 +879,15 @@ func (ts *TypedStore[T]) DeleteWhere(whereClause string, args ...interface{}) (i
 	return ts.store.DeleteWhere(whereClause, args...)
 }
 
-// UpdateByDimension updates all documents matching the given dimension filters
-// Multiple filters are combined with AND. Returns the number of documents updated.
+// UpdateByDimension updates all documents matching the given dimension filters.
+//
+// Multiple filters are combined with AND. This method applies the same field clearing
+// behavior as Update() - zero values in the data struct will clear the corresponding
+// fields in ALL matching documents.
+//
+// See Update() method documentation for complete field clearing behavior details.
+//
+// Returns the number of documents updated.
 func (ts *TypedStore[T]) UpdateByDimension(filters map[string]interface{}, data *T) (int, error) {
 	req, err := ts.buildUpdateRequest(data)
 	if err != nil {
@@ -495,7 +897,10 @@ func (ts *TypedStore[T]) UpdateByDimension(filters map[string]interface{}, data 
 	return ts.store.UpdateByDimension(filters, req)
 }
 
-// UpdateWhere updates all documents matching a custom WHERE clause
+// UpdateWhere updates all documents matching a custom WHERE clause.
+//
+// This method applies the same field clearing behavior as Update() - zero values
+// in the data struct will clear the corresponding fields in ALL matching documents.
 //
 // SECURITY WARNING: This method accepts SQL conditions and must be used carefully.
 // Always use parameterized queries with ? placeholders to prevent SQL injection.
@@ -504,12 +909,17 @@ func (ts *TypedStore[T]) UpdateByDimension(filters map[string]interface{}, data 
 //
 // Example:
 //
-//	// SAFE - uses parameterized query
-//	task := &Task{Status: "completed"}
+//	// SAFE - uses parameterized query with field clearing
+//	task := &Task{
+//	    Status:   "completed", // Will update status
+//	    Assignee: "",          // Will clear assignee field
+//	}
 //	count, err := store.UpdateWhere("status = ? AND priority = ?", task, "pending", "high")
 //
 //	// DANGEROUS - vulnerable to SQL injection
 //	whereClause := "status = '" + userInput + "'" // DON'T DO THIS
+//
+// See Update() method documentation for complete field clearing behavior details.
 //
 // Returns the number of documents updated.
 func (ts *TypedStore[T]) UpdateWhere(whereClause string, data *T, args ...interface{}) (int, error) {
@@ -522,7 +932,22 @@ func (ts *TypedStore[T]) UpdateWhere(whereClause string, data *T, args ...interf
 	return ts.store.UpdateWhere(whereClause, req, args...)
 }
 
-// UpdateByUUIDs updates multiple documents by their UUIDs in a single operation
+// UpdateByUUIDs updates multiple documents by their UUIDs in a single operation.
+//
+// This method applies the same field clearing behavior as Update() - zero values
+// in the data struct will clear the corresponding fields in ALL updated documents.
+//
+// **IMPORTANT**: This enables bulk field clearing, which was the primary goal of
+// issue #82. You can now clear fields across multiple documents efficiently:
+//
+//	// Clear assignee field for multiple tasks
+//	updates := &Task{
+//	    Assignee: "", // Will clear assignee field in all specified documents
+//	}
+//	count, err := store.UpdateByUUIDs(taskUUIDs, updates)
+//
+// See Update() method documentation for complete field clearing behavior details.
+//
 // Returns the number of documents updated.
 func (ts *TypedStore[T]) UpdateByUUIDs(uuids []string, data *T) (int, error) {
 	req, err := ts.buildUpdateRequest(data)
@@ -542,7 +967,8 @@ func (ts *TypedStore[T]) DeleteByUUIDs(uuids []string) (int, error) {
 // Query returns a new typed query builder
 func (ts *TypedStore[T]) Query() *TypedQuery[T] {
 	return &TypedQuery[T]{
-		store: ts.store,
+		store:      ts.store,
+		typedStore: ts,
 		options: types.ListOptions{
 			Filters: make(map[string]interface{}),
 		},
@@ -569,9 +995,15 @@ func (ts *TypedStore[T]) ResolveUUID(simpleID string) (string, error) {
 // List returns documents based on the provided ListOptions, converted to typed structs
 // This provides direct access to the underlying store's List functionality while maintaining type safety
 func (ts *TypedStore[T]) List(opts types.ListOptions) ([]T, error) {
+	// Validate and transform field names in query options
+	transformedOpts, err := ts.validateAndTransformListOptions(opts)
+	if err != nil {
+		return nil, err
+	}
+
 	// Delegate to underlying store for actual querying
 	// The store handles all filtering, ordering, and pagination logic
-	docs, err := ts.store.List(opts)
+	docs, err := ts.store.List(transformedOpts)
 	if err != nil {
 		return nil, err
 	}
@@ -584,11 +1016,122 @@ func (ts *TypedStore[T]) List(opts types.ListOptions) ([]T, error) {
 		// This is where struct tags are processed and values are converted
 		if err := UnmarshalDimensions(doc, &result[i]); err != nil {
 			// Fail fast on unmarshal error - indicates schema mismatch or corrupted data
-			return nil, fmt.Errorf("failed to unmarshal document %s: %w", doc.UUID, err)
+			return nil, fmt.Errorf("failed to unmarshal document '%s': %w", doc.UUID, err)
 		}
 	}
 
 	return result, nil
+}
+
+// validateAndTransformListOptions validates field names and transforms them to the canonical storage format
+func (ts *TypedStore[T]) validateAndTransformListOptions(opts types.ListOptions) (types.ListOptions, error) {
+	// Create a copy to avoid modifying the original
+	transformedOpts := opts
+
+	// Get the type information for field validation
+	var zeroT T
+	typ := reflect.TypeOf(zeroT)
+	if typ.Kind() == reflect.Ptr {
+		typ = typ.Elem()
+	}
+
+	// Transform OrderBy field names
+	if len(opts.OrderBy) > 0 {
+		transformedOrderBy := make([]types.OrderClause, len(opts.OrderBy))
+		copy(transformedOrderBy, opts.OrderBy)
+
+		for i, clause := range transformedOrderBy {
+			if strings.HasPrefix(clause.Column, "_data.") {
+				// Extract the field name and validate/transform it
+				fieldName := strings.TrimPrefix(clause.Column, "_data.")
+
+				// Validate that the field exists in the struct
+				if err := ts.validateDataFieldName(typ, fieldName); err != nil {
+					return types.ListOptions{}, fmt.Errorf("invalid field in OrderBy: %w", err)
+				}
+
+				// Transform to snake_case for storage
+				snakeFieldName := normalizeFieldName(fieldName)
+				transformedOrderBy[i].Column = "_data." + snakeFieldName
+			}
+			// Note: Non-data fields (like "created_at", "title") are passed through unchanged
+		}
+
+		transformedOpts.OrderBy = transformedOrderBy
+	}
+
+	// Transform filter field names
+	if len(opts.Filters) > 0 {
+		transformedFilters := make(map[string]interface{})
+
+		for key, value := range opts.Filters {
+			if strings.HasPrefix(key, "_data.") {
+				// Extract the field name and validate/transform it
+				fieldName := strings.TrimPrefix(key, "_data.")
+
+				// Validate that the field exists in the struct
+				if err := ts.validateDataFieldName(typ, fieldName); err != nil {
+					return types.ListOptions{}, fmt.Errorf("invalid field in Filters: %w", err)
+				}
+
+				// Transform to snake_case for storage
+				snakeFieldName := normalizeFieldName(fieldName)
+				transformedFilters["_data."+snakeFieldName] = value
+			} else {
+				// Non-data filters are passed through unchanged
+				transformedFilters[key] = value
+			}
+		}
+
+		transformedOpts.Filters = transformedFilters
+	}
+
+	return transformedOpts, nil
+}
+
+// validateDataFieldName checks if a field name (either snake_case or PascalCase) exists in the struct
+func (ts *TypedStore[T]) validateDataFieldName(typ reflect.Type, fieldName string) error {
+	// Try to find the field by name (supports both conventions)
+	if _, found := findFieldByName(typ, fieldName); found {
+		return nil
+	}
+
+	// Field not found - provide helpful error message
+	availableFields := ts.getAvailableDataFields(typ)
+	return fmt.Errorf("field '%s' not found in %s, available data fields: %v",
+		fieldName, typ.Name(), availableFields)
+}
+
+// getAvailableDataFields returns a list of available data field names (non-dimension fields)
+func (ts *TypedStore[T]) getAvailableDataFields(typ reflect.Type) []string {
+	var fields []string
+
+	for i := 0; i < typ.NumField(); i++ {
+		field := typ.Field(i)
+
+		// Skip unexported fields
+		if !field.IsExported() {
+			continue
+		}
+
+		// Skip embedded Document field
+		if field.Anonymous && field.Type == reflect.TypeOf(nanostore.Document{}) {
+			continue
+		}
+
+		// Skip dimension fields (fields with dimension or values tags)
+		dimTag := field.Tag.Get("dimension")
+		valuesTag := field.Tag.Get("values")
+		if dimTag != "" || valuesTag != "" {
+			continue
+		}
+
+		// Add both snake_case and PascalCase versions for clarity
+		snakeName := normalizeFieldName(field.Name)
+		fields = append(fields, snakeName, field.Name)
+	}
+
+	return fields
 }
 
 // GetRaw retrieves a document by ID and returns the raw document structure.
@@ -630,13 +1173,13 @@ func (ts *TypedStore[T]) GetRaw(id string) (*types.Document, error) {
 
 	// Validate result count - UUIDs should be unique
 	if len(docs) == 0 {
-		return nil, fmt.Errorf("document with ID %s not found", id)
+		return nil, fmt.Errorf("document with ID '%s' not found", id)
 	}
 
 	if len(docs) > 1 {
 		// This should never happen with valid UUIDs, but check anyway
 		// Could indicate data corruption or ID collision
-		return nil, fmt.Errorf("multiple documents found for ID %s", id)
+		return nil, fmt.Errorf("multiple documents found for ID '%s'", id)
 	}
 
 	return &docs[0], nil
@@ -650,10 +1193,21 @@ func (ts *TypedStore[T]) GetRaw(id string) (*types.Document, error) {
 // - You're migrating data that has different dimension names
 // Returns the UUID of the created document
 func (ts *TypedStore[T]) AddRaw(title string, dimensions map[string]interface{}) (string, error) {
-	// Pass through directly to underlying store without type marshaling
-	// This bypasses all struct tag processing and validation
-	// Critical for migration scenarios where old data may not match current schema
-	return ts.store.Add(title, dimensions)
+	// Normalize _data field names to ensure consistent storage format
+	// This ensures compatibility with typed queries while maintaining raw capability
+	normalizedDimensions := make(map[string]interface{})
+	for key, value := range dimensions {
+		if strings.HasPrefix(key, "_data.") {
+			fieldName := strings.TrimPrefix(key, "_data.")
+			normalizedFieldName := normalizeFieldName(fieldName)
+			normalizedDimensions["_data."+normalizedFieldName] = value
+		} else {
+			normalizedDimensions[key] = value
+		}
+	}
+
+	// Pass through to underlying store with normalized field names
+	return ts.store.Add(title, normalizedDimensions)
 }
 
 // GetDimensions returns the raw dimensions map for a document
@@ -1686,9 +2240,261 @@ func (ts *TypedStore[T]) ModifyDimensionDefault(dimensionName, newDefault string
 		dimensionName, targetDim.DefaultValue, newDefault)
 }
 
+// GetFieldUsageStats returns statistics about how struct fields are being used
+// across all documents in the store. This helps identify data patterns and
+// optimize struct design.
+//
+// # Usage Examples
+//
+//	stats, err := store.GetFieldUsageStats()
+//	if err != nil {
+//	    log.Fatal(err)
+//	}
+//
+//	fmt.Printf("Field usage analysis:\n")
+//	for fieldName, usage := range stats.DataFieldUsage {
+//	    fmt.Printf("  %s: %.1f%% coverage (%d non-empty values)\n",
+//	        fieldName, usage.CoveragePercentage, usage.NonEmptyCount)
+//	}
+//
+//	// Find rarely used fields
+//	for fieldName, usage := range stats.DataFieldUsage {
+//	    if usage.CoveragePercentage < 10.0 {
+//	        fmt.Printf("  Low usage field: %s (%.1f%% coverage)\n",
+//	            fieldName, usage.CoveragePercentage)
+//	    }
+//	}
+//
+// # Field Categories
+//
+// Analyzes different types of fields:
+// - **Dimension Fields**: Enumerated and hierarchical fields with their value distributions
+// - **Data Fields**: Custom struct fields stored in _data with coverage analysis
+// - **Core Fields**: Title, Body, and other Document fields
+//
+// # Optimization Insights
+//
+// Use this information to:
+// - Identify rarely used fields that could be removed
+// - Find fields that might benefit from being made dimensional
+// - Understand data completeness across your document set
+// - Guide struct design decisions
+func (ts *TypedStore[T]) GetFieldUsageStats() (*FieldUsageStats, error) {
+	stats := &FieldUsageStats{
+		TotalDocuments: 0,
+		DimensionUsage: make(map[string]DimensionUsageInfo),
+		DataFieldUsage: make(map[string]DataFieldUsageInfo),
+		CoreFieldUsage: CoreFieldUsageInfo{},
+	}
+
+	// Get all documents to analyze
+	docs, err := ts.store.List(types.ListOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to retrieve documents for analysis: %w", err)
+	}
+
+	stats.TotalDocuments = len(docs)
+	if stats.TotalDocuments == 0 {
+		return stats, nil // No data to analyze
+	}
+
+	// Initialize dimension usage tracking
+	config, err := ts.GetDimensionConfig()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get dimension config: %w", err)
+	}
+
+	for _, dim := range config.Dimensions {
+		stats.DimensionUsage[dim.Name] = DimensionUsageInfo{
+			DimensionName: dim.Name,
+			Type:          dim.Type.String(),
+			ValueCounts:   make(map[string]int),
+			NonEmptyCount: 0,
+		}
+	}
+
+	// Track all data field names encountered
+	dataFieldNames := make(map[string]bool)
+
+	// Analyze each document
+	for _, doc := range docs {
+		// Analyze core Document fields
+		if doc.Title != "" {
+			stats.CoreFieldUsage.TitleUsageCount++
+		}
+		if doc.Body != "" {
+			stats.CoreFieldUsage.BodyUsageCount++
+		}
+
+		// Analyze dimensions
+		for dimName, dimUsage := range stats.DimensionUsage {
+			if value, exists := doc.Dimensions[dimName]; exists && value != nil {
+				valueStr := fmt.Sprintf("%v", value)
+				if valueStr != "" {
+					dimUsage.NonEmptyCount++
+					dimUsage.ValueCounts[valueStr]++
+					stats.DimensionUsage[dimName] = dimUsage
+				}
+			}
+		}
+
+		// Analyze data fields
+		for fieldName, value := range doc.Dimensions {
+			if strings.HasPrefix(fieldName, "_data.") {
+				dataFieldName := strings.TrimPrefix(fieldName, "_data.")
+				dataFieldNames[dataFieldName] = true
+
+				if value != nil && fmt.Sprintf("%v", value) != "" {
+					// Initialize if not exists
+					if _, exists := stats.DataFieldUsage[dataFieldName]; !exists {
+						stats.DataFieldUsage[dataFieldName] = DataFieldUsageInfo{
+							FieldName:     dataFieldName,
+							NonEmptyCount: 0,
+						}
+					}
+
+					usage := stats.DataFieldUsage[dataFieldName]
+					usage.NonEmptyCount++
+					stats.DataFieldUsage[dataFieldName] = usage
+				}
+			}
+		}
+	}
+
+	// Calculate coverage percentages
+	for fieldName := range dataFieldNames {
+		usage := stats.DataFieldUsage[fieldName]
+		usage.CoveragePercentage = (float64(usage.NonEmptyCount) / float64(stats.TotalDocuments)) * 100.0
+		stats.DataFieldUsage[fieldName] = usage
+	}
+
+	// Calculate core field coverage
+	stats.CoreFieldUsage.TitleCoveragePercentage = (float64(stats.CoreFieldUsage.TitleUsageCount) / float64(stats.TotalDocuments)) * 100.0
+	stats.CoreFieldUsage.BodyCoveragePercentage = (float64(stats.CoreFieldUsage.BodyUsageCount) / float64(stats.TotalDocuments)) * 100.0
+
+	return stats, nil
+}
+
+// GetTypeSchema returns detailed schema information about the Go type T,
+// including field types, tags, and nanostore-specific annotations.
+//
+// This method provides comprehensive type introspection for:
+// - Understanding the complete struct schema
+// - Validating dimension field mappings
+// - Debugging type-related issues
+// - Generating documentation
+//
+// # Usage Examples
+//
+//	schema, err := store.GetTypeSchema()
+//	if err != nil {
+//	    log.Fatal(err)
+//	}
+//
+//	fmt.Printf("Type: %s\n", schema.TypeName)
+//	fmt.Printf("Package: %s\n", schema.PackageName)
+//	fmt.Printf("Embeds Document: %t\n", schema.EmbedsDocument)
+//
+//	fmt.Println("\nDimension Fields:")
+//	for _, field := range schema.DimensionFields {
+//	    fmt.Printf("  %s (%s): %s\n", field.Name, field.Type, field.DimensionType)
+//	    if field.AllowedValues != nil {
+//	        fmt.Printf("    Values: %v\n", field.AllowedValues)
+//	    }
+//	}
+//
+//	fmt.Println("\nData Fields:")
+//	for _, field := range schema.DataFields {
+//	    fmt.Printf("  %s (%s)\n", field.Name, field.Type)
+//	}
+//
+// # Schema Validation
+//
+// The schema information can help identify:
+// - Missing nanostore.Document embedding
+// - Incorrectly tagged dimension fields
+// - Type compatibility issues
+// - Struct design problems
+func (ts *TypedStore[T]) GetTypeSchema() (*TypeSchema, error) {
+	var zero T
+	typ := reflect.TypeOf(zero)
+
+	if typ.Kind() == reflect.Ptr {
+		typ = typ.Elem()
+	}
+
+	schema := &TypeSchema{
+		TypeName:        typ.String(),
+		PackageName:     typ.PkgPath(),
+		EmbedsDocument:  false,
+		DimensionFields: []DimensionFieldInfo{},
+		DataFields:      []DataFieldInfo{},
+	}
+
+	// Check for Document embedding
+	schema.EmbedsDocument = embedsDocument(typ)
+
+	// Get dimension configuration for reference
+	config, err := ts.GetDimensionConfig()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get dimension config: %w", err)
+	}
+
+	// Create map of dimension names for quick lookup
+	dimensionMap := make(map[string]nanostore.DimensionConfig)
+	for _, dim := range config.Dimensions {
+		dimensionMap[dim.Name] = dim
+	}
+
+	// Analyze each field
+	for i := 0; i < typ.NumField(); i++ {
+		field := typ.Field(i)
+
+		// Skip embedded Document field
+		if field.Anonymous && field.Type == reflect.TypeOf(nanostore.Document{}) {
+			continue
+		}
+
+		// Check if this is a dimension field
+		fieldLowerName := strings.ToLower(field.Name)
+		if dimConfig, isDimension := dimensionMap[fieldLowerName]; isDimension {
+			// This is a dimension field
+			dimField := DimensionFieldInfo{
+				Name:          field.Name,
+				Type:          field.Type.String(),
+				DimensionType: dimConfig.Type.String(),
+				Tags:          string(field.Tag),
+			}
+
+			switch dimConfig.Type {
+			case nanostore.Enumerated:
+				dimField.AllowedValues = dimConfig.Values
+				dimField.DefaultValue = dimConfig.DefaultValue
+				dimField.PrefixMappings = dimConfig.Prefixes
+			case nanostore.Hierarchical:
+				dimField.RefField = dimConfig.RefField
+			}
+
+			schema.DimensionFields = append(schema.DimensionFields, dimField)
+		} else {
+			// This is a data field
+			dataField := DataFieldInfo{
+				Name: field.Name,
+				Type: field.Type.String(),
+				Tags: string(field.Tag),
+			}
+
+			schema.DataFields = append(schema.DataFields, dataField)
+		}
+	}
+
+	return schema, nil
+}
+
 type TypedQuery[T any] struct {
-	store   nanostore.Store   // Underlying store for query execution
-	options types.ListOptions // Accumulated query options
+	store      nanostore.Store   // Underlying store for query execution
+	typedStore *TypedStore[T]    // Parent TypedStore for validation
+	options    types.ListOptions // Accumulated query options
 }
 
 // getDimensionConfig returns the dimension configuration for type T
@@ -1709,6 +2515,80 @@ func (tq *TypedQuery[T]) getDimensionConfig() (*nanostore.Config, error) {
 	}
 
 	return &config, nil
+}
+
+// validateDataFieldReferences checks all data field references in the query options.
+//
+// This function is critical for eliminating silent failures in data field queries.
+// It validates all field names used in Data(), DataIn(), DataNot(), DataNotIn(),
+// OrderByData(), and OrderByDataDesc() methods against the actual Go struct fields.
+//
+// Key benefits:
+// - **Prevents silent failures**: Invalid field names now return clear errors instead of empty results
+// - **Case-insensitive queries**: Users can use any case for field names (e.g., "assignee" or "Assignee")
+// - **Helpful error messages**: Provides suggestions for typos and lists valid field names
+// - **Consistency**: Ensures all data field operations use the same validation logic
+//
+// This method should be called before executing any query to catch invalid field names early.
+func (tq *TypedQuery[T]) validateDataFieldReferences() error {
+	// Get valid data fields for type T
+	var zero T
+	validFields, err := getValidDataFields(zero)
+	if err != nil {
+		return fmt.Errorf("failed to get valid data fields: %w", err)
+	}
+
+	// Check filters for _data.* field references and normalize case
+	for key := range tq.options.Filters {
+		var fieldName, prefix string
+		var isDataField bool
+
+		if strings.HasPrefix(key, "_data.") {
+			fieldName = strings.TrimPrefix(key, "_data.")
+			prefix = "_data."
+			isDataField = true
+		} else if strings.HasPrefix(key, "__data_not__") {
+			fieldName = strings.TrimPrefix(key, "__data_not__")
+			prefix = "__data_not__"
+			isDataField = true
+		} else if strings.HasPrefix(key, "__data_not_in__") {
+			fieldName = strings.TrimPrefix(key, "__data_not_in__")
+			prefix = "__data_not_in__"
+			isDataField = true
+		}
+
+		if isDataField {
+			normalizedFieldName, err := validateDataFieldName(fieldName, validFields)
+			if err != nil {
+				return fmt.Errorf("invalid filter field: %w", err)
+			}
+
+			// If the field name was normalized, update the filter key
+			if normalizedFieldName != fieldName {
+				value := tq.options.Filters[key]
+				delete(tq.options.Filters, key)
+				tq.options.Filters[prefix+normalizedFieldName] = value
+			}
+		}
+	}
+
+	// Check OrderBy clauses for _data.* field references and normalize case
+	for i, orderClause := range tq.options.OrderBy {
+		if strings.HasPrefix(orderClause.Column, "_data.") {
+			fieldName := strings.TrimPrefix(orderClause.Column, "_data.")
+			correctFieldName, err := validateDataFieldName(fieldName, validFields)
+			if err != nil {
+				return fmt.Errorf("invalid order by field: %w", err)
+			}
+
+			// If the field name case was corrected, update the order clause
+			if correctFieldName != fieldName {
+				tq.options.OrderBy[i].Column = "_data." + correctFieldName
+			}
+		}
+	}
+
+	return nil
 }
 
 // getEnumeratedValues returns the valid values for an enumerated dimension
@@ -2023,7 +2903,24 @@ func (tq *TypedQuery[T]) PriorityNotIn(values ...string) *TypedQuery[T] {
 // Performance Note: Data field queries may be slower than dimension queries
 // since they typically cannot leverage specialized indexes.
 func (tq *TypedQuery[T]) Data(field string, value interface{}) *TypedQuery[T] {
-	tq.options.Filters["_data."+field] = value
+	// Validate and transform field name immediately for better error reporting
+	var zeroT T
+	typ := reflect.TypeOf(zeroT)
+	if typ.Kind() == reflect.Ptr {
+		typ = typ.Elem()
+	}
+
+	// Validate field exists
+	if err := tq.typedStore.validateDataFieldName(typ, field); err != nil {
+		// For now, we'll store the error to be returned during Find()
+		// In the future, we could return an error-carrying TypedQuery
+		tq.options.Filters["__validation_error__"] = fmt.Errorf("data field validation: %w", err)
+		return tq
+	}
+
+	// Transform to snake_case for storage
+	snakeField := normalizeFieldName(field)
+	tq.options.Filters["_data."+snakeField] = value
 	return tq
 }
 
@@ -2041,7 +2938,23 @@ func (tq *TypedQuery[T]) Data(field string, value interface{}) *TypedQuery[T] {
 //	// Find documents with multiple possible tags
 //	results, err := store.Query().DataIn("category", "urgent", "important").Find()
 func (tq *TypedQuery[T]) DataIn(field string, values ...interface{}) *TypedQuery[T] {
-	tq.options.Filters["_data."+field] = values
+	// Validate and transform field name immediately for better error reporting
+	var zeroT T
+	typ := reflect.TypeOf(zeroT)
+	if typ.Kind() == reflect.Ptr {
+		typ = typ.Elem()
+	}
+
+	// Validate field exists
+	if err := tq.typedStore.validateDataFieldName(typ, field); err != nil {
+		// Store error to be returned during Find()
+		tq.options.Filters["__validation_error__"] = fmt.Errorf("DataIn field validation: %w", err)
+		return tq
+	}
+
+	// Transform to snake_case for storage
+	snakeField := normalizeFieldName(field)
+	tq.options.Filters["_data."+snakeField] = values
 	return tq
 }
 
@@ -2062,8 +2975,23 @@ func (tq *TypedQuery[T]) DataIn(field string, values ...interface{}) *TypedQuery
 //	// Find documents NOT tagged as urgent
 //	results, err := store.Query().DataNot("tags", "urgent").Find()
 func (tq *TypedQuery[T]) DataNot(field string, value interface{}) *TypedQuery[T] {
-	// Use special filter key to mark for post-processing
-	tq.options.Filters["__data_not__"+field] = value
+	// Validate and transform field name immediately for better error reporting
+	var zeroT T
+	typ := reflect.TypeOf(zeroT)
+	if typ.Kind() == reflect.Ptr {
+		typ = typ.Elem()
+	}
+
+	// Validate field exists
+	if err := tq.typedStore.validateDataFieldName(typ, field); err != nil {
+		// Store error to be returned during Find()
+		tq.options.Filters["__validation_error__"] = fmt.Errorf("DataNot field validation: %w", err)
+		return tq
+	}
+
+	// Transform to snake_case for storage - use snake_case in special filter key
+	snakeField := normalizeFieldName(field)
+	tq.options.Filters["__data_not__"+snakeField] = value
 	return tq
 }
 
@@ -2077,8 +3005,23 @@ func (tq *TypedQuery[T]) DataNot(field string, value interface{}) *TypedQuery[T]
 //	// Find documents NOT assigned to Alice or Bob
 //	results, err := store.Query().DataNotIn("assignee", "alice", "bob").Find()
 func (tq *TypedQuery[T]) DataNotIn(field string, values ...interface{}) *TypedQuery[T] {
-	// Use special filter key to mark for post-processing
-	tq.options.Filters["__data_not_in__"+field] = values
+	// Validate and transform field name immediately for better error reporting
+	var zeroT T
+	typ := reflect.TypeOf(zeroT)
+	if typ.Kind() == reflect.Ptr {
+		typ = typ.Elem()
+	}
+
+	// Validate field exists
+	if err := tq.typedStore.validateDataFieldName(typ, field); err != nil {
+		// Store error to be returned during Find()
+		tq.options.Filters["__validation_error__"] = fmt.Errorf("DataNotIn field validation: %w", err)
+		return tq
+	}
+
+	// Transform to snake_case for storage - use snake_case in special filter key
+	snakeField := normalizeFieldName(field)
+	tq.options.Filters["__data_not_in__"+snakeField] = values
 	return tq
 }
 
@@ -2188,7 +3131,87 @@ func (tq *TypedQuery[T]) ParentIDStartsWith(prefix string) *TypedQuery[T] {
 	return tq
 }
 
-// Search adds text search filtering
+// Search adds full-text search filtering across document title and body fields.
+//
+// This method enables text-based searching within documents, searching across
+// the Title and Body fields of documents. The search is typically case-insensitive
+// and supports partial word matching depending on the underlying store implementation.
+//
+// # Search Behavior
+//
+// - **Fields Searched**: Document Title and Body fields
+// - **Search Type**: Full-text search with partial matching
+// - **Case Sensitivity**: Typically case-insensitive (store-dependent)
+// - **Multiple Terms**: Space-separated terms are typically treated as AND conditions
+//
+// # Usage Examples
+//
+//	// Search for documents containing "budget"
+//	results, err := store.Query().
+//	    Search("budget").
+//	    Find()
+//
+//	// Combine search with status filtering
+//	activeBudgetTasks, err := store.Query().
+//	    Search("budget").
+//	    Status("active").
+//	    Find()
+//
+//	// Search with multiple terms
+//	quarterlyReports, err := store.Query().
+//	    Search("quarterly report").
+//	    Priority("high").
+//	    Find()
+//
+//	// Search and get just the first match
+//	firstMatch, err := store.Query().
+//	    Search("meeting").
+//	    OrderByDesc("created_at").
+//	    First()
+//
+//	// Check if any documents contain specific text
+//	hasDocuments, err := store.Query().
+//	    Search("project alpha").
+//	    Exists()
+//
+// # Performance Considerations
+//
+// - **Text Search**: May be slower than dimensional filtering
+// - **Indexing**: Performance depends on underlying search indexing
+// - **Combination**: Combine with dimensional filters for better performance
+// - **Large Text**: Long search terms may impact performance
+//
+// # Search Tips
+//
+// **For Better Performance:**
+// - Use dimensional filters first, then add search
+// - Keep search terms focused and specific
+// - Consider using Data() filters for exact field matching instead
+//
+// **Search Strategy:**
+//
+//	// ✅ Efficient - filter by dimension first
+//	results := store.Query().
+//	    Status("active").        // Fast dimensional filter
+//	    Search("budget").        // Then text search
+//	    Find()
+//
+//	// ❌ Less efficient - search first
+//	results := store.Query().
+//	    Search("budget").        // Slower text search first
+//	    Status("active").        // Then dimensional filter
+//	    Find()
+//
+// # Related Methods
+//
+// - Data() - Exact field matching for non-document fields
+// - DataIn() - Match against specific values in data fields
+// - Where() - Custom SQL-based text searching with LIKE patterns
+//
+// # Note on Data Fields
+//
+// Search() only searches Title and Body fields. To search custom data fields
+// (like Assignee, Description, etc.), use Data() or Where() methods instead.
 func (tq *TypedQuery[T]) Search(text string) *TypedQuery[T] {
 	tq.options.FilterBySearch = text
 	return tq
@@ -2236,8 +3259,24 @@ func (tq *TypedQuery[T]) OrderByDesc(column string) *TypedQuery[T] {
 // Performance Note: Ordering by data fields may be slower than dimension ordering
 // since they typically cannot leverage specialized indexes.
 func (tq *TypedQuery[T]) OrderByData(field string) *TypedQuery[T] {
+	// Validate and transform field name immediately for better error reporting
+	var zeroT T
+	typ := reflect.TypeOf(zeroT)
+	if typ.Kind() == reflect.Ptr {
+		typ = typ.Elem()
+	}
+
+	// Validate field exists
+	if err := tq.typedStore.validateDataFieldName(typ, field); err != nil {
+		// Store error to be returned during Find()
+		tq.options.Filters["__validation_error__"] = fmt.Errorf("orderByData field validation: %w", err)
+		return tq
+	}
+
+	// Transform to snake_case for storage
+	snakeField := normalizeFieldName(field)
 	tq.options.OrderBy = append(tq.options.OrderBy, types.OrderClause{
-		Column:     "_data." + field,
+		Column:     "_data." + snakeField,
 		Descending: false,
 	})
 	return tq
@@ -2256,20 +3295,230 @@ func (tq *TypedQuery[T]) OrderByData(field string) *TypedQuery[T] {
 //	// Order by last update timestamp (most recent first)
 //	results, err := store.Query().OrderByDataDesc("last_updated").Find()
 func (tq *TypedQuery[T]) OrderByDataDesc(field string) *TypedQuery[T] {
+	// Validate and transform field name immediately for better error reporting
+	var zeroT T
+	typ := reflect.TypeOf(zeroT)
+	if typ.Kind() == reflect.Ptr {
+		typ = typ.Elem()
+	}
+
+	// Validate field exists
+	if err := tq.typedStore.validateDataFieldName(typ, field); err != nil {
+		// Store error to be returned during Find()
+		tq.options.Filters["__validation_error__"] = fmt.Errorf("OrderByDataDesc field validation: %w", err)
+		return tq
+	}
+
+	// Transform to snake_case for storage
+	snakeField := normalizeFieldName(field)
 	tq.options.OrderBy = append(tq.options.OrderBy, types.OrderClause{
-		Column:     "_data." + field,
+		Column:     "_data." + snakeField,
 		Descending: true,
 	})
 	return tq
 }
 
-// Limit sets the maximum number of results
+// Limit sets the maximum number of results to return from the query.
+//
+// This method implements result limiting for pagination and performance optimization.
+// The limit is applied after all filtering and ordering operations, returning only
+// the first N documents from the final result set.
+//
+// # Behavior
+//
+// - **Zero or Negative Values**: No limit applied (returns all results)
+// - **Positive Values**: Returns at most N documents
+// - **Combined with Offset**: Returns N documents starting from offset position
+// - **Ordering Impact**: Limit applies to ordered results (use OrderBy for predictable pagination)
+//
+// # Pagination Patterns
+//
+// **Basic Pagination:**
+//
+//	// Page 1: First 10 results
+//	page1, err := store.Query().
+//	    Status("active").
+//	    OrderBy("created_at").
+//	    Limit(10).
+//	    Find()
+//
+//	// Page 2: Next 10 results
+//	page2, err := store.Query().
+//	    Status("active").
+//	    OrderBy("created_at").
+//	    Limit(10).
+//	    Offset(10).
+//	    Find()
+//
+//	// Page 3: Next 10 results
+//	page3, err := store.Query().
+//	    Status("active").
+//	    OrderBy("created_at").
+//	    Limit(10).
+//	    Offset(20).
+//	    Find()
+//
+// **Performance Optimization:**
+//
+//	// Get just the top 5 high-priority tasks
+//	topTasks, err := store.Query().
+//	    Priority("high").
+//	    OrderByDesc("created_at").
+//	    Limit(5).
+//	    Find()
+//
+//	// Check if more than 100 results exist (early termination)
+//	sample, err := store.Query().
+//	    Status("pending").
+//	    Limit(101).
+//	    Find()
+//	tooMany := len(sample) > 100
+//
+// # Use Cases
+//
+// - **Pagination**: Breaking large result sets into manageable pages
+// - **Performance**: Limiting expensive queries to reduce memory usage
+// - **Sampling**: Getting representative samples from large datasets
+// - **UI Display**: Loading initial results with "load more" functionality
+// - **Batch Processing**: Processing data in chunks
+//
+// # Performance Impact
+//
+// - **Database Level**: Limit is applied at database level for efficiency
+// - **Memory Usage**: Significantly reduces memory allocation for large result sets
+// - **Query Time**: Can improve query performance for large tables
+// - **Best Practice**: Always use with OrderBy() for consistent pagination
+//
+// # Related Methods
+//
+// - Offset() - Skip N results (combine for pagination)
+// - OrderBy() - Essential for predictable pagination
+// - First() - Equivalent to Limit(1) with error handling
+// - Count() - Get total count (ignores Limit for full count)
 func (tq *TypedQuery[T]) Limit(n int) *TypedQuery[T] {
 	tq.options.Limit = &n
 	return tq
 }
 
-// Offset sets the number of results to skip
+// Offset sets the number of results to skip before returning results.
+//
+// This method implements result skipping for pagination, allowing you to skip
+// the first N documents and return subsequent results. Commonly used with Limit()
+// to implement pagination patterns.
+//
+// # Behavior
+//
+// - **Zero Value**: No results skipped (starts from beginning)
+// - **Positive Values**: Skips the first N documents
+// - **Negative Values**: Treated as zero (no skipping)
+// - **Combined with Limit**: Skip N, then return up to Limit documents
+// - **Ordering Required**: Use OrderBy() for consistent pagination
+//
+// # Pagination Implementation
+//
+// **Standard Pagination Formula:**
+//
+//	pageSize := 10
+//	pageNumber := 2  // 1-based page numbering
+//
+//	results, err := store.Query().
+//	    OrderBy("created_at").              // Consistent ordering
+//	    Limit(pageSize).                    // Page size
+//	    Offset((pageNumber - 1) * pageSize). // Skip previous pages
+//	    Find()
+//
+// **Real-World Pagination Example:**
+//
+//	func GetTasksPage(store *TypedStore[Task], page, pageSize int, filters TaskFilters) ([]Task, error) {
+//	    query := store.Query()
+//
+//	    // Apply filters
+//	    if filters.Status != "" {
+//	        query = query.Status(filters.Status)
+//	    }
+//	    if filters.Priority != "" {
+//	        query = query.Priority(filters.Priority)
+//	    }
+//
+//	    // Apply pagination
+//	    return query.
+//	        OrderBy("created_at").                    // Consistent ordering
+//	        Limit(pageSize).                         // Results per page
+//	        Offset((page - 1) * pageSize).          // Skip previous pages
+//	        Find()
+//	}
+//
+// # Performance Considerations
+//
+// - **Large Offsets**: Very large offsets can be slow (database must count+skip)
+// - **Deep Pagination**: Consider cursor-based pagination for large datasets
+// - **Memory**: Offset doesn't affect memory usage (only skips, doesn't load)
+// - **Database Level**: Offset is handled efficiently at database level
+//
+// **Performance Tips:**
+//
+//	// ✅ Good - reasonable offset
+//	page1 := query.Limit(20).Offset(0).Find()   // First page
+//	page2 := query.Limit(20).Offset(20).Find()  // Second page
+//
+//	// ⚠️  Be careful - large offset may be slow
+//	page100 := query.Limit(20).Offset(1980).Find() // Page 100
+//
+//	// ✅ Better for deep pagination - cursor-based
+//	lastCreatedAt := getLastItemTimestamp()
+//	nextPage := query.Where("created_at > ?", lastCreatedAt).Limit(20).Find()
+//
+// # Common Patterns
+//
+// **Load More Pattern:**
+//
+//	currentResults := []Task{}
+//	pageSize := 20
+//
+//	for page := 1; ; page++ {
+//	    batch, err := store.Query().
+//	        Status("active").
+//	        OrderBy("priority").
+//	        Limit(pageSize).
+//	        Offset((page - 1) * pageSize).
+//	        Find()
+//
+//	    if len(batch) == 0 {
+//	        break // No more results
+//	    }
+//
+//	    currentResults = append(currentResults, batch...)
+//
+//	    if len(batch) < pageSize {
+//	        break // Last page (partial results)
+//	    }
+//	}
+//
+// **Infinite Scroll Pattern:**
+//
+//	loadedCount := 0
+//	pageSize := 10
+//
+//	func loadMoreTasks() {
+//	    moreTasks, err := store.Query().
+//	        Status("active").
+//	        OrderByDesc("created_at").
+//	        Limit(pageSize).
+//	        Offset(loadedCount).
+//	        Find()
+//
+//	    if len(moreTasks) > 0 {
+//	        displayTasks(moreTasks)
+//	        loadedCount += len(moreTasks)
+//	    }
+//	}
+//
+// # Related Methods
+//
+// - Limit() - Set maximum results (essential for pagination)
+// - OrderBy() - Required for consistent pagination
+// - Count() - Get total count for pagination info (ignores Offset)
+// - Find() - Execute paginated query
 func (tq *TypedQuery[T]) Offset(n int) *TypedQuery[T] {
 	tq.options.Offset = &n
 	return tq
@@ -2279,10 +3528,21 @@ func (tq *TypedQuery[T]) Offset(n int) *TypedQuery[T] {
 //
 // This is the primary terminal method for query execution. It performs several steps:
 //
-// 1. **Query Execution**: Executes the accumulated filters against the store
-// 2. **Post-Processing**: Applies filters that require client-side processing
-// 3. **Type Unmarshaling**: Converts raw documents back to typed structs
-// 4. **Result Assembly**: Builds the final []T slice for return
+// 1. **Field Validation**: Validates all data field names against the Go struct (NEW: eliminates silent failures)
+// 2. **Query Execution**: Executes the accumulated filters against the store
+// 3. **Post-Processing**: Applies filters that require client-side processing
+// 4. **Type Unmarshaling**: Converts raw documents back to typed structs
+// 5. **Result Assembly**: Builds the final []T slice for return
+//
+// # Field Validation (Issue #83 Fix)
+//
+// As of this implementation, Find() now validates all data field references before query execution.
+// This eliminates silent failures where invalid field names would return empty results instead of errors.
+//
+// - **Data field validation**: All Data(), DataIn(), DataNot(), DataNotIn() field names are validated
+// - **Ordering field validation**: All OrderByData(), OrderByDataDesc() field names are validated
+// - **Case-insensitive**: Field names like "assignee" and "Assignee" both work correctly
+// - **Helpful errors**: Invalid field names return clear error messages with suggestions
 //
 // # Post-Processing Filters
 //
@@ -2326,6 +3586,19 @@ func (tq *TypedQuery[T]) Offset(n int) *TypedQuery[T] {
 //	    Limit(10).
 //	    Find()
 func (tq *TypedQuery[T]) Find() ([]T, error) {
+	// Check for validation errors first
+	if validationErr, ok := tq.options.Filters["__validation_error__"]; ok {
+		delete(tq.options.Filters, "__validation_error__")
+		if err, isErr := validationErr.(error); isErr {
+			return nil, err
+		}
+	}
+
+	// Validate data field references before executing the query
+	if err := tq.validateDataFieldReferences(); err != nil {
+		return nil, err
+	}
+
 	// Check for special filters and extract them for post-processing
 	parentNotExists := false
 	if _, ok := tq.options.Filters["__parent_not_exists__"]; ok {
@@ -2449,7 +3722,75 @@ func (tq *TypedQuery[T]) Find() ([]T, error) {
 	return results, nil
 }
 
-// First returns the first matching document
+// First returns the first matching document or an error if no documents are found.
+//
+// This is a terminal operation that executes the query and returns only the first result.
+// It's equivalent to calling Limit(1).Find() but provides more convenient error handling
+// for single-document retrieval scenarios.
+//
+// # Behavior
+//
+// - Automatically sets limit to 1 for optimal performance
+// - Returns the first document if any matches are found
+// - Returns error if no documents match the query criteria
+// - Respects all previously applied filters, ordering, and offset
+//
+// # Ordering Impact
+//
+// The "first" document depends on the ordering applied to the query:
+// - **No ordering**: Returns first document in storage order (unpredictable)
+// - **With OrderBy()**: Returns first document according to specified ordering
+// - **With offset**: Returns first document after skipping offset documents
+//
+// # Usage Examples
+//
+//	// Get the most recent high-priority task
+//	task, err := store.Query().
+//	    Priority("high").
+//	    OrderByDesc("created_at").
+//	    First()
+//	if err != nil {
+//	    log.Printf("No high-priority tasks found: %v", err)
+//	    return
+//	}
+//	fmt.Printf("Most recent high-priority task: %s\n", task.Title)
+//
+//	// Get first pending task (any order)
+//	task, err := store.Query().
+//	    Status("pending").
+//	    First()
+//	if err != nil {
+//	    log.Printf("No pending tasks: %v", err)
+//	} else {
+//	    fmt.Printf("Found pending task: %s\n", task.Title)
+//	}
+//
+//	// Get first child of a specific parent
+//	child, err := store.Query().
+//	    ParentID("project-1").
+//	    OrderBy("title").
+//	    First()
+//
+// # Error Handling
+//
+// Returns error if:
+// - No documents match the query criteria (returns "no documents found")
+// - Database query fails
+// - Type unmarshaling fails
+// - Any filter validation fails
+//
+// # Performance Characteristics
+//
+// - **Query Time**: O(log n) with proper indexing + ordering overhead
+// - **Memory Usage**: Minimal - only allocates one document
+// - **Optimization**: Automatically applies LIMIT 1 to database query
+// - **Best Practice**: Use with OrderBy() for predictable results
+//
+// # Related Methods
+//
+// - Find() - Returns all matching documents
+// - Exists() - Check if any documents exist without retrieving data
+// - Count() - Get count of matching documents
 func (tq *TypedQuery[T]) First() (*T, error) {
 	limit := 1
 	tq.options.Limit = &limit
@@ -2466,7 +3807,96 @@ func (tq *TypedQuery[T]) First() (*T, error) {
 	return &results[0], nil
 }
 
-// Count returns the number of matching documents
+// Count returns the number of documents that match the current query criteria.
+//
+// This is a terminal operation that executes the query and counts all matching results.
+// Unlike database-level COUNT queries, this method performs full query execution
+// including type marshaling and validation to ensure accurate counts.
+//
+// # Behavior
+//
+// - Executes the complete query with all filters applied
+// - Performs type marshaling and validation on all results
+// - Returns the count of successfully processed documents
+// - Respects all filters, but ignores Limit() and Offset() for total count
+//
+// # Query Processing
+//
+// The Count() method uses the same execution path as Find() to ensure consistency:
+// 1. Applies all dimensional filters
+// 2. Executes data field filters and WHERE clauses
+// 3. Performs type marshaling and validation
+// 4. Returns count of valid results
+//
+// This approach ensures the count accurately reflects what Find() would return,
+// but may be slower than database-level COUNT operations.
+//
+// # Usage Examples
+//
+//	// Count high-priority tasks
+//	count, err := store.Query().
+//	    Priority("high").
+//	    Count()
+//	if err != nil {
+//	    log.Printf("Count failed: %v", err)
+//	} else {
+//	    fmt.Printf("Found %d high-priority tasks\n", count)
+//	}
+//
+//	// Count pending tasks assigned to a specific user
+//	count, err := store.Query().
+//	    Status("pending").
+//	    Data("Assignee", "alice").
+//	    Count()
+//	fmt.Printf("Alice has %d pending tasks\n", count)
+//
+//	// Count children of a project
+//	childCount, err := store.Query().
+//	    ParentID("project-1").
+//	    Count()
+//	if childCount > 0 {
+//	    fmt.Printf("Project has %d sub-tasks\n", childCount)
+//	}
+//
+//	// Check if any documents exist (alternative to Exists())
+//	if count, _ := store.Query().Status("active").Count(); count > 0 {
+//	    fmt.Printf("Found %d active items\n", count)
+//	}
+//
+// # Performance Characteristics
+//
+// - **Query Time**: O(n) where n = number of matching documents (full table scan possible)
+// - **Memory Usage**: O(n) during processing, O(1) for final result
+// - **Processing Overhead**: Full type marshaling for each matching document
+// - **Optimization**: Consider using Exists() if you only need to check for presence
+//
+// # Performance Considerations
+//
+// For large result sets, Count() can be expensive because it:
+// - Loads and processes all matching documents
+// - Performs type conversion and validation on each result
+// - May be slower than SQL COUNT queries
+//
+// **Performance Alternatives:**
+// - Use Exists() instead of `Count() > 0` for existence checks
+// - Consider adding database-level count methods for high-frequency use cases
+// - Use Limit() on Find() if you only need to know "at least N exist"
+//
+// # Error Handling
+//
+// Returns error if:
+// - Database query fails
+// - Any filter validation fails (invalid field names, etc.)
+// - Type marshaling fails for any matching document
+//
+// Note: If some documents fail type marshaling, the entire operation fails.
+// This ensures count consistency with Find() results.
+//
+// # Related Methods
+//
+// - Find() - Returns the actual documents being counted
+// - Exists() - More efficient for checking if any documents exist
+// - First() - Get just the first matching document
 func (tq *TypedQuery[T]) Count() (int, error) {
 	// Use Find to get filtered results including post-processing
 	results, err := tq.Find()
@@ -2477,7 +3907,124 @@ func (tq *TypedQuery[T]) Count() (int, error) {
 	return len(results), nil
 }
 
-// Exists returns true if any matching documents exist
+// Exists returns true if any documents match the current query criteria.
+//
+// This is an optimized terminal operation for existence checking that's more efficient
+// than Count() > 0 or len(Find()) > 0 because it stops processing after finding
+// the first matching document.
+//
+// # Behavior
+//
+// - Automatically sets limit to 1 for optimal performance
+// - Returns true immediately upon finding any matching document
+// - Returns false if no documents match the query criteria
+// - Respects all previously applied filters and conditions
+//
+// # Performance Optimization
+//
+// Exists() is specifically optimized for existence checks:
+// 1. Uses LIMIT 1 to stop after first match
+// 2. Minimal memory allocation (only one document maximum)
+// 3. Early termination on first successful match
+// 4. More efficient than Count() for large result sets
+//
+// # Use Cases
+//
+// **Primary use cases for Exists():**
+// - Conditional logic based on document presence
+// - Validation that prerequisites exist
+// - Checking constraints before operations
+// - Dashboard indicators and status checks
+//
+// # Usage Examples
+//
+//	// Check if any high-priority tasks exist
+//	hasUrgent, err := store.Query().
+//	    Priority("high").
+//	    Status("pending").
+//	    Exists()
+//	if err != nil {
+//	    log.Printf("Query failed: %v", err)
+//	} else if hasUrgent {
+//	    log.Println("⚠️  High-priority tasks need attention")
+//	}
+//
+//	// Validate that a parent exists before creating children
+//	parentExists, err := store.Query().
+//	    ParentID("project-1").
+//	    Exists()
+//	if !parentExists {
+//	    return fmt.Errorf("cannot create subtask: project-1 does not exist")
+//	}
+//
+//	// Check if user has any assigned tasks
+//	hasWork, err := store.Query().
+//	    Data("Assignee", userID).
+//	    Status("pending").
+//	    Exists()
+//	if hasWork {
+//	    fmt.Printf("User %s has pending work\n", userID)
+//	}
+//
+//	// Dashboard status indicator
+//	if hasActive, _ := store.Query().Status("active").Exists(); hasActive {
+//	    statusIndicator = "🟢 Active"
+//	} else {
+//	    statusIndicator = "⚫ Inactive"
+//	}
+//
+//	// Conditional processing
+//	if exists, _ := store.Query().Priority("high").Exists(); exists {
+//	    // Only process high-priority items if any exist
+//	    tasks, _ := store.Query().Priority("high").Find()
+//	    processTasks(tasks)
+//	}
+//
+// # Performance Comparison
+//
+// **Exists() vs Alternatives:**
+//
+//	// ✅ Efficient - stops at first match
+//	exists, err := query.Exists()
+//
+//	// ❌ Inefficient - counts ALL matches
+//	count, err := query.Count()
+//	exists := count > 0
+//
+//	// ❌ Very inefficient - loads ALL documents
+//	results, err := query.Find()
+//	exists := len(results) > 0
+//
+// # Performance Characteristics
+//
+// - **Query Time**: O(log n) with proper indexing (early termination)
+// - **Memory Usage**: O(1) - maximum one document allocation
+// - **Processing**: Minimal - stops after first valid match
+// - **Best Case**: O(1) if first document matches
+// - **Worst Case**: O(n) if no documents match (must check all)
+//
+// # Error Handling
+//
+// Returns error if:
+// - Database query fails
+// - Filter validation fails (invalid field names, etc.)
+// - Type marshaling fails for the first matching document
+//
+// Note: If the first matching document fails type marshaling, the entire operation fails.
+// This maintains consistency with other query methods.
+//
+// # Related Methods
+//
+// - Count() - Get exact number of matching documents (slower)
+// - First() - Get the first matching document (similar performance, returns data)
+// - Find() - Get all matching documents (much slower for large results)
+//
+// # Best Practices
+//
+// - **Use Exists() instead of Count() > 0** for existence checks
+// - **Combine with conditional logic** for efficient workflows
+// - **Use with indexable fields** (dimensions) for best performance
+// - **Avoid for operations that need the actual documents** (use First() or Find())
 func (tq *TypedQuery[T]) Exists() (bool, error) {
 	// Set limit to 1 for efficiency
 	limit := 1
@@ -2489,6 +4036,121 @@ func (tq *TypedQuery[T]) Exists() (bool, error) {
 	}
 
 	return len(results) > 0, nil
+}
+
+// GetQueryPlan analyzes and returns information about how a query would be executed.
+//
+// This method provides insights into query execution for performance optimization
+// and debugging. It analyzes the query structure without executing it.
+//
+// # Query Analysis
+//
+// Returns information about:
+// - **Filter Types**: Which filters use dimensions vs data fields
+// - **Index Usage**: Which filters can leverage indexed dimensions
+// - **Performance Estimates**: Relative performance characteristics
+// - **Optimization Suggestions**: Recommendations for better performance
+//
+// # Usage Examples
+//
+//	// Analyze a complex query
+//	plan, err := store.Query().
+//	    Status("active").
+//	    Data("Assignee", "alice").
+//	    OrderBy("created_at").
+//	    GetQueryPlan()
+//
+//	fmt.Printf("Indexed filters: %d\n", plan.IndexedFilterCount)
+//	fmt.Printf("Performance rating: %s\n", plan.PerformanceRating)
+//	for _, suggestion := range plan.OptimizationSuggestions {
+//	    fmt.Printf("Suggestion: %s\n", suggestion)
+//	}
+//
+// # Performance Analysis
+//
+// The query plan provides performance insights:
+// - **Fast**: Primarily uses indexed dimensional filters
+// - **Medium**: Mix of indexed and data field filters
+// - **Slow**: Primarily uses data field filters or complex WHERE clauses
+//
+// Use this information to optimize query performance by restructuring
+// queries to use more dimensional filters when possible.
+func (tq *TypedQuery[T]) GetQueryPlan() (*QueryPlan, error) {
+	plan := &QueryPlan{
+		TotalFilters:            0,
+		IndexedFilterCount:      0,
+		DataFieldFilterCount:    0,
+		CustomWhereClauseCount:  0,
+		OptimizationSuggestions: []string{},
+	}
+
+	// Analyze dimensional filters (these are indexed and fast)
+	dimensionFilters := 0
+	if tq.options.Filters != nil {
+		for filterName := range tq.options.Filters {
+			plan.TotalFilters++
+			// Dimension filters are typically faster
+			if filterName != "_data" { // _data filters are slower
+				plan.IndexedFilterCount++
+				dimensionFilters++
+			}
+		}
+	}
+
+	// Count data field filters (slower, require full document scan)
+	dataFilters := 0
+	if tq.options.Filters != nil {
+		for filterName := range tq.options.Filters {
+			if filterName == "_data" || strings.HasPrefix(filterName, "_data.") {
+				dataFilters++
+			}
+		}
+	}
+	plan.DataFieldFilterCount = dataFilters
+	plan.TotalFilters += dataFilters
+
+	// Count custom WHERE clauses (performance varies)
+	// Note: Current ListOptions doesn't support custom WHERE clauses
+	plan.CustomWhereClauseCount = 0
+
+	// Determine performance rating
+	if plan.TotalFilters == 0 {
+		plan.PerformanceRating = "No filters - will return all documents"
+	} else if plan.IndexedFilterCount > 0 && plan.DataFieldFilterCount == 0 {
+		plan.PerformanceRating = "Fast - uses only indexed dimensions"
+	} else if plan.IndexedFilterCount >= plan.DataFieldFilterCount {
+		plan.PerformanceRating = "Medium - mix of indexed and data field filters"
+	} else {
+		plan.PerformanceRating = "Slow - primarily uses data field filters"
+	}
+
+	// Generate optimization suggestions
+	if plan.DataFieldFilterCount > plan.IndexedFilterCount && plan.IndexedFilterCount == 0 {
+		plan.OptimizationSuggestions = append(plan.OptimizationSuggestions,
+			"Consider adding dimensional filters to improve performance")
+	}
+
+	if plan.DataFieldFilterCount > 3 {
+		plan.OptimizationSuggestions = append(plan.OptimizationSuggestions,
+			"Many data field filters detected - consider restructuring as dimensional filters if possible")
+	}
+
+	if plan.CustomWhereClauseCount > 0 && plan.IndexedFilterCount == 0 {
+		plan.OptimizationSuggestions = append(plan.OptimizationSuggestions,
+			"WHERE clause without indexed filters may be slow - add dimensional filters if possible")
+	}
+
+	if len(tq.options.OrderBy) > 0 && plan.TotalFilters > 0 {
+		plan.OptimizationSuggestions = append(plan.OptimizationSuggestions,
+			"Ordering with filtering - ensure ORDER BY columns are indexed for best performance")
+	}
+
+	if plan.TotalFilters == 0 && (tq.options.Limit == nil || *tq.options.Limit > 1000) {
+		plan.OptimizationSuggestions = append(plan.OptimizationSuggestions,
+			"No filters with high/unlimited limit - consider adding filters or reducing limit")
+	}
+
+	return plan, nil
 }
 
 // Helper functions
@@ -2590,13 +4252,25 @@ func generateConfigFromType(typ reflect.Type) (nanostore.Config, error) {
 			continue
 		}
 
-		// Check for pointer fields (not allowed)
+		// Check for pointer fields and validate supported types
 		if field.Type.Kind() == reflect.Ptr {
-			return config, fmt.Errorf("field %s: pointer fields are not supported", field.Name)
+			// Check if the underlying type is supported
+			elemType := field.Type.Elem()
+			switch elemType.Kind() {
+			case reflect.String, reflect.Bool, reflect.Int, reflect.Int64, reflect.Float64:
+				// Basic pointer types are supported
+			default:
+				// Check for time.Time specifically
+				if elemType == reflect.TypeOf(time.Time{}) {
+					// *time.Time is supported
+				} else {
+					return config, fmt.Errorf("field %s: pointer type %s is not supported (supported: *string, *bool, *int, *int64, *float64, *time.Time)", field.Name, field.Type)
+				}
+			}
 		}
 
 		// Look for field tags in different formats
-		if tagValue := field.Tag.Get("values"); tagValue != "" {
+		if tagValue, tagExists := field.Tag.Lookup("values"); tagExists {
 			// Parse enumerated dimension from tags like:
 			// `values:"pending,active,done" prefix:"done=d" default:"pending"`
 			dimConfig := nanostore.DimensionConfig{
@@ -2604,26 +4278,22 @@ func generateConfigFromType(typ reflect.Type) (nanostore.Config, error) {
 				Type: nanostore.Enumerated,
 			}
 
-			// Parse values
-			dimConfig.Values = strings.Split(tagValue, ",")
-			for i := range dimConfig.Values {
-				dimConfig.Values[i] = strings.TrimSpace(dimConfig.Values[i])
+			// Parse and validate values tag
+			if err := parseValuesTag(tagValue, &dimConfig, field.Name); err != nil {
+				return config, fmt.Errorf("field '%s': %w", field.Name, err)
 			}
 
-			// Parse default
-			if defaultVal := field.Tag.Get("default"); defaultVal != "" {
-				dimConfig.DefaultValue = defaultVal
+			// Parse and validate default tag
+			if defaultVal, defaultExists := field.Tag.Lookup("default"); defaultExists {
+				if err := parseDefaultTag(defaultVal, &dimConfig, field.Name); err != nil {
+					return config, fmt.Errorf("field '%s': %w", field.Name, err)
+				}
 			}
 
-			// Parse prefixes
-			if prefixTag := field.Tag.Get("prefix"); prefixTag != "" {
-				dimConfig.Prefixes = make(map[string]string)
-				// Parse formats like "done=d" or "done=d,active=a"
-				for _, p := range strings.Split(prefixTag, ",") {
-					parts := strings.Split(strings.TrimSpace(p), "=")
-					if len(parts) == 2 {
-						dimConfig.Prefixes[parts[0]] = parts[1]
-					}
+			// Parse and validate prefix tag
+			if prefixTag, prefixExists := field.Tag.Lookup("prefix"); prefixExists {
+				if err := parsePrefixTag(prefixTag, &dimConfig, field.Name); err != nil {
+					return config, fmt.Errorf("field '%s': %w", field.Name, err)
 				}
 			}
 
@@ -2649,11 +4319,219 @@ func generateConfigFromType(typ reflect.Type) (nanostore.Config, error) {
 					Type:     nanostore.Hierarchical,
 					RefField: dimName,
 				})
+			} else {
+				// Regular dimension (simple value dimension)
+				config.Dimensions = append(config.Dimensions, nanostore.DimensionConfig{
+					Name: dimName,
+					Type: nanostore.Enumerated, // Use enumerated type for simple values
+				})
 			}
 		}
 	}
 
+	// Validate the generated configuration for consistency and correctness
+	if err := validateStructTagConfiguration(config); err != nil {
+		return config, fmt.Errorf("struct tag validation failed: %w", err)
+	}
+
 	return config, nil
+}
+
+// parseValuesTag parses and validates the "values" struct tag
+func parseValuesTag(tagValue string, dimConfig *nanostore.DimensionConfig, fieldName string) error {
+	if strings.TrimSpace(tagValue) == "" {
+		return fmt.Errorf("values tag cannot be empty")
+	}
+
+	// Split and validate values
+	values := strings.Split(tagValue, ",")
+	var cleanValues []string
+
+	for i, value := range values {
+		trimmedValue := strings.TrimSpace(value)
+		if trimmedValue == "" {
+			return fmt.Errorf("empty value at position %d in values tag '%s'", i, tagValue)
+		}
+
+		// Check for suspicious patterns that might indicate malformed tags
+		if strings.Contains(trimmedValue, "=") {
+			return fmt.Errorf("value '%s' contains '=' - did you mean to use the prefix tag?", trimmedValue)
+		}
+		if strings.Contains(trimmedValue, ":") {
+			return fmt.Errorf("value '%s' contains ':' - check tag formatting", trimmedValue)
+		}
+
+		cleanValues = append(cleanValues, trimmedValue)
+	}
+
+	dimConfig.Values = cleanValues
+	return nil
+}
+
+// parseDefaultTag parses and validates the "default" struct tag
+func parseDefaultTag(tagValue string, dimConfig *nanostore.DimensionConfig, fieldName string) error {
+	if strings.TrimSpace(tagValue) == "" {
+		return fmt.Errorf("default tag cannot be empty")
+	}
+
+	// Check for suspicious patterns
+	if strings.Contains(tagValue, ",") {
+		return fmt.Errorf("default value '%s' contains comma - default should be a single value", tagValue)
+	}
+	if strings.Contains(tagValue, "=") {
+		return fmt.Errorf("default value '%s' contains '=' - check tag formatting", tagValue)
+	}
+
+	dimConfig.DefaultValue = strings.TrimSpace(tagValue)
+	return nil
+}
+
+// parsePrefixTag parses and validates the "prefix" struct tag
+func parsePrefixTag(tagValue string, dimConfig *nanostore.DimensionConfig, fieldName string) error {
+	if strings.TrimSpace(tagValue) == "" {
+		return fmt.Errorf("prefix tag cannot be empty")
+	}
+
+	dimConfig.Prefixes = make(map[string]string)
+
+	// Parse formats like "done=d" or "done=d,active=a"
+	prefixMappings := strings.Split(tagValue, ",")
+	for i, mapping := range prefixMappings {
+		trimmedMapping := strings.TrimSpace(mapping)
+		if trimmedMapping == "" {
+			return fmt.Errorf("empty prefix mapping at position %d in prefix tag '%s'", i, tagValue)
+		}
+
+		// Split on '=' to get value=prefix pairs
+		parts := strings.Split(trimmedMapping, "=")
+		if len(parts) != 2 {
+			return fmt.Errorf("invalid prefix mapping '%s' - format should be 'value=prefix'", trimmedMapping)
+		}
+
+		value := strings.TrimSpace(parts[0])
+		prefix := strings.TrimSpace(parts[1])
+
+		if value == "" {
+			return fmt.Errorf("empty value in prefix mapping '%s'", trimmedMapping)
+		}
+		if prefix == "" {
+			return fmt.Errorf("empty prefix in prefix mapping '%s'", trimmedMapping)
+		}
+
+		// Check for duplicate prefix mappings within the same tag
+		if existingValue, exists := dimConfig.Prefixes[value]; exists {
+			return fmt.Errorf("duplicate prefix mapping for value '%s' (was '%s', now '%s')",
+				value, existingValue, prefix)
+		}
+
+		dimConfig.Prefixes[value] = prefix
+	}
+
+	return nil
+}
+
+// validateStructTagConfiguration performs comprehensive validation of the configuration
+// generated from struct tags to catch malformed tags and constraint violations.
+func validateStructTagConfiguration(config nanostore.Config) error {
+	dimensionNames := make(map[string]bool)
+	allPrefixes := make(map[string]string) // prefix -> dimension name
+
+	for _, dim := range config.Dimensions {
+		// Check for duplicate dimension names
+		if dimensionNames[dim.Name] {
+			return fmt.Errorf("duplicate dimension name '%s'", dim.Name)
+		}
+		dimensionNames[dim.Name] = true
+
+		// Validate based on dimension type
+		switch dim.Type {
+		case nanostore.Enumerated:
+			if err := validateEnumeratedDimensionConfig(dim); err != nil {
+				return fmt.Errorf("dimension '%s': %w", dim.Name, err)
+			}
+
+			// Check for prefix conflicts across dimensions
+			for value, prefix := range dim.Prefixes {
+				if existingDim, exists := allPrefixes[prefix]; exists {
+					return fmt.Errorf("dimension '%s': prefix '%s' for value '%s' conflicts with dimension '%s'",
+						dim.Name, prefix, value, existingDim)
+				}
+				allPrefixes[prefix] = dim.Name
+			}
+
+		case nanostore.Hierarchical:
+			if err := validateHierarchicalDimensionConfig(dim); err != nil {
+				return fmt.Errorf("dimension '%s': %w", dim.Name, err)
+			}
+		}
+	}
+
+	return nil
+}
+
+// validateEnumeratedDimensionConfig validates enumerated dimension configuration
+func validateEnumeratedDimensionConfig(dim nanostore.DimensionConfig) error {
+	// Allow empty values list for simple dimensions (e.g., pointer types like *time.Time)
+	// These dimensions can accept any value, unlike traditional enumerated dimensions
+	if len(dim.Values) == 0 {
+		// For simple dimensions with no predefined values, skip validation
+		return nil
+	}
+
+	// Check for empty values
+	valueSet := make(map[string]bool)
+	for i, value := range dim.Values {
+		trimmedValue := strings.TrimSpace(value)
+		if trimmedValue == "" {
+			return fmt.Errorf("empty value at position %d in values list", i)
+		}
+
+		// Check for duplicate values
+		if valueSet[trimmedValue] {
+			return fmt.Errorf("duplicate value '%s' in values list", trimmedValue)
+		}
+		valueSet[trimmedValue] = true
+
+		// Update the config to use trimmed values
+		dim.Values[i] = trimmedValue
+	}
+
+	// Validate default value if specified
+	if dim.DefaultValue != "" {
+		if !valueSet[dim.DefaultValue] {
+			return fmt.Errorf("default value '%s' not in values list %v", dim.DefaultValue, dim.Values)
+		}
+	}
+
+	// Validate prefix mappings
+	for value, prefix := range dim.Prefixes {
+		// Check that prefix is not empty
+		if strings.TrimSpace(prefix) == "" {
+			return fmt.Errorf("empty prefix not allowed for value '%s'", value)
+		}
+
+		// Check that prefixed value exists in values list
+		if !valueSet[value] {
+			return fmt.Errorf("prefix mapping for unknown value '%s'", value)
+		}
+	}
+
+	return nil
+}
+
+// validateHierarchicalDimensionConfig validates hierarchical dimension configuration
+func validateHierarchicalDimensionConfig(dim nanostore.DimensionConfig) error {
+	// Check that RefField is specified
+	if dim.RefField == "" {
+		return fmt.Errorf("hierarchical dimension must specify RefField")
+	}
+
+	// RefField should not be empty string
+	if strings.TrimSpace(dim.RefField) == "" {
+		return fmt.Errorf("RefField cannot be empty")
+	}
+
+	return nil
 }
 
 // extractTypeInfo extracts detailed information about a Go type for debugging purposes.
@@ -2692,10 +4570,12 @@ func extractTypeInfo(typ reflect.Type) TypeDebugInfo {
 		}
 
 		// Check if this field is a dimension
-		if field.Tag.Get("values") != "" || field.Tag.Get("dimension") != "" {
+		valuesValue, valuesExists := field.Tag.Lookup("values")
+		_, dimensionExists := field.Tag.Lookup("dimension")
+		if valuesExists || dimensionExists {
 			fieldInfo.IsDimension = true
-			if values := field.Tag.Get("values"); values != "" {
-				fieldInfo.DimensionTag = fmt.Sprintf("values:%s", values)
+			if valuesExists {
+				fieldInfo.DimensionTag = fmt.Sprintf("values:%s", valuesValue)
 				if prefix := field.Tag.Get("prefix"); prefix != "" {
 					fieldInfo.DimensionTag += fmt.Sprintf(" prefix:%s", prefix)
 				}

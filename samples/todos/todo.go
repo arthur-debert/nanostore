@@ -52,7 +52,8 @@ func (app *TodoApp) CreateTodo(title string, item *TodoItem) (string, error) {
 
 // UpdateTodo updates an existing todo item
 func (app *TodoApp) UpdateTodo(id string, item *TodoItem) error {
-	return app.store.Update(id, item)
+	_, err := app.store.Update(id, item)
+	return err
 }
 
 // GetTodo retrieves a todo by ID

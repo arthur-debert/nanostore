@@ -30,7 +30,7 @@ type EdgeCaseItem struct {
 	PointerField *string
 
 	// Dimension with special characters in tag
-	WeirdDimension string `dimension:"weird-dimension!@#" values:"val1,val2,val3"`
+	WeirdDimension string `dimension:"weird-dimension!@#" values:"val1,val2,val3" default:"val1"`
 
 	// Multiple tags
 	MultiTag string `values:"a,b,c" prefix:"a=x,b=y" default:"a" dimension:"multi_tag"`
@@ -47,7 +47,7 @@ type SafeEdgeCaseItem struct {
 	FloatField  float64 `default:"3.14"`
 
 	// Dimension with special characters in tag
-	WeirdDimension string `dimension:"weird-dimension!@#" values:"val1,val2,val3"`
+	WeirdDimension string `dimension:"weird-dimension!@#" values:"val1,val2,val3" default:"val1"`
 
 	// Multiple tags
 	MultiTag string `values:"a,b,c" prefix:"a=x,b=y" default:"a" dimension:"multi_tag"`
@@ -83,16 +83,16 @@ func TestDeclarativeRobustness(t *testing.T) {
 		defer func() { _ = os.Remove(tmpfile.Name()) }()
 		_ = tmpfile.Close()
 
-		_, err = api.NewFromType[EdgeCaseItem](tmpfile.Name())
-		if err == nil {
-			t.Fatal("expected error for pointer field, got nil")
+		// Note: Pointer fields in data fields (non-dimensions) are now supported
+		// This struct has a *string data field which should be fine
+		store, err := api.NewFromType[EdgeCaseItem](tmpfile.Name())
+		if err != nil {
+			t.Fatalf("expected success for data field pointer, got error: %v", err)
 		}
-		if !strings.Contains(err.Error(), "pointer fields are not supported") {
-			t.Fatalf("expected pointer field error, got: %v", err)
-		}
+		defer func() { _ = store.Close() }()
 
-		// Test passes - pointer fields are properly rejected
-		t.Log("Pointer fields correctly rejected with error")
+		// Test passes - pointer data fields are now supported
+		t.Log("Pointer data fields correctly supported")
 	})
 
 	// Test 2: Invalid struct tags handling
@@ -243,7 +243,7 @@ func TestDeclarativeRobustness(t *testing.T) {
 
 		for _, test := range updateTests {
 			t.Run(test.name, func(t *testing.T) {
-				err := store.Update(id, &test.update)
+				_, err := store.Update(id, &test.update)
 				if err != nil {
 					t.Fatalf("update failed: %v", err)
 				}
@@ -308,7 +308,7 @@ func TestDeclarativeRobustness(t *testing.T) {
 				"interleaved updates",
 				func() error {
 					for i, id := range ids {
-						err := store.Update(id, &SafeEdgeCaseItem{IntField: i * 2})
+						_, err := store.Update(id, &SafeEdgeCaseItem{IntField: i * 2})
 						if err != nil {
 							return err
 						}

@@ -20,4 +20,13 @@ type TodoItem struct {
 	Priority string `values:"low,medium,high" prefix:"high=h" default:"medium"`
 	Activity string `values:"active,archived,deleted" default:"active"`
 	ParentID string `dimension:"parent_id,ref"`
+
+	// Data fields (stored as _data.* with snake_case names)
+	Assignee   string  // Custom field for assignee
+	Estimate   int     // Custom field for effort estimate
+	Tags       string  // Custom field for tags
+	Team       string  // Custom field for team
+	Score      float64 // Custom field for score
+	Department string  // Custom field for department (used in stress tests)
+	Complexity string  // Custom field for complexity (used in stress tests)
 }

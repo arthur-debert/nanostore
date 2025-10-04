@@ -11,6 +11,7 @@ package api_test
 
 import (
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/arthur-debert/nanostore/nanostore/api"
@@ -344,9 +345,9 @@ func TestTypedQueryDataNOTOperations(t *testing.T) {
 		"status":         "active",
 		"priority":       "high",
 		"activity":       "active",
-		"_data.assignee": "alice",
-		"_data.team":     "backend",
-		"_data.estimate": 5,
+		"_data.Assignee": "alice",
+		"_data.Team":     "backend",
+		"_data.Estimate": 5,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -356,9 +357,9 @@ func TestTypedQueryDataNOTOperations(t *testing.T) {
 		"status":         "pending",
 		"priority":       "medium",
 		"activity":       "active",
-		"_data.assignee": "bob",
-		"_data.team":     "frontend",
-		"_data.estimate": 3,
+		"_data.Assignee": "bob",
+		"_data.Team":     "frontend",
+		"_data.Estimate": 3,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -368,9 +369,9 @@ func TestTypedQueryDataNOTOperations(t *testing.T) {
 		"status":         "done",
 		"priority":       "low",
 		"activity":       "active",
-		"_data.assignee": "charlie",
-		"_data.team":     "backend",
-		"_data.estimate": 8,
+		"_data.Assignee": "charlie",
+		"_data.Team":     "backend",
+		"_data.Estimate": 8,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -380,9 +381,9 @@ func TestTypedQueryDataNOTOperations(t *testing.T) {
 		"status":         "active",
 		"priority":       "medium",
 		"activity":       "active",
-		"_data.assignee": "alice",
-		"_data.team":     "devops",
-		"_data.estimate": 5,
+		"_data.Assignee": "alice",
+		"_data.Team":     "devops",
+		"_data.Estimate": 5,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -400,7 +401,7 @@ func TestTypedQueryDataNOTOperations(t *testing.T) {
 
 	t.Run("DataNot", func(t *testing.T) {
 		// Find tasks NOT assigned to Alice
-		tasks, err := store.Query().DataNot("assignee", "alice").Find()
+		tasks, err := store.Query().DataNot("Assignee", "alice").Find()
 		if err != nil {
 			t.Fatalf("failed to filter with DataNot: %v", err)
 		}
@@ -434,7 +435,7 @@ func TestTypedQueryDataNOTOperations(t *testing.T) {
 
 	t.Run("DataNotNumeric", func(t *testing.T) {
 		// Find tasks NOT with estimate 5
-		tasks, err := store.Query().DataNot("estimate", 5).Find()
+		tasks, err := store.Query().DataNot("Estimate", 5).Find()
 		if err != nil {
 			t.Fatalf("failed to filter with DataNot numeric: %v", err)
 		}
@@ -468,7 +469,7 @@ func TestTypedQueryDataNOTOperations(t *testing.T) {
 
 	t.Run("DataNotIn", func(t *testing.T) {
 		// Find tasks NOT assigned to Alice or Bob
-		tasks, err := store.Query().DataNotIn("assignee", "alice", "bob").Find()
+		tasks, err := store.Query().DataNotIn("Assignee", "alice", "bob").Find()
 		if err != nil {
 			t.Fatalf("failed to filter with DataNotIn: %v", err)
 		}
@@ -504,7 +505,7 @@ func TestTypedQueryDataNOTOperations(t *testing.T) {
 		// Combine DataNot with status filter
 		tasks, err := store.Query().
 			Status("active").
-			DataNot("assignee", "alice").
+			DataNot("Assignee", "alice").
 			Find()
 		if err != nil {
 			t.Fatalf("failed to combine DataNot with Status: %v", err)
@@ -523,8 +524,8 @@ func TestTypedQueryDataNOTOperations(t *testing.T) {
 	t.Run("CombineDataNotWithDataFilter", func(t *testing.T) {
 		// Combine DataNot with positive Data filter
 		tasks, err := store.Query().
-			Data("team", "backend").
-			DataNot("assignee", "alice").
+			Data("Team", "backend").
+			DataNot("Assignee", "alice").
 			Find()
 		if err != nil {
 			t.Fatalf("failed to combine DataNot with Data: %v", err)
@@ -541,23 +542,26 @@ func TestTypedQueryDataNOTOperations(t *testing.T) {
 	})
 
 	t.Run("DataNotWithNonExistentField", func(t *testing.T) {
-		// DataNot with field that doesn't exist on any document
-		tasks, err := store.Query().DataNot("nonexistent", "value").Find()
-		if err != nil {
-			t.Fatalf("failed to filter with DataNot on nonexistent field: %v", err)
+		// DataNot with field that doesn't exist - should now return validation error
+		_, err := store.Query().DataNot("nonexistent", "value").Find()
+		if err == nil {
+			t.Error("expected validation error for nonexistent field in DataNot, but got none")
 		}
 
-		// Should return all tasks since none have the nonexistent field
-		if len(tasks) != 5 {
-			t.Errorf("expected 5 tasks when filtering nonexistent field, got %d", len(tasks))
+		if err != nil {
+			// Verify it's a validation error
+			errMsg := err.Error()
+			if !strings.Contains(errMsg, "nonexistent") {
+				t.Errorf("Error should mention the invalid field name, got: %s", errMsg)
+			}
 		}
 	})
 
 	t.Run("MultipleDataNotFilters", func(t *testing.T) {
 		// Multiple DataNot filters
 		tasks, err := store.Query().
-			DataNot("assignee", "alice").
-			DataNot("team", "frontend").
+			DataNot("Assignee", "alice").
+			DataNot("Team", "frontend").
 			Find()
 		if err != nil {
 			t.Fatalf("failed to apply multiple DataNot filters: %v", err)
