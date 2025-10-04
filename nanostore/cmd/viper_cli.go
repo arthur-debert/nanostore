@@ -442,6 +442,17 @@ func (cli *ViperCLI) addMetadataCommands() {
 	}
 	cli.rootCmd.AddCommand(getDimensionsCmd)
 
+	// Get metadata
+	getMetadataCmd := &cobra.Command{
+		Use:   "get-metadata <id>",
+		Short: "Get document metadata (ID, timestamps, etc.)",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return cli.executeGetMetadata(args[0])
+		},
+	}
+	cli.rootCmd.AddCommand(getMetadataCmd)
+
 	// Resolve UUID
 	resolveUUIDCmd := &cobra.Command{
 		Use:   "resolve-uuid <simple-id>",

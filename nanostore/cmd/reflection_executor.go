@@ -278,6 +278,84 @@ func (re *ReflectionExecutor) ExecuteGet(typeName, dbPath, id string) (interface
 	}
 }
 
+// ExecuteGetRaw executes a GetRaw method
+func (re *ReflectionExecutor) ExecuteGetRaw(typeName, dbPath, id string) (interface{}, error) {
+	switch typeName {
+	case "Task":
+		store, err := re.createTaskStore(dbPath)
+		if err != nil {
+			return nil, err
+		}
+		defer func() { _ = store.Close() }()
+
+		return store.GetRaw(id)
+
+	case "Note":
+		store, err := re.createNoteStore(dbPath)
+		if err != nil {
+			return nil, err
+		}
+		defer func() { _ = store.Close() }()
+
+		return store.GetRaw(id)
+
+	default:
+		return nil, fmt.Errorf("getRaw not implemented for type %s", typeName)
+	}
+}
+
+// ExecuteGetDimensions executes a GetDimensions method
+func (re *ReflectionExecutor) ExecuteGetDimensions(typeName, dbPath, id string) (interface{}, error) {
+	switch typeName {
+	case "Task":
+		store, err := re.createTaskStore(dbPath)
+		if err != nil {
+			return nil, err
+		}
+		defer func() { _ = store.Close() }()
+
+		return store.GetDimensions(id)
+
+	case "Note":
+		store, err := re.createNoteStore(dbPath)
+		if err != nil {
+			return nil, err
+		}
+		defer func() { _ = store.Close() }()
+
+		return store.GetDimensions(id)
+
+	default:
+		return nil, fmt.Errorf("getDimensions not implemented for type %s", typeName)
+	}
+}
+
+// ExecuteGetMetadata executes a GetMetadata method
+func (re *ReflectionExecutor) ExecuteGetMetadata(typeName, dbPath, id string) (interface{}, error) {
+	switch typeName {
+	case "Task":
+		store, err := re.createTaskStore(dbPath)
+		if err != nil {
+			return nil, err
+		}
+		defer func() { _ = store.Close() }()
+
+		return store.GetMetadata(id)
+
+	case "Note":
+		store, err := re.createNoteStore(dbPath)
+		if err != nil {
+			return nil, err
+		}
+		defer func() { _ = store.Close() }()
+
+		return store.GetMetadata(id)
+
+	default:
+		return nil, fmt.Errorf("getMetadata not implemented for type %s", typeName)
+	}
+}
+
 // ExecuteUpdate executes an Update method
 func (re *ReflectionExecutor) ExecuteUpdate(typeName, dbPath, id string, data map[string]interface{}) (interface{}, error) {
 	switch typeName {

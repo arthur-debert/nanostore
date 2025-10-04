@@ -393,16 +393,21 @@ func (cli *ViperCLI) executeGetRaw(id string) error {
 		return err
 	}
 
-	result := map[string]interface{}{
-		"command":     "get-raw",
-		"document_id": id,
-		"raw_data": map[string]interface{}{
-			"uuid":       "mock-uuid-" + id,
-			"title":      "Raw Document " + id,
-			"dimensions": map[string]interface{}{"status": "active"},
-			"created_at": "2024-01-01T10:00:00Z",
-		},
-		"note": "Actual raw retrieval not yet implemented - this is a simulation",
+	typeName := cli.viperInst.GetString("type")
+	dbPath := cli.viperInst.GetString("db")
+
+	if cli.viperInst.GetBool("dry-run") {
+		return cli.showDryRun("get-raw", map[string]interface{}{
+			"id":   id,
+			"type": typeName,
+			"db":   dbPath,
+		})
+	}
+
+	// Execute actual get-raw operation
+	result, err := cli.reflectionExec.ExecuteGetRaw(typeName, dbPath, id)
+	if err != nil {
+		return fmt.Errorf("failed to get raw document: %w", err)
 	}
 
 	return cli.outputResult(result)
@@ -414,14 +419,47 @@ func (cli *ViperCLI) executeGetDimensions(id string) error {
 		return err
 	}
 
-	result := map[string]interface{}{
-		"command":     "get-dimensions",
-		"document_id": id,
-		"dimensions": map[string]interface{}{
-			"status":   "active",
-			"priority": "medium",
-		},
-		"note": "Actual dimensions retrieval not yet implemented - this is a simulation",
+	typeName := cli.viperInst.GetString("type")
+	dbPath := cli.viperInst.GetString("db")
+
+	if cli.viperInst.GetBool("dry-run") {
+		return cli.showDryRun("get-dimensions", map[string]interface{}{
+			"id":   id,
+			"type": typeName,
+			"db":   dbPath,
+		})
+	}
+
+	// Execute actual get-dimensions operation
+	result, err := cli.reflectionExec.ExecuteGetDimensions(typeName, dbPath, id)
+	if err != nil {
+		return fmt.Errorf("failed to get document dimensions: %w", err)
+	}
+
+	return cli.outputResult(result)
+}
+
+// executeGetMetadata executes the get-metadata command
+func (cli *ViperCLI) executeGetMetadata(id string) error {
+	if err := cli.validateRequiredFlags("get-metadata"); err != nil {
+		return err
+	}
+
+	typeName := cli.viperInst.GetString("type")
+	dbPath := cli.viperInst.GetString("db")
+
+	if cli.viperInst.GetBool("dry-run") {
+		return cli.showDryRun("get-metadata", map[string]interface{}{
+			"id":   id,
+			"type": typeName,
+			"db":   dbPath,
+		})
+	}
+
+	// Execute actual get-metadata operation
+	result, err := cli.reflectionExec.ExecuteGetMetadata(typeName, dbPath, id)
+	if err != nil {
+		return fmt.Errorf("failed to get document metadata: %w", err)
 	}
 
 	return cli.outputResult(result)
