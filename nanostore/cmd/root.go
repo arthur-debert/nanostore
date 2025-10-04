@@ -106,6 +106,14 @@ func main() {
 		runViperDemo()
 		return
 	}
+	
+	// Check for Viper CLI mode
+	if len(os.Args) > 1 && os.Args[1] == "--use-viper" {
+		// Remove the --use-viper flag and run Viper CLI
+		os.Args = append(os.Args[:1], os.Args[2:]...)
+		mainViper()
+		return
+	}
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)

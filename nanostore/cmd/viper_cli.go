@@ -1,0 +1,468 @@
+package main
+
+import (
+	"fmt"
+	"strings"
+
+	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
+)
+
+// ViperCLI implements a complete Viper-driven CLI for Nanostore
+type ViperCLI struct {
+	registry  *EnhancedTypeRegistry
+	executor  *MethodExecutor
+	rootCmd   *cobra.Command
+	viperInst *viper.Viper
+}
+
+// NewViperCLI creates a new Viper-powered CLI
+func NewViperCLI() *ViperCLI {
+	registry := NewEnhancedTypeRegistry()
+	if err := registry.LoadBuiltinTypes(); err != nil {
+		fmt.Printf("Warning: failed to load built-in types: %v\n", err)
+	}
+
+	executor := NewMethodExecutor(registry)
+	viperInst := viper.New()
+
+	cli := &ViperCLI{
+		registry:  registry,
+		executor:  executor,
+		viperInst: viperInst,
+	}
+
+	cli.setupViperConfig()
+	cli.createRootCommand()
+	cli.addCommands()
+
+	return cli
+}
+
+// setupViperConfig configures Viper with environment variables and config files
+func (cli *ViperCLI) setupViperConfig() {
+	// Set config file locations and types
+	cli.viperInst.SetConfigName("nanostore")
+	cli.viperInst.SetConfigType("json")
+	cli.viperInst.AddConfigPath(".")
+	cli.viperInst.AddConfigPath("$HOME/.nanostore")
+	cli.viperInst.AddConfigPath("/etc/nanostore")
+
+	// Enable environment variable support
+	cli.viperInst.AutomaticEnv()
+	cli.viperInst.SetEnvPrefix("NANOSTORE")
+
+	// Replace dash with underscore in env vars (e.g., --dry-run -> NANOSTORE_DRY_RUN)
+	cli.viperInst.SetEnvKeyReplacer(strings.NewReplacer("-", "_"))
+
+	// Read config file if it exists (ignore errors)
+	_ = cli.viperInst.ReadInConfig()
+}
+
+// createRootCommand creates the root Cobra command with Viper integration
+func (cli *ViperCLI) createRootCommand() {
+	cli.rootCmd = &cobra.Command{
+		Use:   "nanostore",
+		Short: "Nanostore CLI - Schema-driven document store management",
+		Long: `Nanostore CLI provides complete access to the document store API.
+
+Configuration Sources (in order of precedence):
+1. Command line flags
+2. Environment variables (NANOSTORE_*)
+3. Configuration files (~/.nanostore/config.json, ./nanostore.json)
+4. Default values from type schemas
+
+Examples:
+  # Use built-in Task type
+  nanostore --type Task --db tasks.db create "New Task" --status active --priority high
+  
+  # Environment variables
+  export NANOSTORE_TYPE=Task NANOSTORE_DB=tasks.db
+  nanostore create "New Task" --status active
+  
+  # Configuration file
+  echo '{"type": "Task", "db": "tasks.db", "format": "json"}' > ~/.nanostore/config.json
+  nanostore create "New Task" --status active`,
+
+		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+			// Bind flags to Viper for this command
+			return cli.viperInst.BindPFlags(cmd.Flags())
+		},
+	}
+
+	// Add global flags
+	cli.addGlobalFlags()
+}
+
+// addGlobalFlags adds persistent flags that apply to all commands
+func (cli *ViperCLI) addGlobalFlags() {
+	flags := cli.rootCmd.PersistentFlags()
+
+	// Core configuration
+	flags.StringP("type", "t", "", "Document type (required for most commands)")
+	flags.StringP("db", "d", "", "Database file path (required for most commands)")
+
+	// Output configuration
+	flags.StringP("format", "f", "table", "Output format (table|json|yaml|csv)")
+	flags.BoolP("quiet", "q", false, "Suppress headers and extra output")
+	flags.Bool("no-color", false, "Disable colored output")
+
+	// Execution options
+	flags.Bool("dry-run", false, "Show what would happen without executing")
+	flags.BoolP("verbose", "v", false, "Enable verbose output")
+
+	// Bind all flags to Viper
+	for _, flag := range []string{"type", "db", "format", "quiet", "no-color", "dry-run", "verbose"} {
+		_ = cli.viperInst.BindPFlag(flag, flags.Lookup(flag))
+	}
+
+	// Set up environment variable bindings
+	envVars := map[string]string{
+		"type":     "TYPE",
+		"db":       "DB", 
+		"format":   "FORMAT",
+		"quiet":    "QUIET",
+		"no-color": "NO_COLOR",
+		"dry-run":  "DRY_RUN",
+		"verbose":  "VERBOSE",
+	}
+
+	for key, envVar := range envVars {
+		_ = cli.viperInst.BindEnv(key, "NANOSTORE_"+envVar)
+	}
+}
+
+// addCommands adds all the CLI commands based on the Store API
+func (cli *ViperCLI) addCommands() {
+	// Meta commands (don't require type/db)
+	cli.addTypesCommand()
+	cli.addConfigCommand()
+	cli.addGenerateConfigCommand()
+
+	// Core CRUD commands
+	cli.addCreateCommand()
+	cli.addGetCommand()
+	cli.addUpdateCommand()
+	cli.addDeleteCommand()
+	cli.addListCommand()
+
+	// Bulk operations
+	cli.addBulkCommands()
+
+	// Metadata and introspection
+	cli.addMetadataCommands()
+
+	// Administrative commands
+	cli.addAdminCommands()
+}
+
+// addTypesCommand adds the types command for type introspection
+func (cli *ViperCLI) addTypesCommand() {
+	typesCmd := &cobra.Command{
+		Use:   "types [type-name]",
+		Short: "List available document types or show schema for specific type",
+		Long: `List all registered document types or display the complete JSON schema for a specific type.
+
+Examples:
+  nanostore types              # List all available types
+  nanostore types Task         # Show complete schema for Task type`,
+
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return cli.executeTypesCommand(args)
+		},
+	}
+
+	cli.rootCmd.AddCommand(typesCmd)
+}
+
+// addCreateCommand adds the create command with dynamic type-specific flags
+func (cli *ViperCLI) addCreateCommand() {
+	createCmd := &cobra.Command{
+		Use:   "create <title>",
+		Short: "Create a new document",
+		Long: `Create a new document with the specified title and optional field values.
+
+The command automatically adds type-specific flags based on the document schema.
+
+Examples:
+  nanostore --type Task create "New Task" --status active --priority high
+  nanostore --type Note create "Meeting Notes" --category work --tags "meeting,q4"`,
+
+		Args: cobra.ExactArgs(1),
+		PreRunE: func(cmd *cobra.Command, args []string) error {
+			// Add type-specific flags before execution
+			return cli.addTypeSpecificFlags(cmd, "create")
+		},
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return cli.executeCreateCommand(args[0], cmd)
+		},
+	}
+
+	cli.rootCmd.AddCommand(createCmd)
+}
+
+// addGetCommand adds the get command
+func (cli *ViperCLI) addGetCommand() {
+	getCmd := &cobra.Command{
+		Use:   "get <id>",
+		Short: "Retrieve a document by ID",
+		Long: `Retrieve a document by its Simple ID or UUID.
+
+Examples:
+  nanostore --type Task get 1
+  nanostore --type Task get h2.1
+  nanostore --type Task get f47ac10b-58cc-4372-a567-0e02b2c3d479`,
+
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return cli.executeGetCommand(args[0])
+		},
+	}
+
+	cli.rootCmd.AddCommand(getCmd)
+}
+
+// addUpdateCommand adds the update command with dynamic type-specific flags
+func (cli *ViperCLI) addUpdateCommand() {
+	updateCmd := &cobra.Command{
+		Use:   "update <id>",
+		Short: "Update a document by ID",
+		Long: `Update a document with new field values.
+
+Zero values will clear the corresponding fields in the document.
+
+Examples:
+  nanostore --type Task update 1 --status done --assignee ""
+  nanostore --type Task update h2.1 --priority low`,
+
+		Args: cobra.ExactArgs(1),
+		PreRunE: func(cmd *cobra.Command, args []string) error {
+			return cli.addTypeSpecificFlags(cmd, "update")
+		},
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return cli.executeUpdateCommand(args[0], cmd)
+		},
+	}
+
+	cli.rootCmd.AddCommand(updateCmd)
+}
+
+// addDeleteCommand adds the delete command
+func (cli *ViperCLI) addDeleteCommand() {
+	deleteCmd := &cobra.Command{
+		Use:   "delete <id>",
+		Short: "Delete a document by ID",
+		Long: `Delete a document by its Simple ID or UUID.
+
+Examples:
+  nanostore --type Task delete 1
+  nanostore --type Task delete 1 --cascade  # Delete with children`,
+
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return cli.executeDeleteCommand(args[0], cmd)
+		},
+	}
+
+	// Add delete-specific flags
+	deleteCmd.Flags().Bool("cascade", false, "Delete children recursively")
+	_ = cli.viperInst.BindPFlag("cascade", deleteCmd.Flags().Lookup("cascade"))
+
+	cli.rootCmd.AddCommand(deleteCmd)
+}
+
+// addListCommand adds the list command with filtering options
+func (cli *ViperCLI) addListCommand() {
+	listCmd := &cobra.Command{
+		Use:   "list",
+		Short: "List documents with optional filtering and sorting",
+		Long: `List documents with optional filtering, sorting, and pagination.
+
+Examples:
+  nanostore --type Task list
+  nanostore --type Task list --filter status=active --filter priority=high
+  nanostore --type Task list --sort created_at --limit 10`,
+
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return cli.executeListCommand(cmd)
+		},
+	}
+
+	// Add list-specific flags
+	listCmd.Flags().StringSlice("filter", []string{}, "Dimension filters (key=value)")
+	listCmd.Flags().String("sort", "", "Sort field")
+	listCmd.Flags().Int("limit", 0, "Limit number of results")
+	listCmd.Flags().Int("offset", 0, "Offset for pagination")
+
+	// Bind flags
+	for _, flag := range []string{"filter", "sort", "limit", "offset"} {
+		_ = cli.viperInst.BindPFlag(flag, listCmd.Flags().Lookup(flag))
+	}
+
+	cli.rootCmd.AddCommand(listCmd)
+}
+
+// addBulkCommands adds bulk operation commands
+func (cli *ViperCLI) addBulkCommands() {
+	// Update by dimension
+	updateByDimCmd := &cobra.Command{
+		Use:   "update-by-dimension",
+		Short: "Update documents matching dimension filters",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return cli.executeBulkUpdateByDimension(cmd)
+		},
+	}
+	updateByDimCmd.Flags().StringSlice("filter", []string{}, "Dimension filters (key=value)")
+	updateByDimCmd.Flags().StringSlice("set", []string{}, "Set field values (field=value)")
+	cli.rootCmd.AddCommand(updateByDimCmd)
+
+	// Update by UUIDs
+	updateByUUIDsCmd := &cobra.Command{
+		Use:   "update-by-uuids <uuid1,uuid2,...>",
+		Short: "Update documents by list of UUIDs",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return cli.executeBulkUpdateByUUIDs(args[0], cmd)
+		},
+	}
+	updateByUUIDsCmd.Flags().StringSlice("set", []string{}, "Set field values (field=value)")
+	cli.rootCmd.AddCommand(updateByUUIDsCmd)
+
+	// Delete operations
+	deleteByDimCmd := &cobra.Command{
+		Use:   "delete-by-dimension",
+		Short: "Delete documents matching dimension filters",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return cli.executeBulkDeleteByDimension(cmd)
+		},
+	}
+	deleteByDimCmd.Flags().StringSlice("filter", []string{}, "Dimension filters (key=value)")
+	cli.rootCmd.AddCommand(deleteByDimCmd)
+}
+
+// addMetadataCommands adds metadata and introspection commands
+func (cli *ViperCLI) addMetadataCommands() {
+	// Get raw document
+	getRawCmd := &cobra.Command{
+		Use:   "get-raw <id>",
+		Short: "Get raw document data without type unmarshaling",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return cli.executeGetRaw(args[0])
+		},
+	}
+	cli.rootCmd.AddCommand(getRawCmd)
+
+	// Get dimensions
+	getDimensionsCmd := &cobra.Command{
+		Use:   "get-dimensions <id>",
+		Short: "Get document dimensions map",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return cli.executeGetDimensions(args[0])
+		},
+	}
+	cli.rootCmd.AddCommand(getDimensionsCmd)
+
+	// Resolve UUID
+	resolveUUIDCmd := &cobra.Command{
+		Use:   "resolve-uuid <simple-id>",
+		Short: "Resolve Simple ID to UUID",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return cli.executeResolveUUID(args[0])
+		},
+	}
+	cli.rootCmd.AddCommand(resolveUUIDCmd)
+}
+
+// addAdminCommands adds administrative commands
+func (cli *ViperCLI) addAdminCommands() {
+	// Debug info
+	debugCmd := &cobra.Command{
+		Use:   "debug",
+		Short: "Get comprehensive debug information",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return cli.executeDebug()
+		},
+	}
+	cli.rootCmd.AddCommand(debugCmd)
+
+	// Stats
+	statsCmd := &cobra.Command{
+		Use:   "stats",
+		Short: "Get store statistics",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return cli.executeStats()
+		},
+	}
+	cli.rootCmd.AddCommand(statsCmd)
+
+	// Validate
+	validateCmd := &cobra.Command{
+		Use:   "validate",
+		Short: "Validate store configuration",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return cli.executeValidate()
+		},
+	}
+	cli.rootCmd.AddCommand(validateCmd)
+}
+
+// addConfigCommand adds the config command to show current configuration
+func (cli *ViperCLI) addConfigCommand() {
+	configCmd := &cobra.Command{
+		Use:   "config",
+		Short: "Show current configuration",
+		Long: `Display the current configuration from all sources (flags, env vars, config files).
+
+Examples:
+  nanostore config                    # Show all configuration
+  nanostore --type Task config        # Show config with type context`,
+
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return cli.executeShowConfig()
+		},
+	}
+
+	cli.rootCmd.AddCommand(configCmd)
+}
+
+// addGenerateConfigCommand adds the generate-config command
+func (cli *ViperCLI) addGenerateConfigCommand() {
+	genConfigCmd := &cobra.Command{
+		Use:   "generate-config <type> [output-file]",
+		Short: "Generate a configuration file for a specific type",
+		Long: `Generate a configuration file with defaults for the specified type.
+
+Examples:
+  nanostore generate-config Task                    # Output to stdout
+  nanostore generate-config Task task-config.json  # Save to file`,
+
+		Args: cobra.RangeArgs(1, 2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			outputFile := ""
+			if len(args) > 1 {
+				outputFile = args[1]
+			}
+			return cli.executeGenerateConfig(args[0], outputFile)
+		},
+	}
+
+	cli.rootCmd.AddCommand(genConfigCmd)
+}
+
+// Execute runs the CLI
+func (cli *ViperCLI) Execute() error {
+	return cli.rootCmd.Execute()
+}
+
+// GetConfig returns the current Viper configuration
+func (cli *ViperCLI) GetConfig(key string) interface{} {
+	return cli.viperInst.Get(key)
+}
+
+// GetRootCommand returns the root Cobra command for testing
+func (cli *ViperCLI) GetRootCommand() *cobra.Command {
+	return cli.rootCmd
+}
