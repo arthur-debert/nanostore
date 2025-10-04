@@ -61,3 +61,6 @@ Thumbs.db
 .padz/
 coverage.*
 samples/todos/samples-todos
+
+# Command binaries
+nanostore/cmd/cmd
