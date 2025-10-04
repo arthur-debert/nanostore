@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -44,12 +45,18 @@ func NewViperCLI() *ViperCLI {
 
 // setupViperConfig configures Viper with environment variables and config files
 func (cli *ViperCLI) setupViperConfig() {
-	// Set config file locations and types
-	cli.viperInst.SetConfigName("nanostore")
-	cli.viperInst.SetConfigType("json")
-	cli.viperInst.AddConfigPath(".")
-	cli.viperInst.AddConfigPath("$HOME/.nanostore")
-	cli.viperInst.AddConfigPath("/etc/nanostore")
+	// Check for NANOSTORE_CONFIG environment variable first
+	// This allows users to specify a custom config file path
+	if configFile := os.Getenv("NANOSTORE_CONFIG"); configFile != "" {
+		cli.viperInst.SetConfigFile(configFile)
+	} else {
+		// Use default config file discovery
+		cli.viperInst.SetConfigName("nanostore")
+		cli.viperInst.SetConfigType("json")
+		cli.viperInst.AddConfigPath(".")
+		cli.viperInst.AddConfigPath("$HOME/.nanostore")
+		cli.viperInst.AddConfigPath("/etc/nanostore")
+	}
 
 	// Enable environment variable support
 	cli.viperInst.AutomaticEnv()
@@ -72,8 +79,14 @@ func (cli *ViperCLI) createRootCommand() {
 Configuration Sources (in order of precedence):
 1. Command line flags
 2. Environment variables (NANOSTORE_*)
-3. Configuration files (~/.nanostore/config.json, ./nanostore.json)
+3. Configuration files (custom path or default locations)
 4. Default values from type schemas
+
+Configuration File Discovery:
+  NANOSTORE_CONFIG=/path/to/config.json  # Custom config file path
+  ./nanostore.json                       # Current directory
+  ~/.nanostore/nanostore.json            # User directory  
+  /etc/nanostore/nanostore.json          # System directory
 
 Examples:
   # Use built-in Task type
@@ -83,8 +96,12 @@ Examples:
   export NANOSTORE_TYPE=Task NANOSTORE_DB=tasks.db
   nanostore create "New Task" --status active
   
-  # Configuration file
-  echo '{"type": "Task", "db": "tasks.db", "format": "json"}' > ~/.nanostore/config.json
+  # Custom config file
+  export NANOSTORE_CONFIG=/path/to/project-config.json
+  nanostore create "New Task" --status active
+  
+  # Default config file
+  echo '{"type": "Task", "db": "tasks.db", "format": "json"}' > ./nanostore.json
   nanostore create "New Task" --status active`,
 
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
