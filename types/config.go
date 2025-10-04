@@ -1,5 +1,10 @@
 package types
 
+import (
+	"encoding/json"
+	"fmt"
+)
+
 // DimensionType defines the type of dimension for ID partitioning
 type DimensionType int
 
@@ -22,41 +27,65 @@ func (dt DimensionType) String() string {
 	}
 }
 
+// MarshalJSON implements json.Marshaler for DimensionType
+func (dt DimensionType) MarshalJSON() ([]byte, error) {
+	return json.Marshal(dt.String())
+}
+
+// UnmarshalJSON implements json.Unmarshaler for DimensionType
+func (dt *DimensionType) UnmarshalJSON(data []byte) error {
+	var s string
+	if err := json.Unmarshal(data, &s); err != nil {
+		return err
+	}
+
+	switch s {
+	case "enumerated":
+		*dt = Enumerated
+	case "hierarchical":
+		*dt = Hierarchical
+	default:
+		return fmt.Errorf("invalid dimension type: %q (must be 'enumerated' or 'hierarchical')", s)
+	}
+
+	return nil
+}
+
 // DimensionConfig defines a single dimension for ID partitioning
 type DimensionConfig struct {
 	// Name is the database column name and identifier for this dimension
-	Name string
+	Name string `json:"name"`
 
 	// Type specifies whether this is an enumerated or hierarchical dimension
-	Type DimensionType
+	Type DimensionType `json:"type"`
 
 	// Values lists the valid values for enumerated dimensions
 	// Ignored for hierarchical dimensions
-	Values []string
+	Values []string `json:"values,omitempty"`
 
 	// Prefixes maps values to their ID prefixes
 	// For enumerated dimensions: value -> prefix (e.g., "completed" -> "c")
 	// Ignored for hierarchical dimensions
-	Prefixes map[string]string
+	Prefixes map[string]string `json:"prefixes,omitempty"`
 
 	// RefField specifies the foreign key field name for hierarchical dimensions
 	// For hierarchical dimensions: typically "parent_uuid"
 	// Ignored for enumerated dimensions
-	RefField string
+	RefField string `json:"ref_field,omitempty"`
 
 	// DefaultValue specifies the default value for enumerated dimensions
 	// Used when inserting new documents without explicit value
-	DefaultValue string
+	DefaultValue string `json:"default_value,omitempty"`
 }
 
 // Config defines the overall configuration for the nanostore
 type Config struct {
 	// Dimensions defines the ID partitioning dimensions
-	Dimensions []DimensionConfig
+	Dimensions []DimensionConfig `json:"dimensions"`
 
 	// dimensionSet is the new internal representation
 	// Will be populated from Dimensions during initialization
-	dimensionSet *DimensionSet
+	dimensionSet *DimensionSet `json:"-"`
 }
 
 // GetEnumeratedDimensions returns all enumerated dimensions from the config
