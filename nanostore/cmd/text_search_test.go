@@ -117,7 +117,9 @@ func TestTextSearchIntegration(t *testing.T) {
 			whereClause, whereArgs, err := executor.buildFilterWhere(
 				"", "", "", "", // No date filters
 				nil, nil, // No NULL filters
-				tt.searchText, tt.titleContains, tt.bodyContains, tt.caseSensitive)
+				tt.searchText, tt.titleContains, tt.bodyContains, tt.caseSensitive,
+				nil, nil, nil, nil, nil, nil, nil, nil,
+				"", "", nil, nil)
 			if err != nil {
 				t.Fatalf("Failed to build text search WHERE clause: %v", err)
 			}
@@ -197,7 +199,9 @@ func TestCombinedTextAndFilterSearch(t *testing.T) {
 	whereClause, whereArgs, err := executor.buildFilterWhere(
 		"", "", "", "", // No date filters
 		nil, nil, // No NULL filters
-		"bug", "", "", false) // Search for "bug"
+		"bug", "", "", false, // Search for "bug"
+		nil, nil, nil, nil, nil, nil, nil, nil,
+		"", "", nil, nil)
 	if err != nil {
 		t.Fatalf("Failed to build combined WHERE clause: %v", err)
 	}

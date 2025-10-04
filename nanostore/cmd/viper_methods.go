@@ -238,6 +238,22 @@ func (cli *ViperCLI) executeListCommand(cmd *cobra.Command) error {
 	bodyContains := cli.viperInst.GetString("body-contains")
 	caseSensitive := cli.viperInst.GetBool("search-case-sensitive")
 
+	// Enhanced filter flags
+	filterEq := cli.viperInst.GetStringSlice("filter-eq")
+	filterNe := cli.viperInst.GetStringSlice("filter-ne")
+	filterGt := cli.viperInst.GetStringSlice("filter-gt")
+	filterLt := cli.viperInst.GetStringSlice("filter-lt")
+	filterGte := cli.viperInst.GetStringSlice("filter-gte")
+	filterLte := cli.viperInst.GetStringSlice("filter-lte")
+	filterLike := cli.viperInst.GetStringSlice("filter-like")
+	filterIn := cli.viperInst.GetStringSlice("filter-in")
+
+	// Convenience flags
+	status := cli.viperInst.GetString("status")
+	priority := cli.viperInst.GetString("priority")
+	statusIn := cli.viperInst.GetStringSlice("status-in")
+	priorityIn := cli.viperInst.GetStringSlice("priority-in")
+
 	sort := cli.viperInst.GetString("sort")
 	limit := cli.viperInst.GetInt("limit")
 	offset := cli.viperInst.GetInt("offset")
@@ -258,11 +274,13 @@ func (cli *ViperCLI) executeListCommand(cmd *cobra.Command) error {
 	var documents interface{}
 	var err error
 
-	// Build date, NULL, and text search WHERE clauses
+	// Build comprehensive filter WHERE clauses
 	filterWhere, filterArgs, err := cli.reflectionExec.buildFilterWhere(
 		createdAfter, createdBefore, updatedAfter, updatedBefore,
 		nullFields, notNullFields,
-		searchText, titleContains, bodyContains, caseSensitive)
+		searchText, titleContains, bodyContains, caseSensitive,
+		filterEq, filterNe, filterGt, filterLt, filterGte, filterLte, filterLike, filterIn,
+		status, priority, statusIn, priorityIn)
 	if err != nil {
 		return fmt.Errorf("failed to build filters: %w", err)
 	}

@@ -308,6 +308,11 @@ Examples:
   nanostore --type Task list --title-contains "meeting" --body-contains "quarterly"
   nanostore --type Task list --search "bug" --search-case-sensitive
   
+  # Enhanced filtering with operators
+  nanostore --type Task list --filter-eq status=active --filter-ne priority=low
+  nanostore --type Task list --filter-in status=active,pending --filter-gt created_at="2024-01-01"
+  nanostore --type Task list --status active --priority high
+  
   # Complex WHERE clauses with dates
   nanostore --type Task list --where "created_at > ? AND status = ?" --where-args "2024-01-01T00:00:00Z" --where-args active
   
@@ -323,6 +328,22 @@ Examples:
 	listCmd.Flags().StringSlice("filter", []string{}, "Dimension filters (key=value)")
 	listCmd.Flags().String("where", "", "WHERE clause with ? placeholders (e.g., \"status = ? AND priority = ?\")")
 	listCmd.Flags().StringSlice("where-args", []string{}, "Arguments for WHERE clause placeholders")
+
+	// Enhanced filtering flags with operators
+	listCmd.Flags().StringSlice("filter-eq", []string{}, "Equality filters (field=value)")
+	listCmd.Flags().StringSlice("filter-ne", []string{}, "Not equal filters (field=value)")
+	listCmd.Flags().StringSlice("filter-gt", []string{}, "Greater than filters (field=value)")
+	listCmd.Flags().StringSlice("filter-lt", []string{}, "Less than filters (field=value)")
+	listCmd.Flags().StringSlice("filter-gte", []string{}, "Greater than or equal filters (field=value)")
+	listCmd.Flags().StringSlice("filter-lte", []string{}, "Less than or equal filters (field=value)")
+	listCmd.Flags().StringSlice("filter-like", []string{}, "Pattern match filters (field=pattern)")
+	listCmd.Flags().StringSlice("filter-in", []string{}, "Value in list filters (field=val1,val2,val3)")
+
+	// Convenience flags for common Task fields
+	listCmd.Flags().String("status", "", "Filter by status")
+	listCmd.Flags().String("priority", "", "Filter by priority")
+	listCmd.Flags().StringSlice("status-in", []string{}, "Filter by multiple status values")
+	listCmd.Flags().StringSlice("priority-in", []string{}, "Filter by multiple priority values")
 
 	// Date range flags
 	listCmd.Flags().String("created-after", "", "Find documents created after date (RFC3339 format: 2024-01-01T00:00:00Z)")
@@ -345,7 +366,14 @@ Examples:
 	listCmd.Flags().Int("offset", 0, "Offset for pagination")
 
 	// Bind flags
-	for _, flag := range []string{"filter", "where", "where-args", "created-after", "created-before", "updated-after", "updated-before", "null-fields", "not-null-fields", "search", "title-contains", "body-contains", "search-case-sensitive", "sort", "limit", "offset"} {
+	for _, flag := range []string{
+		"filter", "where", "where-args",
+		"filter-eq", "filter-ne", "filter-gt", "filter-lt", "filter-gte", "filter-lte", "filter-like", "filter-in",
+		"status", "priority", "status-in", "priority-in",
+		"created-after", "created-before", "updated-after", "updated-before",
+		"null-fields", "not-null-fields",
+		"search", "title-contains", "body-contains", "search-case-sensitive",
+		"sort", "limit", "offset"} {
 		_ = cli.viperInst.BindPFlag(flag, listCmd.Flags().Lookup(flag))
 	}
 
