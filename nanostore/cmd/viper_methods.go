@@ -61,7 +61,7 @@ func (cli *ViperCLI) addTypeSpecificFlags(cmd *cobra.Command, commandName string
 // executeTypesCommand executes the types command
 func (cli *ViperCLI) executeTypesCommand(args []string) error {
 	types := cli.registry.ListTypes()
-	
+
 	if len(args) == 0 {
 		// List all types
 		if len(types) == 0 {
@@ -107,16 +107,11 @@ func (cli *ViperCLI) executeCreateCommand(title string, cmd *cobra.Command) erro
 
 	// Collect field values from Viper configuration
 	data := cli.collectFieldValues(typeName)
-	data["title"] = title
 
-	result := map[string]interface{}{
-		"command":   "create",
-		"title":     title,
-		"type":      typeName,
-		"database":  dbPath,
-		"data":      data,
-		"message":   "Document would be created",
-		"note":      "Actual store creation not yet implemented - this is a simulation",
+	// Execute actual create operation
+	result, err := cli.reflectionExec.ExecuteCreate(typeName, dbPath, title, data)
+	if err != nil {
+		return fmt.Errorf("failed to create document: %w", err)
 	}
 
 	return cli.outputResult(result)
@@ -139,9 +134,11 @@ func (cli *ViperCLI) executeGetCommand(id string) error {
 		})
 	}
 
-	// Simulate document retrieval
-	result := cli.generateMockDocument(id, typeName)
-	result["note"] = "Actual store retrieval not yet implemented - this is a simulation"
+	// Execute actual get operation
+	result, err := cli.reflectionExec.ExecuteGet(typeName, dbPath, id)
+	if err != nil {
+		return fmt.Errorf("failed to get document: %w", err)
+	}
 
 	return cli.outputResult(result)
 }
@@ -166,14 +163,11 @@ func (cli *ViperCLI) executeUpdateCommand(id string, cmd *cobra.Command) error {
 	}
 
 	updates := cli.collectFieldValues(typeName)
-	result := map[string]interface{}{
-		"command":     "update",
-		"document_id": id,
-		"type":        typeName,
-		"database":    dbPath,
-		"updates":     updates,
-		"message":     "Document would be updated",
-		"note":        "Actual store update not yet implemented - this is a simulation",
+
+	// Execute actual update operation
+	result, err := cli.reflectionExec.ExecuteUpdate(typeName, dbPath, id, updates)
+	if err != nil {
+		return fmt.Errorf("failed to update document: %w", err)
 	}
 
 	return cli.outputResult(result)
@@ -198,14 +192,19 @@ func (cli *ViperCLI) executeDeleteCommand(id string, cmd *cobra.Command) error {
 		})
 	}
 
+	// Execute actual delete operation
+	err := cli.reflectionExec.ExecuteDelete(typeName, dbPath, id, cascade)
+	if err != nil {
+		return fmt.Errorf("failed to delete document: %w", err)
+	}
+
 	result := map[string]interface{}{
 		"command":     "delete",
 		"document_id": id,
 		"type":        typeName,
 		"database":    dbPath,
 		"cascade":     cascade,
-		"message":     "Document would be deleted",
-		"note":        "Actual store deletion not yet implemented - this is a simulation",
+		"message":     "Document deleted successfully",
 	}
 
 	return cli.outputResult(result)
@@ -220,35 +219,50 @@ func (cli *ViperCLI) executeListCommand(cmd *cobra.Command) error {
 	typeName := cli.viperInst.GetString("type")
 	dbPath := cli.viperInst.GetString("db")
 	filters := cli.viperInst.GetStringSlice("filter")
+	whereClause := cli.viperInst.GetString("where")
+	whereArgsStr := cli.viperInst.GetStringSlice("where-args")
 	sort := cli.viperInst.GetString("sort")
 	limit := cli.viperInst.GetInt("limit")
 	offset := cli.viperInst.GetInt("offset")
 
 	if cli.viperInst.GetBool("dry-run") {
 		return cli.showDryRun("list", map[string]interface{}{
-			"type":    typeName,
-			"db":      dbPath,
-			"filters": filters,
-			"sort":    sort,
-			"limit":   limit,
-			"offset":  offset,
+			"type":       typeName,
+			"db":         dbPath,
+			"filters":    filters,
+			"where":      whereClause,
+			"where_args": whereArgsStr,
+			"sort":       sort,
+			"limit":      limit,
+			"offset":     offset,
 		})
 	}
 
-	// Generate mock documents
-	mockDocs := []map[string]interface{}{
-		{
-			"simple_id": "1",
-			"title":     "Mock Document 1",
-			"status":    "active",
-			"created_at": "2024-01-01T10:00:00Z",
-		},
-		{
-			"simple_id": "2",
-			"title":     "Mock Document 2", 
-			"status":    "pending",
-			"created_at": "2024-01-01T11:00:00Z",
-		},
+	var documents interface{}
+	var err error
+
+	// Use WHERE clause if provided, otherwise fall back to basic List
+	if whereClause != "" {
+		// Convert string args to interface{} slice
+		whereArgs := make([]interface{}, len(whereArgsStr))
+		for i, arg := range whereArgsStr {
+			whereArgs[i] = arg
+		}
+
+		// Execute query with WHERE clause
+		documents, err = cli.reflectionExec.ExecuteQuery(typeName, dbPath, whereClause, whereArgs, sort, limit, offset)
+		if err != nil {
+			return fmt.Errorf("failed to execute WHERE query: %w", err)
+		}
+	} else {
+		// Parse list options for basic filtering
+		options := cli.reflectionExec.parseListOptions(filters, sort, limit, offset)
+
+		// Execute basic list operation
+		documents, err = cli.reflectionExec.ExecuteList(typeName, dbPath, options)
+		if err != nil {
+			return fmt.Errorf("failed to list documents: %w", err)
+		}
 	}
 
 	result := map[string]interface{}{
@@ -256,12 +270,11 @@ func (cli *ViperCLI) executeListCommand(cmd *cobra.Command) error {
 		"type":      typeName,
 		"database":  dbPath,
 		"filters":   filters,
+		"where":     whereClause,
 		"sort":      sort,
 		"limit":     limit,
 		"offset":    offset,
-		"documents": mockDocs,
-		"count":     len(mockDocs),
-		"note":      "Actual store query not yet implemented - this is a simulation",
+		"documents": documents,
 	}
 
 	return cli.outputResult(result)
@@ -391,11 +404,11 @@ func (cli *ViperCLI) executeDebug() error {
 	typeDef, _ := cli.registry.GetTypeDefinition(typeName)
 
 	result := map[string]interface{}{
-		"command":   "debug",
-		"type":      typeName,
-		"schema":    typeDef.Schema,
-		"config":    cli.viperInst.AllSettings(),
-		"note":      "Actual debug info not yet implemented - this shows current config",
+		"command": "debug",
+		"type":    typeName,
+		"schema":  typeDef.Schema,
+		"config":  cli.viperInst.AllSettings(),
+		"note":    "Actual debug info not yet implemented - this shows current config",
 	}
 
 	return cli.outputResult(result)
@@ -437,7 +450,7 @@ func (cli *ViperCLI) executeValidate() error {
 // executeShowConfig executes the config command
 func (cli *ViperCLI) executeShowConfig() error {
 	config := cli.viperInst.AllSettings()
-	
+
 	// Add information about configuration sources
 	configFile := cli.viperInst.ConfigFileUsed()
 	if configFile != "" {
@@ -518,7 +531,7 @@ func (cli *ViperCLI) validateRequiredFlags(command string) error {
 // collectFieldValues collects field values from Viper configuration
 func (cli *ViperCLI) collectFieldValues(typeName string) map[string]interface{} {
 	data := make(map[string]interface{})
-	
+
 	typeDef, exists := cli.registry.GetTypeDefinition(typeName)
 	if !exists {
 		return data
@@ -608,7 +621,7 @@ func (cli *ViperCLI) outputResult(result interface{}) error {
 		// TODO: Implement YAML output
 		return cli.outputJSON(result)
 	case "csv":
-		// TODO: Implement CSV output  
+		// TODO: Implement CSV output
 		return cli.outputJSON(result)
 	case "table":
 		return cli.outputTable(result, quiet)

@@ -10,10 +10,11 @@ import (
 
 // ViperCLI implements a complete Viper-driven CLI for Nanostore
 type ViperCLI struct {
-	registry  *EnhancedTypeRegistry
-	executor  *MethodExecutor
-	rootCmd   *cobra.Command
-	viperInst *viper.Viper
+	registry       *EnhancedTypeRegistry
+	executor       *MethodExecutor
+	reflectionExec *ReflectionExecutor
+	rootCmd        *cobra.Command
+	viperInst      *viper.Viper
 }
 
 // NewViperCLI creates a new Viper-powered CLI
@@ -24,12 +25,14 @@ func NewViperCLI() *ViperCLI {
 	}
 
 	executor := NewMethodExecutor(registry)
+	reflectionExec := NewReflectionExecutor(registry)
 	viperInst := viper.New()
 
 	cli := &ViperCLI{
-		registry:  registry,
-		executor:  executor,
-		viperInst: viperInst,
+		registry:       registry,
+		executor:       executor,
+		reflectionExec: reflectionExec,
+		viperInst:      viperInst,
 	}
 
 	cli.setupViperConfig()
@@ -85,8 +88,19 @@ Examples:
   nanostore create "New Task" --status active`,
 
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-			// Bind flags to Viper for this command
-			return cli.viperInst.BindPFlags(cmd.Flags())
+			// First attempt to read basic config (type and db) from flags, env, and config
+			_ = cli.viperInst.BindPFlags(cmd.Flags())
+
+			// For create and update commands, try to add type-specific flags if type is known
+			if (cmd.Name() == "create" || cmd.Name() == "update") && cli.viperInst.GetString("type") != "" {
+				err := cli.addTypeSpecificFlags(cmd, cmd.Name())
+				if err != nil {
+					// Don't fail if we can't add type-specific flags, just continue
+					// This allows for help commands and basic usage
+				}
+			}
+
+			return nil
 		},
 	}
 
@@ -119,7 +133,7 @@ func (cli *ViperCLI) addGlobalFlags() {
 	// Set up environment variable bindings
 	envVars := map[string]string{
 		"type":     "TYPE",
-		"db":       "DB", 
+		"db":       "DB",
 		"format":   "FORMAT",
 		"quiet":    "QUIET",
 		"no-color": "NO_COLOR",
@@ -189,10 +203,6 @@ Examples:
   nanostore --type Note create "Meeting Notes" --category work --tags "meeting,q4"`,
 
 		Args: cobra.ExactArgs(1),
-		PreRunE: func(cmd *cobra.Command, args []string) error {
-			// Add type-specific flags before execution
-			return cli.addTypeSpecificFlags(cmd, "create")
-		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return cli.executeCreateCommand(args[0], cmd)
 		},
@@ -236,9 +246,6 @@ Examples:
   nanostore --type Task update h2.1 --priority low`,
 
 		Args: cobra.ExactArgs(1),
-		PreRunE: func(cmd *cobra.Command, args []string) error {
-			return cli.addTypeSpecificFlags(cmd, "update")
-		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return cli.executeUpdateCommand(args[0], cmd)
 		},
@@ -277,11 +284,24 @@ func (cli *ViperCLI) addListCommand() {
 		Use:   "list",
 		Short: "List documents with optional filtering and sorting",
 		Long: `List documents with optional filtering, sorting, and pagination.
+Supports both simple filters and complex WHERE clauses with SQL-like syntax.
 
 Examples:
+  # Basic listing
   nanostore --type Task list
+  
+  # Simple filters
   nanostore --type Task list --filter status=active --filter priority=high
-  nanostore --type Task list --sort created_at --limit 10`,
+  
+  # WHERE clauses with placeholders
+  nanostore --type Task list --where "status = ?" --where-args active
+  nanostore --type Task list --where "status = ? AND priority = ?" --where-args active --where-args high
+  
+  # Complex conditions
+  nanostore --type Task list --where "priority = ? OR status = ?" --where-args high --where-args urgent
+  
+  # Sorting and pagination  
+  nanostore --type Task list --where "status != ?" --where-args done --sort created_at --limit 10`,
 
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return cli.executeListCommand(cmd)
@@ -290,12 +310,14 @@ Examples:
 
 	// Add list-specific flags
 	listCmd.Flags().StringSlice("filter", []string{}, "Dimension filters (key=value)")
+	listCmd.Flags().String("where", "", "WHERE clause with ? placeholders (e.g., \"status = ? AND priority = ?\")")
+	listCmd.Flags().StringSlice("where-args", []string{}, "Arguments for WHERE clause placeholders")
 	listCmd.Flags().String("sort", "", "Sort field")
 	listCmd.Flags().Int("limit", 0, "Limit number of results")
 	listCmd.Flags().Int("offset", 0, "Offset for pagination")
 
 	// Bind flags
-	for _, flag := range []string{"filter", "sort", "limit", "offset"} {
+	for _, flag := range []string{"filter", "where", "where-args", "sort", "limit", "offset"} {
 		_ = cli.viperInst.BindPFlag(flag, listCmd.Flags().Lookup(flag))
 	}
 
