@@ -174,7 +174,7 @@ func LoadUniverse(t *testing.T) (store.Store, *UniverseData) {
 
 		// Update with body if present
 		if doc.Body != "" {
-			err = store.Update(actualUUID, nanostore.UpdateRequest{
+			err = store.Update(actualUUID, types.UpdateRequest{
 				Body: &doc.Body,
 			})
 			if err != nil {
@@ -222,7 +222,7 @@ func LoadUniverse(t *testing.T) (store.Store, *UniverseData) {
 
 			// Update with body if present
 			if doc.Body != "" {
-				err = store.Update(actualUUID, nanostore.UpdateRequest{
+				err = store.Update(actualUUID, types.UpdateRequest{
 					Body: &doc.Body,
 				})
 				if err != nil {
@@ -241,7 +241,7 @@ func LoadUniverse(t *testing.T) (store.Store, *UniverseData) {
 	}
 
 	// Now retrieve all documents and build universe data structure
-	docs, err := store.List(nanostore.ListOptions{})
+	docs, err := store.List(types.ListOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
