@@ -49,7 +49,7 @@ func TestNonDimensionFieldsPreservedMigrated(t *testing.T) {
 	_ = tmpfile.Close()
 
 	// Create typed store
-	store, err := api.NewFromType[MixedFieldsItemMigrated](tmpfile.Name())
+	store, err := api.New[MixedFieldsItemMigrated](tmpfile.Name())
 	if err != nil {
 		t.Fatalf("failed to create typed store: %v", err)
 	}
@@ -263,7 +263,7 @@ func TestNonDimensionFieldTypesMigrated(t *testing.T) {
 	defer func() { _ = os.Remove(tmpfile.Name()) }()
 	_ = tmpfile.Close()
 
-	store, err := api.NewFromType[ComplexFieldsItemMigrated](tmpfile.Name())
+	store, err := api.New[ComplexFieldsItemMigrated](tmpfile.Name())
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}

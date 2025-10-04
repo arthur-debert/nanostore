@@ -16,7 +16,9 @@ import (
 	"testing"
 
 	"github.com/arthur-debert/nanostore/nanostore"
+	"github.com/arthur-debert/nanostore/nanostore/store"
 	"github.com/arthur-debert/nanostore/nanostore/testutil"
+	"github.com/arthur-debert/nanostore/types"
 )
 
 // =============================================================================
@@ -309,16 +311,17 @@ func TestWhenToCreateFreshStore(t *testing.T) {
 		tempFile := t.TempDir() + "/test.json"
 
 		// Testing specific configuration
-		store, err := nanostore.New(tempFile, nanostore.Config{
-			Dimensions: []nanostore.DimensionConfig{
+		config := types.Config{
+			Dimensions: []types.DimensionConfig{
 				{
 					Name:         "custom",
-					Type:         nanostore.Enumerated,
+					Type:         types.Enumerated,
 					Values:       []string{"a", "b", "c"},
 					DefaultValue: "a",
 				},
 			},
-		})
+		}
+		store, err := store.New(tempFile, &config)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -329,7 +332,8 @@ func TestWhenToCreateFreshStore(t *testing.T) {
 
 	t.Run("testing error conditions", func(t *testing.T) {
 		// When testing validation errors or failure modes
-		_, err := nanostore.New("", nanostore.Config{}) // Invalid empty path
+		emptyConfig := types.Config{}
+		_, err := store.New("", &emptyConfig) // Invalid empty path
 		if err == nil {
 			t.Error("expected error for empty path")
 		}
@@ -353,11 +357,12 @@ func TestWithoutUtilities(t *testing.T) {
 
 	// BAD: Creating test data manually in every test
 	tempFile := t.TempDir() + "/test.json"
-	store, err := nanostore.New(tempFile, nanostore.Config{
-		Dimensions: []nanostore.DimensionConfig{
-			{Name: "status", Type: nanostore.Enumerated, Values: []string{"pending", "done"}},
+	config := types.Config{
+		Dimensions: []types.DimensionConfig{
+			{Name: "status", Type: types.Enumerated, Values: []string{"pending", "done"}},
 		},
-	})
+	}
+	store, err := store.New(tempFile, &config)
 	if err != nil {
 		t.Fatal(err)
 	}

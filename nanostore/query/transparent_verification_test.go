@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/arthur-debert/nanostore/nanostore"
+	storePackage "github.com/arthur-debert/nanostore/nanostore/store"
 	"github.com/arthur-debert/nanostore/nanostore/testutil"
 	"github.com/arthur-debert/nanostore/types"
 )
@@ -143,22 +144,23 @@ func TestTransparentNonDimensionFilteringMigrated(t *testing.T) {
 	// This test specifically verifies non-dimension filtering behavior
 	// We use a temporary file to ensure we control the exact data
 	tempFile := t.TempDir() + "/test.json"
-	store, err := nanostore.New(tempFile, nanostore.Config{
-		Dimensions: []nanostore.DimensionConfig{
+	config := types.Config{
+		Dimensions: []types.DimensionConfig{
 			{
 				Name:         "status",
-				Type:         nanostore.Enumerated,
+				Type:         types.Enumerated,
 				Values:       []string{"pending", "active", "done"},
 				DefaultValue: "pending",
 			},
 			{
 				Name:         "priority",
-				Type:         nanostore.Enumerated,
+				Type:         types.Enumerated,
 				Values:       []string{"low", "medium", "high"},
 				DefaultValue: "medium",
 			},
 		},
-	})
+	}
+	store, err := storePackage.New(tempFile, &config)
 	if err != nil {
 		t.Fatal(err)
 	}

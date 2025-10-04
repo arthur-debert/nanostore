@@ -13,6 +13,7 @@ import (
 
 	"github.com/arthur-debert/nanostore/nanostore"
 	"github.com/arthur-debert/nanostore/nanostore/api"
+	"github.com/arthur-debert/nanostore/nanostore/store"
 )
 
 func TestComplexTypeValidation(t *testing.T) {
@@ -40,7 +41,7 @@ func TestComplexTypeValidation(t *testing.T) {
 		},
 	}
 
-	store, err := nanostore.New(tmpfile.Name(), config)
+	store, err := store.New(tmpfile.Name(), &config)
 	if err != nil {
 		t.Fatalf("failed to open store: %v", err)
 	}

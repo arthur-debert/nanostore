@@ -15,6 +15,7 @@ import (
 
 	"github.com/arthur-debert/nanostore/nanostore"
 	"github.com/arthur-debert/nanostore/nanostore/api"
+	storePackage "github.com/arthur-debert/nanostore/nanostore/store"
 	"github.com/arthur-debert/nanostore/types"
 )
 
@@ -44,7 +45,7 @@ func TestTransparentFilteringForNonDimensionFields(t *testing.T) {
 	_ = tmpfile.Close()
 
 	// Create typed store
-	store, err := api.NewFromType[FilterableItem](tmpfile.Name())
+	store, err := api.New[FilterableItem](tmpfile.Name())
 	if err != nil {
 		t.Fatalf("failed to create typed store: %v", err)
 	}
@@ -189,22 +190,23 @@ func TestTransparentFilteringForNonDimensionFields(t *testing.T) {
 
 	t.Run("DirectStoreFiltering", func(t *testing.T) {
 		// Let's create a direct store instance to test the filtering behavior
-		store2, err := nanostore.New(tmpfile.Name(), nanostore.Config{
-			Dimensions: []nanostore.DimensionConfig{
+		config := types.Config{
+			Dimensions: []types.DimensionConfig{
 				{
 					Name:         "status",
-					Type:         nanostore.Enumerated,
+					Type:         types.Enumerated,
 					Values:       []string{"pending", "active", "done"},
 					DefaultValue: "pending",
 				},
 				{
 					Name:         "category",
-					Type:         nanostore.Enumerated,
+					Type:         types.Enumerated,
 					Values:       []string{"A", "B", "C"},
 					DefaultValue: "A",
 				},
 			},
-		})
+		}
+		store2, err := storePackage.New(tmpfile.Name(), &config)
 		if err != nil {
 			t.Fatalf("failed to create direct store: %v", err)
 		}

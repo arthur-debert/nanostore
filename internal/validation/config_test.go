@@ -11,7 +11,7 @@ import (
 	"testing"
 
 	"github.com/arthur-debert/nanostore/internal/validation"
-	"github.com/arthur-debert/nanostore/nanostore"
+	"github.com/arthur-debert/nanostore/nanostore/store"
 	"github.com/arthur-debert/nanostore/types"
 )
 
@@ -89,7 +89,7 @@ func TestNewJSONStore(t *testing.T) {
 		},
 	}
 
-	store, err := nanostore.New(tmpfile.Name(), config)
+	store, err := store.New(tmpfile.Name(), &config)
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
@@ -110,7 +110,7 @@ func TestNotImplemented(t *testing.T) {
 	defer func() { _ = os.Remove(tmpfile.Name()) }()
 	_ = tmpfile.Close()
 
-	store, err := nanostore.New(tmpfile.Name(), types.Config{
+	config := types.Config{
 		Dimensions: []types.DimensionConfig{
 			{
 				Name:         "status",
@@ -119,7 +119,9 @@ func TestNotImplemented(t *testing.T) {
 				DefaultValue: "todo",
 			},
 		},
-	})
+	}
+
+	store, err := store.New(tmpfile.Name(), &config)
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}

@@ -5,6 +5,8 @@ import (
 	"os"
 
 	"github.com/arthur-debert/nanostore/nanostore"
+	"github.com/arthur-debert/nanostore/nanostore/store"
+	"github.com/arthur-debert/nanostore/types"
 	"github.com/spf13/cobra"
 )
 
@@ -29,11 +31,11 @@ func init() {
 	// Add the export command
 	// For this basic CLI, we'll use a simple default configuration
 	// In a real application, this would be loaded from a config file
-	defaultConfig := nanostore.Config{
+	defaultConfig := types.Config{
 		Dimensions: []nanostore.DimensionConfig{
 			{
 				Name:   "status",
-				Type:   nanostore.Enumerated,
+				Type:   types.Enumerated,
 				Values: []string{"pending", "active", "completed"},
 				Prefixes: map[string]string{
 					"pending":   "p",
@@ -72,7 +74,7 @@ Examples:
 			outputPath, _ := cmd.Flags().GetString("output")
 
 			// Open the store
-			store, err := nanostore.New(storePath, defaultConfig)
+			store, err := store.New(storePath, &defaultConfig)
 			if err != nil {
 				return fmt.Errorf("failed to open store at %s: %w", storePath, err)
 			}
