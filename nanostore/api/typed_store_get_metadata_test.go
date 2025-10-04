@@ -18,7 +18,7 @@ import (
 	"github.com/arthur-debert/nanostore/types"
 )
 
-func TestTypedStoreGetMetadata(t *testing.T) {
+func TestStoreGetMetadata(t *testing.T) {
 	// Create a temporary file for typed store
 	tmpfile, err := os.CreateTemp("", "test*.json")
 	if err != nil {
@@ -27,7 +27,7 @@ func TestTypedStoreGetMetadata(t *testing.T) {
 	defer func() { _ = os.Remove(tmpfile.Name()) }()
 	_ = tmpfile.Close()
 
-	store, err := api.NewFromType[TodoItem](tmpfile.Name())
+	store, err := api.New[TodoItem](tmpfile.Name())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -211,7 +211,7 @@ func TestTypedStoreGetMetadata(t *testing.T) {
 	})
 }
 
-func TestTypedStoreGetMetadataWithHierarchy(t *testing.T) {
+func TestStoreGetMetadataWithHierarchy(t *testing.T) {
 	// Create a temporary file for typed store
 	tmpfile, err := os.CreateTemp("", "test*.json")
 	if err != nil {
@@ -220,7 +220,7 @@ func TestTypedStoreGetMetadataWithHierarchy(t *testing.T) {
 	defer func() { _ = os.Remove(tmpfile.Name()) }()
 	_ = tmpfile.Close()
 
-	store, err := api.NewFromType[TodoItem](tmpfile.Name())
+	store, err := api.New[TodoItem](tmpfile.Name())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -328,7 +328,7 @@ func TestTypedStoreGetMetadataWithHierarchy(t *testing.T) {
 	})
 }
 
-func TestTypedStoreGetMetadataWithUpdates(t *testing.T) {
+func TestStoreGetMetadataWithUpdates(t *testing.T) {
 	// Test that UpdatedAt changes after document updates
 	tmpfile, err := os.CreateTemp("", "test*.json")
 	if err != nil {
@@ -337,7 +337,7 @@ func TestTypedStoreGetMetadataWithUpdates(t *testing.T) {
 	defer func() { _ = os.Remove(tmpfile.Name()) }()
 	_ = tmpfile.Close()
 
-	store, err := api.NewFromType[TodoItem](tmpfile.Name())
+	store, err := api.New[TodoItem](tmpfile.Name())
 	if err != nil {
 		t.Fatal(err)
 	}

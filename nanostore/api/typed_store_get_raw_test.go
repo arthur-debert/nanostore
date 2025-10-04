@@ -17,7 +17,7 @@ import (
 	"github.com/arthur-debert/nanostore/types"
 )
 
-func TestTypedStoreGetRaw(t *testing.T) {
+func TestStoreGetRaw(t *testing.T) {
 	// Create a temporary file for typed store
 	tmpfile, err := os.CreateTemp("", "test*.json")
 	if err != nil {
@@ -26,7 +26,7 @@ func TestTypedStoreGetRaw(t *testing.T) {
 	defer func() { _ = os.Remove(tmpfile.Name()) }()
 	_ = tmpfile.Close()
 
-	store, err := api.NewFromType[TodoItem](tmpfile.Name())
+	store, err := api.New[TodoItem](tmpfile.Name())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -204,7 +204,7 @@ func TestTypedStoreGetRaw(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		// Note: We can't easily add custom _data fields through TypedStore in this test,
+		// Note: We can't easily add custom _data fields through Store in this test,
 		// but we can verify that the raw document allows access to all dimensions
 		doc, err := store.GetRaw(parentUUID)
 		if err != nil {
@@ -226,7 +226,7 @@ func TestTypedStoreGetRaw(t *testing.T) {
 	})
 }
 
-func TestTypedStoreGetRawWithHierarchy(t *testing.T) {
+func TestStoreGetRawWithHierarchy(t *testing.T) {
 	// Create a temporary file for typed store
 	tmpfile, err := os.CreateTemp("", "test*.json")
 	if err != nil {
@@ -235,7 +235,7 @@ func TestTypedStoreGetRawWithHierarchy(t *testing.T) {
 	defer func() { _ = os.Remove(tmpfile.Name()) }()
 	_ = tmpfile.Close()
 
-	store, err := api.NewFromType[TodoItem](tmpfile.Name())
+	store, err := api.New[TodoItem](tmpfile.Name())
 	if err != nil {
 		t.Fatal(err)
 	}

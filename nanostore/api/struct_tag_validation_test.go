@@ -113,7 +113,7 @@ func TestStructTagValidation(t *testing.T) {
 		defer func() { _ = os.Remove(tmpfile.Name()) }()
 		_ = tmpfile.Close()
 
-		_, err = api.NewFromType[ValidTestStruct](tmpfile.Name())
+		_, err = api.New[ValidTestStruct](tmpfile.Name())
 		if err != nil {
 			t.Errorf("Valid struct should not produce error: %v", err)
 		}
@@ -127,7 +127,7 @@ func TestStructTagValidation(t *testing.T) {
 		defer func() { _ = os.Remove(tmpfile.Name()) }()
 		_ = tmpfile.Close()
 
-		_, err = api.NewFromType[EmptyValuesTag](tmpfile.Name())
+		_, err = api.New[EmptyValuesTag](tmpfile.Name())
 		if err == nil {
 			t.Error("Empty values tag should be rejected")
 		}
@@ -145,7 +145,7 @@ func TestStructTagValidation(t *testing.T) {
 		defer func() { _ = os.Remove(tmpfile.Name()) }()
 		_ = tmpfile.Close()
 
-		_, err = api.NewFromType[TrailingCommaValues](tmpfile.Name())
+		_, err = api.New[TrailingCommaValues](tmpfile.Name())
 		if err == nil {
 			t.Error("Trailing comma in values should be rejected")
 		}
@@ -163,7 +163,7 @@ func TestStructTagValidation(t *testing.T) {
 		defer func() { _ = os.Remove(tmpfile.Name()) }()
 		_ = tmpfile.Close()
 
-		_, err = api.NewFromType[EmptyValueInList](tmpfile.Name())
+		_, err = api.New[EmptyValueInList](tmpfile.Name())
 		if err == nil {
 			t.Error("Empty value in middle should be rejected")
 		}
@@ -181,7 +181,7 @@ func TestStructTagValidation(t *testing.T) {
 		defer func() { _ = os.Remove(tmpfile.Name()) }()
 		_ = tmpfile.Close()
 
-		_, err = api.NewFromType[InvalidDefault](tmpfile.Name())
+		_, err = api.New[InvalidDefault](tmpfile.Name())
 		if err == nil {
 			t.Error("Invalid default should be rejected")
 		}
@@ -199,7 +199,7 @@ func TestStructTagValidation(t *testing.T) {
 		defer func() { _ = os.Remove(tmpfile.Name()) }()
 		_ = tmpfile.Close()
 
-		_, err = api.NewFromType[EmptyDefault](tmpfile.Name())
+		_, err = api.New[EmptyDefault](tmpfile.Name())
 		if err == nil {
 			t.Error("Empty default tag should be rejected")
 			return
@@ -218,7 +218,7 @@ func TestStructTagValidation(t *testing.T) {
 		defer func() { _ = os.Remove(tmpfile.Name()) }()
 		_ = tmpfile.Close()
 
-		_, err = api.NewFromType[DefaultWithComma](tmpfile.Name())
+		_, err = api.New[DefaultWithComma](tmpfile.Name())
 		if err == nil {
 			t.Error("Default with comma should be rejected")
 		}
@@ -236,7 +236,7 @@ func TestStructTagValidation(t *testing.T) {
 		defer func() { _ = os.Remove(tmpfile.Name()) }()
 		_ = tmpfile.Close()
 
-		_, err = api.NewFromType[MalformedPrefix](tmpfile.Name())
+		_, err = api.New[MalformedPrefix](tmpfile.Name())
 		if err == nil {
 			t.Error("Malformed prefix should be rejected")
 		}
@@ -254,7 +254,7 @@ func TestStructTagValidation(t *testing.T) {
 		defer func() { _ = os.Remove(tmpfile.Name()) }()
 		_ = tmpfile.Close()
 
-		_, err = api.NewFromType[EmptyPrefixMapping](tmpfile.Name())
+		_, err = api.New[EmptyPrefixMapping](tmpfile.Name())
 		if err == nil {
 			t.Error("Empty prefix mapping should be rejected")
 		}
@@ -272,7 +272,7 @@ func TestStructTagValidation(t *testing.T) {
 		defer func() { _ = os.Remove(tmpfile.Name()) }()
 		_ = tmpfile.Close()
 
-		_, err = api.NewFromType[EmptyPrefixTag](tmpfile.Name())
+		_, err = api.New[EmptyPrefixTag](tmpfile.Name())
 		if err == nil {
 			t.Error("Empty prefix tag should be rejected")
 		}
@@ -290,7 +290,7 @@ func TestStructTagValidation(t *testing.T) {
 		defer func() { _ = os.Remove(tmpfile.Name()) }()
 		_ = tmpfile.Close()
 
-		_, err = api.NewFromType[PrefixForUnknownValue](tmpfile.Name())
+		_, err = api.New[PrefixForUnknownValue](tmpfile.Name())
 		if err == nil {
 			t.Error("Prefix for unknown value should be rejected")
 		}
@@ -308,7 +308,7 @@ func TestStructTagValidation(t *testing.T) {
 		defer func() { _ = os.Remove(tmpfile.Name()) }()
 		_ = tmpfile.Close()
 
-		_, err = api.NewFromType[DuplicateValues](tmpfile.Name())
+		_, err = api.New[DuplicateValues](tmpfile.Name())
 		if err == nil {
 			t.Error("Duplicate values should be rejected")
 		}
@@ -326,7 +326,7 @@ func TestStructTagValidation(t *testing.T) {
 		defer func() { _ = os.Remove(tmpfile.Name()) }()
 		_ = tmpfile.Close()
 
-		_, err = api.NewFromType[ConflictingPrefixes](tmpfile.Name())
+		_, err = api.New[ConflictingPrefixes](tmpfile.Name())
 		if err == nil {
 			t.Error("Conflicting prefixes should be rejected")
 		}
@@ -344,7 +344,7 @@ func TestStructTagValidation(t *testing.T) {
 		defer func() { _ = os.Remove(tmpfile.Name()) }()
 		_ = tmpfile.Close()
 
-		_, err = api.NewFromType[ValueWithEquals](tmpfile.Name())
+		_, err = api.New[ValueWithEquals](tmpfile.Name())
 		if err == nil {
 			t.Error("Value with equals should be rejected")
 		}
@@ -396,13 +396,13 @@ func TestStructTagValidationErrorMessages(t *testing.T) {
 				var err2 error
 				switch tc.structType.(type) {
 				case *EmptyValuesTag:
-					_, err2 = api.NewFromType[EmptyValuesTag](tmpfile.Name())
+					_, err2 = api.New[EmptyValuesTag](tmpfile.Name())
 				case *InvalidDefault:
-					_, err2 = api.NewFromType[InvalidDefault](tmpfile.Name())
+					_, err2 = api.New[InvalidDefault](tmpfile.Name())
 				case *MalformedPrefix:
-					_, err2 = api.NewFromType[MalformedPrefix](tmpfile.Name())
+					_, err2 = api.New[MalformedPrefix](tmpfile.Name())
 				case *ValueWithEquals:
-					_, err2 = api.NewFromType[ValueWithEquals](tmpfile.Name())
+					_, err2 = api.New[ValueWithEquals](tmpfile.Name())
 				}
 
 				if err2 == nil {
@@ -430,7 +430,7 @@ func TestStructTagValidationErrorMessages(t *testing.T) {
 		defer func() { _ = os.Remove(tmpfile.Name()) }()
 		_ = tmpfile.Close()
 
-		_, err = api.NewFromType[InvalidDefault](tmpfile.Name())
+		_, err = api.New[InvalidDefault](tmpfile.Name())
 		if err != nil {
 			errorStr := err.Error()
 

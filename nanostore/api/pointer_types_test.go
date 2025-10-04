@@ -35,7 +35,7 @@ func TestPointerTypeSupport(t *testing.T) {
 	defer func() { _ = os.Remove(tmpfile.Name()) }()
 	_ = tmpfile.Close()
 
-	store, err := NewFromType[TestPointerType](tmpfile.Name())
+	store, err := New[TestPointerType](tmpfile.Name())
 	if err != nil {
 		t.Fatalf("Failed to create store: %v", err)
 	}
@@ -209,7 +209,7 @@ func TestPointerTypeSupport(t *testing.T) {
 		defer func() { _ = os.Remove(tmpfile2.Name()) }()
 		_ = tmpfile2.Close()
 
-		queryStore, err := NewFromType[TestPointerType](tmpfile2.Name())
+		queryStore, err := New[TestPointerType](tmpfile2.Name())
 		if err != nil {
 			t.Fatalf("Failed to create query store: %v", err)
 		}

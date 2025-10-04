@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	"github.com/arthur-debert/nanostore/internal/validation"
-	"github.com/arthur-debert/nanostore/nanostore"
+	"github.com/arthur-debert/nanostore/nanostore/store"
 	"github.com/arthur-debert/nanostore/types"
 )
 
@@ -61,7 +61,7 @@ type ValidationResult struct {
 }
 
 // CreateStoreFromJSON creates a new nanostore database from JSON configuration
-func CreateStoreFromJSON(filePath string, jsonData []byte) (nanostore.Store, error) {
+func CreateStoreFromJSON(filePath string, jsonData []byte) (store.Store, error) {
 	// Load and validate configuration
 	config, err := LoadConfigFromJSON(jsonData)
 	if err != nil {
@@ -69,12 +69,12 @@ func CreateStoreFromJSON(filePath string, jsonData []byte) (nanostore.Store, err
 	}
 
 	// Create the store
-	store, err := nanostore.New(filePath, config)
+	storeInstance, err := store.New(filePath, &config)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create store: %w", err)
 	}
 
-	return store, nil
+	return storeInstance, nil
 }
 
 // ValidateJSONConfig validates a JSON configuration without creating a store

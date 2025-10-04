@@ -23,14 +23,14 @@ import (
 )
 
 // createFreshStore creates a new store for testing with proper cleanup
-func createFreshStore(t *testing.T) (*api.TypedStore[TodoItem], func()) {
+func createFreshStore(t *testing.T) (*api.Store[TodoItem], func()) {
 	tmpfile, err := os.CreateTemp("", "test*.json")
 	if err != nil {
 		t.Fatal(err)
 	}
 	_ = tmpfile.Close()
 
-	store, err := api.NewFromType[TodoItem](tmpfile.Name())
+	store, err := api.New[TodoItem](tmpfile.Name())
 	if err != nil {
 		_ = os.Remove(tmpfile.Name())
 		t.Fatal(err)

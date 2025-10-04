@@ -30,7 +30,7 @@ func TestFieldNameCasingConsistency(t *testing.T) {
 	defer func() { _ = os.Remove(tmpfile.Name()) }()
 	_ = tmpfile.Close()
 
-	store, err := api.NewFromType[TestFieldCasing](tmpfile.Name())
+	store, err := api.New[TestFieldCasing](tmpfile.Name())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -227,7 +227,7 @@ func TestFieldNameTransformation(t *testing.T) {
 		defer func() { _ = os.Remove(tmpfile.Name()) }()
 		_ = tmpfile.Close()
 
-		store, err := api.NewFromType[TestFieldCasing](tmpfile.Name())
+		store, err := api.New[TestFieldCasing](tmpfile.Name())
 		if err != nil {
 			t.Fatal(err)
 		}

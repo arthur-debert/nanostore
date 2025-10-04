@@ -29,7 +29,7 @@ func TestErrorMessageConsistency(t *testing.T) {
 	defer func() { _ = os.Remove(tmpfile.Name()) }()
 	_ = tmpfile.Close()
 
-	store, err := api.NewFromType[TestErrorMessageStandardization](tmpfile.Name())
+	store, err := api.New[TestErrorMessageStandardization](tmpfile.Name())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -225,7 +225,7 @@ func TestErrorMessageTemplates(t *testing.T) {
 		defer func() { _ = os.Remove(tmpfile.Name()) }()
 		_ = tmpfile.Close()
 
-		store, err := api.NewFromType[TestErrorMessageStandardization](tmpfile.Name())
+		store, err := api.New[TestErrorMessageStandardization](tmpfile.Name())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -250,7 +250,7 @@ func TestErrorMessageTemplates(t *testing.T) {
 		defer func() { _ = os.Remove(tmpfile.Name()) }()
 		_ = tmpfile.Close()
 
-		store, err := api.NewFromType[TestErrorMessageStandardization](tmpfile.Name())
+		store, err := api.New[TestErrorMessageStandardization](tmpfile.Name())
 		if err != nil {
 			t.Fatal(err)
 		}

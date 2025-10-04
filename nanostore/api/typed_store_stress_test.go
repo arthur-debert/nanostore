@@ -31,7 +31,7 @@ func TestHighVolumeOperations(t *testing.T) {
 
 	// Workaround for import usage detection
 	_ = os.TempDir()
-	var _ *api.TypedStore[TodoItem]
+	var _ *api.Store[TodoItem]
 
 	store, cleanup := createFreshStore(t)
 	defer cleanup()

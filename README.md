@@ -38,8 +38,6 @@ $ todo list
 
 ## Quick Start
 
-### Type-Safe API with Struct Tags
-
 ```go
 import (
     "github.com/arthur-debert/nanostore/nanostore"
@@ -60,8 +58,8 @@ type TodoItem struct {
     Description string
 }
 
-// Create typed store - configuration generated automatically from struct tags
-store, err := api.NewFromType[TodoItem]("todos.json")
+// Create store - configuration generated automatically from struct tags
+store, err := api.New[TodoItem]("todos.json")
 if err != nil {
     log.Fatal(err)
 }
@@ -151,12 +149,12 @@ Nanostore is organized as modular packages:
 github.com/arthur-debert/nanostore/
 ├── types/       # Core data structures and interfaces
 ├── search/      # Search and filtering functionality  
-├── nanostore/   # Main package with TypedStore API
-│   └── api/     # Type-safe declarative API implementation
+├── nanostore/   # Core document types and interfaces
+│   └── api/     # Main Store API - type-safe operations
 └── docs/        # Comprehensive documentation and guides
 ```
 
-The main entry point is the `TypedStore[T]` API in the `nanostore` package, which provides type-safe operations with automatic configuration generation from struct tags.
+The main entry point is the `Store[T]` API in the `nanostore/api` package, which provides type-safe operations with automatic configuration generation from struct tags.
 
 ## Performance & Limitations
 

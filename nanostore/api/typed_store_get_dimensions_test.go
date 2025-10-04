@@ -17,7 +17,7 @@ import (
 	"github.com/arthur-debert/nanostore/types"
 )
 
-func TestTypedStoreGetDimensions(t *testing.T) {
+func TestStoreGetDimensions(t *testing.T) {
 	// Create a temporary file for typed store
 	tmpfile, err := os.CreateTemp("", "test*.json")
 	if err != nil {
@@ -26,7 +26,7 @@ func TestTypedStoreGetDimensions(t *testing.T) {
 	defer func() { _ = os.Remove(tmpfile.Name()) }()
 	_ = tmpfile.Close()
 
-	store, err := api.NewFromType[TodoItem](tmpfile.Name())
+	store, err := api.New[TodoItem](tmpfile.Name())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -260,7 +260,7 @@ func TestTypedStoreGetDimensions(t *testing.T) {
 	})
 }
 
-func TestTypedStoreGetDimensionsModification(t *testing.T) {
+func TestStoreGetDimensionsModification(t *testing.T) {
 	// Test that modifying the returned dimensions map doesn't affect the store
 	tmpfile, err := os.CreateTemp("", "test*.json")
 	if err != nil {
@@ -269,7 +269,7 @@ func TestTypedStoreGetDimensionsModification(t *testing.T) {
 	defer func() { _ = os.Remove(tmpfile.Name()) }()
 	_ = tmpfile.Close()
 
-	store, err := api.NewFromType[TodoItem](tmpfile.Name())
+	store, err := api.New[TodoItem](tmpfile.Name())
 	if err != nil {
 		t.Fatal(err)
 	}
