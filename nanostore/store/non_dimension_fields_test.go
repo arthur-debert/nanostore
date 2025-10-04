@@ -134,7 +134,7 @@ func TestNonDimensionFieldsPreservedMigrated(t *testing.T) {
 			IsActive:    true,
 		}
 
-		err = store.Update(id, update)
+		_, err = store.Update(id, update)
 		if err != nil {
 			t.Fatalf("failed to update: %v", err)
 		}

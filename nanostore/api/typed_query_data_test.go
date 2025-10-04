@@ -37,9 +37,9 @@ func TestTypedQueryData(t *testing.T) {
 		"status":         "active",
 		"priority":       "high",
 		"activity":       "active",
-		"_data.assignee": "alice",
-		"_data.tags":     "urgent,backend",
-		"_data.estimate": 5,
+		"_data.Assignee": "alice",
+		"_data.Tags":     "urgent,backend",
+		"_data.Estimate": 5,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -49,9 +49,9 @@ func TestTypedQueryData(t *testing.T) {
 		"status":         "pending",
 		"priority":       "medium",
 		"activity":       "active",
-		"_data.assignee": "bob",
-		"_data.tags":     "frontend,ui",
-		"_data.estimate": 3,
+		"_data.Assignee": "bob",
+		"_data.Tags":     "frontend,ui",
+		"_data.Estimate": 3,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -61,9 +61,9 @@ func TestTypedQueryData(t *testing.T) {
 		"status":         "done",
 		"priority":       "low",
 		"activity":       "active",
-		"_data.assignee": "alice",
-		"_data.tags":     "documentation",
-		"_data.estimate": 1,
+		"_data.Assignee": "alice",
+		"_data.Tags":     "documentation",
+		"_data.Estimate": 1,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -81,7 +81,7 @@ func TestTypedQueryData(t *testing.T) {
 
 	t.Run("FilterByDataField", func(t *testing.T) {
 		// Filter by assignee Alice
-		aliceTasks, err := store.Query().Data("assignee", "alice").Find()
+		aliceTasks, err := store.Query().Data("Assignee", "alice").Find()
 		if err != nil {
 			t.Fatalf("failed to filter by assignee: %v", err)
 		}
@@ -112,7 +112,7 @@ func TestTypedQueryData(t *testing.T) {
 
 	t.Run("FilterByDataFieldBob", func(t *testing.T) {
 		// Filter by assignee Bob
-		bobTasks, err := store.Query().Data("assignee", "bob").Find()
+		bobTasks, err := store.Query().Data("Assignee", "bob").Find()
 		if err != nil {
 			t.Fatalf("failed to filter by assignee Bob: %v", err)
 		}
@@ -128,7 +128,7 @@ func TestTypedQueryData(t *testing.T) {
 
 	t.Run("FilterByDataFieldNumeric", func(t *testing.T) {
 		// Filter by estimate value
-		smallTasks, err := store.Query().Data("estimate", 1).Find()
+		smallTasks, err := store.Query().Data("Estimate", 1).Find()
 		if err != nil {
 			t.Fatalf("failed to filter by estimate: %v", err)
 		}
@@ -144,7 +144,7 @@ func TestTypedQueryData(t *testing.T) {
 
 	t.Run("FilterByDataFieldTags", func(t *testing.T) {
 		// Filter by tags containing "backend"
-		backendTasks, err := store.Query().Data("tags", "urgent,backend").Find()
+		backendTasks, err := store.Query().Data("Tags", "urgent,backend").Find()
 		if err != nil {
 			t.Fatalf("failed to filter by tags: %v", err)
 		}
@@ -179,7 +179,7 @@ func TestTypedQueryData(t *testing.T) {
 
 	t.Run("FilterByNonExistentDataValue", func(t *testing.T) {
 		// Filter by field that exists but value that doesn't
-		noTasks, err := store.Query().Data("assignee", "charlie").Find()
+		noTasks, err := store.Query().Data("Assignee", "charlie").Find()
 		if err != nil {
 			t.Fatalf("failed to filter by nonexistent value: %v", err)
 		}
@@ -193,7 +193,7 @@ func TestTypedQueryData(t *testing.T) {
 		// Combine data filter with dimension filter
 		activeAliceTasks, err := store.Query().
 			Status("active").
-			Data("assignee", "alice").
+			Data("Assignee", "alice").
 			Find()
 		if err != nil {
 			t.Fatalf("failed to combine filters: %v", err)
@@ -211,8 +211,8 @@ func TestTypedQueryData(t *testing.T) {
 	t.Run("MultipleDataFilters", func(t *testing.T) {
 		// Multiple data filters
 		specificTasks, err := store.Query().
-			Data("assignee", "alice").
-			Data("estimate", 5).
+			Data("Assignee", "alice").
+			Data("Estimate", 5).
 			Find()
 		if err != nil {
 			t.Fatalf("failed to apply multiple data filters: %v", err)
@@ -231,7 +231,7 @@ func TestTypedQueryData(t *testing.T) {
 		// Test method chaining works correctly
 		tasks, err := store.Query().
 			Status("active").
-			Data("assignee", "alice").
+			Data("Assignee", "alice").
 			Priority("high").
 			Find()
 		if err != nil {
@@ -268,9 +268,9 @@ func TestTypedQueryOrderByData(t *testing.T) {
 		"status":         "active",
 		"priority":       "medium",
 		"activity":       "active",
-		"_data.assignee": "charlie",
-		"_data.estimate": 8,
-		"_data.score":    75,
+		"_data.Assignee": "charlie",
+		"_data.Estimate": 8,
+		"_data.Score":    75,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -280,9 +280,9 @@ func TestTypedQueryOrderByData(t *testing.T) {
 		"status":         "active",
 		"priority":       "medium",
 		"activity":       "active",
-		"_data.assignee": "alice",
-		"_data.estimate": 3,
-		"_data.score":    95,
+		"_data.Assignee": "alice",
+		"_data.Estimate": 3,
+		"_data.Score":    95,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -292,9 +292,9 @@ func TestTypedQueryOrderByData(t *testing.T) {
 		"status":         "active",
 		"priority":       "medium",
 		"activity":       "active",
-		"_data.assignee": "bob",
-		"_data.estimate": 5,
-		"_data.score":    85,
+		"_data.Assignee": "bob",
+		"_data.Estimate": 5,
+		"_data.Score":    85,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -304,7 +304,7 @@ func TestTypedQueryOrderByData(t *testing.T) {
 		// Order by assignee name (ascending)
 		tasks, err := store.Query().
 			Status("active").
-			OrderByData("assignee").
+			OrderByData("Assignee").
 			Find()
 		if err != nil {
 			t.Fatalf("failed to order by data field: %v", err)
@@ -327,7 +327,7 @@ func TestTypedQueryOrderByData(t *testing.T) {
 		// Order by score (highest first)
 		tasks, err := store.Query().
 			Status("active").
-			OrderByDataDesc("score").
+			OrderByDataDesc("Score").
 			Find()
 		if err != nil {
 			t.Fatalf("failed to order by data field descending: %v", err)
@@ -350,7 +350,7 @@ func TestTypedQueryOrderByData(t *testing.T) {
 		// Order by estimate (ascending)
 		tasks, err := store.Query().
 			Status("active").
-			OrderByData("estimate").
+			OrderByData("Estimate").
 			Find()
 		if err != nil {
 			t.Fatalf("failed to order by numeric data field: %v", err)
@@ -373,7 +373,7 @@ func TestTypedQueryOrderByData(t *testing.T) {
 		// Combine data ordering with dimension ordering
 		tasks, err := store.Query().
 			Status("active").
-			OrderByData("assignee").   // Primary sort by assignee
+			OrderByData("Assignee").   // Primary sort by assignee
 			OrderByDesc("created_at"). // Secondary sort by creation time
 			Find()
 		if err != nil {
@@ -396,9 +396,9 @@ func TestTypedQueryOrderByData(t *testing.T) {
 	t.Run("FilterAndOrderByData", func(t *testing.T) {
 		// Combine data filtering and ordering
 		tasks, err := store.Query().
-			Data("assignee", "alice").
+			Data("Assignee", "alice").
 			Data("assignee", "bob"). // This should override the previous filter
-			OrderByDataDesc("score").
+			OrderByDataDesc("Score").
 			Find()
 		if err != nil {
 			t.Fatalf("failed to filter and order by data: %v", err)

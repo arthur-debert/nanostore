@@ -183,7 +183,7 @@ func TestDeclarativeAPI(t *testing.T) {
 		}
 
 		// Update it
-		err = store.Update(id, &TodoItem{
+		_, err = store.Update(id, &TodoItem{
 			Status:   "done",
 			Priority: "high",
 		})

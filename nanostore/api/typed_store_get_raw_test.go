@@ -140,7 +140,7 @@ func TestTypedStoreGetRaw(t *testing.T) {
 		if err == nil {
 			t.Error("expected error for non-existent UUID")
 		}
-		if err.Error() != "document with ID non-existent-uuid not found" {
+		if err.Error() != "document with ID 'non-existent-uuid' not found" {
 			t.Errorf("unexpected error message: %v", err)
 		}
 	})
@@ -150,7 +150,7 @@ func TestTypedStoreGetRaw(t *testing.T) {
 		if err == nil {
 			t.Error("expected error for non-existent SimpleID")
 		}
-		if err.Error() != "document with ID 999 not found" {
+		if err.Error() != "document with ID '999' not found" {
 			t.Errorf("unexpected error message: %v", err)
 		}
 	})

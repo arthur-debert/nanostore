@@ -64,7 +64,7 @@ func (app *NoteApp) AddNote(title string, body string) (string, error) {
 		}
 		createdNote.Body = body
 		// Update with the body
-		if err := app.store.Update(id, createdNote); err != nil {
+		if _, err := app.store.Update(id, createdNote); err != nil {
 			return id, err // Return the ID even if update fails
 		}
 	}
@@ -74,23 +74,26 @@ func (app *NoteApp) AddNote(title string, body string) (string, error) {
 
 // DeleteNote soft deletes a note by setting status to deleted
 func (app *NoteApp) DeleteNote(id string) error {
-	return app.store.Update(id, &Note{
+	_, err := app.store.Update(id, &Note{
 		Status: "deleted",
 	})
+	return err
 }
 
 // PinNote pins a note
 func (app *NoteApp) PinNote(id string) error {
-	return app.store.Update(id, &Note{
+	_, err := app.store.Update(id, &Note{
 		Pinned: true,
 	})
+	return err
 }
 
 // UnpinNote unpins a note
 func (app *NoteApp) UnpinNote(id string) error {
-	return app.store.Update(id, &Note{
+	_, err := app.store.Update(id, &Note{
 		Pinned: false,
 	})
+	return err
 }
 
 // GetNote retrieves a note by ID

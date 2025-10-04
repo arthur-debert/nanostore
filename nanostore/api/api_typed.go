@@ -40,8 +40,27 @@ func MarshalDimensions(v interface{}) (dimensions map[string]interface{}, data m
 			continue
 		}
 
-		// Get the value
-		value := fieldVal.Interface()
+		// Get the value, handling pointer types
+		var value interface{}
+		if fieldVal.Kind() == reflect.Ptr {
+			if fieldVal.IsNil() {
+				// nil pointer - store as nil (will be handled appropriately later)
+				value = nil
+			} else {
+				// non-nil pointer - get the pointed-to value
+				value = fieldVal.Elem().Interface()
+			}
+		} else {
+			// non-pointer value
+			value = fieldVal.Interface()
+		}
+
+		// Convert time.Time values to RFC3339 string format for storage
+		if value != nil {
+			if t, ok := value.(time.Time); ok {
+				value = t.Format(time.RFC3339)
+			}
+		}
 
 		// Check for dimension tag
 		dimTag := field.Tag.Get("dimension")
@@ -65,8 +84,156 @@ func MarshalDimensions(v interface{}) (dimensions map[string]interface{}, data m
 				continue
 			}
 
-			// Skip zero values for dimensions (except false for bools)
+			// Handle default values for enumerated dimensions with zero values
 			if isZeroValue(fieldVal) && fieldVal.Kind() != reflect.Bool {
+				valuesTag := field.Tag.Get("values")
+				defaultTag := field.Tag.Get("default")
+
+				// If this is an enumerated dimension with a default value, use the default
+				if valuesTag != "" && defaultTag != "" {
+					value = defaultTag
+				} else if valuesTag != "" {
+					// Enumerated dimension without default - validate the empty value (will be rejected)
+					// Don't skip, let validation handle it
+				} else {
+					// Skip non-enumerated zero values
+					continue
+				}
+			}
+
+			// Validate that the dimension value is a simple type
+			if err = ValidateSimpleType(value, dimName); err != nil {
+				return nil, nil, err
+			}
+
+			// For values tag style, use lowercase field name as dimension name
+			if field.Tag.Get("values") != "" && dimTag == strings.ToLower(field.Name) {
+				dimName = strings.ToLower(field.Name)
+			}
+
+			// Validate enumerated dimension values against their allowed values
+			if valuesTag := field.Tag.Get("values"); valuesTag != "" {
+				if err = validateEnumeratedValue(value, valuesTag, field.Name); err != nil {
+					return nil, nil, err
+				}
+			}
+
+			dimensions[dimName] = value
+		} else {
+			// Non-dimension field - store in data map
+			// Skip zero values to avoid storing empty data
+			if !isZeroValue(fieldVal) {
+				// Store all non-dimension fields in data map using snake_case
+				snakeFieldName := normalizeFieldName(field.Name)
+				data[snakeFieldName] = value
+			}
+		}
+	}
+
+	return dimensions, data, nil
+}
+
+// MarshalDimensionsForUpdate converts a struct with dimension tags into dimensions and data maps
+// for update operations. Unlike MarshalDimensions, this version preserves zero values to allow
+// field clearing in update operations.
+//
+// Key differences from MarshalDimensions:
+// - Zero values in data fields (non-dimension fields) are preserved and will clear existing values
+// - Zero values in enumerated dimension fields (with "values" tag) are skipped to avoid validation errors
+// - Zero values in non-enumerated dimension fields (like refs) are preserved
+//
+// This enables the ability to clear fields in bulk update operations like UpdateByUUIDs,
+// UpdateByDimension, and UpdateWhere, which was previously impossible due to zero value skipping.
+//
+// BREAKING CHANGE: This changes the behavior of all Update methods. Previously, zero values
+// were ignored. Now zero values will clear the corresponding fields in the document.
+//
+// Example:
+//
+//	// This will clear the Assignee field and set Priority to "low"
+//	updates := &Task{
+//		Assignee: "",    // Zero value - WILL clear the field
+//		Priority: "low", // Non-zero value - will update the field
+//		// Note: Other data fields like Description will also be cleared if not set
+//	}
+//	store.UpdateByUUIDs(uuids, updates)
+func MarshalDimensionsForUpdate(v interface{}) (dimensions map[string]interface{}, data map[string]interface{}, err error) {
+	val := reflect.ValueOf(v)
+	if val.Kind() == reflect.Ptr {
+		val = val.Elem()
+	}
+
+	if val.Kind() != reflect.Struct {
+		return nil, nil, fmt.Errorf("expected struct, got %s", val.Kind())
+	}
+
+	typ := val.Type()
+	dimensions = make(map[string]interface{})
+	data = make(map[string]interface{})
+
+	for i := 0; i < typ.NumField(); i++ {
+		field := typ.Field(i)
+		fieldVal := val.Field(i)
+
+		// Skip unexported fields
+		if !fieldVal.CanInterface() {
+			continue
+		}
+
+		// Skip embedded Document field
+		if field.Anonymous && field.Type == reflect.TypeOf(nanostore.Document{}) {
+			continue
+		}
+
+		// Get the value, handling pointer types
+		var value interface{}
+		if fieldVal.Kind() == reflect.Ptr {
+			if fieldVal.IsNil() {
+				// nil pointer - store as nil (will be handled appropriately later)
+				value = nil
+			} else {
+				// non-nil pointer - get the pointed-to value
+				value = fieldVal.Elem().Interface()
+			}
+		} else {
+			// non-pointer value
+			value = fieldVal.Interface()
+		}
+
+		// Convert time.Time values to RFC3339 string format for storage
+		if value != nil {
+			if t, ok := value.(time.Time); ok {
+				value = t.Format(time.RFC3339)
+			}
+		}
+
+		// Check for dimension tag
+		dimTag := field.Tag.Get("dimension")
+		isDimension := false
+
+		if dimTag != "" {
+			isDimension = true
+		} else if field.Tag.Get("values") != "" {
+			// Also check for values tag (declarative API style)
+			dimTag = strings.ToLower(field.Name)
+			isDimension = true
+		}
+
+		if isDimension {
+			// Handle dimension:"name,options" format
+			parts := strings.Split(dimTag, ",")
+			dimName := parts[0]
+
+			// Skip if dimension name is "-"
+			if dimName == "-" {
+				continue
+			}
+
+			// For dimension fields, we need to be careful about zero values
+			// Skip zero values for enumerated dimensions to avoid validation errors
+			// But allow zero values for non-enumerated dimensions (like refs)
+			if isZeroValue(fieldVal) && field.Tag.Get("values") != "" {
+				// Skip zero values for enumerated dimensions (they would fail validation)
 				continue
 			}
 
@@ -80,15 +247,20 @@ func MarshalDimensions(v interface{}) (dimensions map[string]interface{}, data m
 				dimName = strings.ToLower(field.Name)
 			}
 
+			// Validate enumerated dimension values against their allowed values
+			if valuesTag := field.Tag.Get("values"); valuesTag != "" {
+				if err = validateEnumeratedValue(value, valuesTag, field.Name); err != nil {
+					return nil, nil, err
+				}
+			}
+
 			dimensions[dimName] = value
 		} else {
 			// Non-dimension field - store in data map
-			// Skip zero values to avoid storing empty data
-			if !isZeroValue(fieldVal) {
-				// Store all non-dimension fields in data map using snake_case
-				snakeFieldName := normalizeFieldName(field.Name)
-				data[snakeFieldName] = value
-			}
+			// For updates, preserve zero values to allow field clearing
+			// Store all non-dimension fields in data map using snake_case
+			snakeFieldName := normalizeFieldName(field.Name)
+			data[snakeFieldName] = value
 		}
 	}
 
@@ -327,6 +499,17 @@ func setFieldValue(field reflect.Value, value string) error {
 			return err
 		}
 		field.SetFloat(f)
+	case reflect.Struct:
+		// Handle time.Time specially
+		if field.Type() == reflect.TypeOf(time.Time{}) {
+			t, err := time.Parse(time.RFC3339, value)
+			if err != nil {
+				return fmt.Errorf("failed to parse time value '%s': %w", value, err)
+			}
+			field.Set(reflect.ValueOf(t))
+			return nil
+		}
+		return fmt.Errorf("unsupported struct type: %s", field.Type())
 	default:
 		return fmt.Errorf("unsupported field type: %s", field.Kind())
 	}
@@ -336,6 +519,26 @@ func setFieldValue(field reflect.Value, value string) error {
 // setFieldFromInterface sets a field value from an interface{}
 func setFieldFromInterface(field reflect.Value, value interface{}) error {
 	if value == nil {
+		// For pointer types, set to nil. For non-pointer types, leave as zero value.
+		if field.Kind() == reflect.Ptr {
+			field.Set(reflect.Zero(field.Type()))
+		}
+		return nil
+	}
+
+	// Handle pointer types
+	if field.Kind() == reflect.Ptr {
+		// Create a new instance of the pointed-to type
+		elemType := field.Type().Elem()
+		newPtr := reflect.New(elemType)
+
+		// Set the value on the pointed-to element
+		if err := setFieldFromInterface(newPtr.Elem(), value); err != nil {
+			return err
+		}
+
+		// Set the pointer
+		field.Set(newPtr)
 		return nil
 	}
 
@@ -356,6 +559,128 @@ func setFieldFromInterface(field reflect.Value, value interface{}) error {
 	// Otherwise convert through string for simple types
 	strVal := fmt.Sprintf("%v", value)
 	return setFieldValue(field, strVal)
+}
+
+// extractDocumentFields extracts Document fields from an embedded nanostore.Document
+func extractDocumentFields(v interface{}) (title string, body string, found bool) {
+	val := reflect.ValueOf(v)
+	if val.Kind() == reflect.Ptr {
+		val = val.Elem()
+	}
+
+	if val.Kind() != reflect.Struct {
+		return "", "", false
+	}
+
+	typ := val.Type()
+	for i := 0; i < typ.NumField(); i++ {
+		field := typ.Field(i)
+		fieldVal := val.Field(i)
+
+		// Look for embedded Document field
+		if field.Anonymous && field.Type == reflect.TypeOf(nanostore.Document{}) {
+			// Extract the Document value
+			doc := fieldVal.Interface().(nanostore.Document)
+			return doc.Title, doc.Body, true
+		}
+	}
+
+	return "", "", false
+}
+
+// getValidDataFields extracts the names of non-dimension fields (data fields) from a struct type
+// These are fields that don't have dimension tags and would be stored with "_data." prefix
+func getValidDataFields(v interface{}) ([]string, error) {
+	val := reflect.ValueOf(v)
+	if val.Kind() == reflect.Ptr {
+		val = val.Elem()
+	}
+
+	if val.Kind() != reflect.Struct {
+		return nil, fmt.Errorf("expected struct, got %s", val.Kind())
+	}
+
+	typ := val.Type()
+	var dataFields []string
+
+	for i := 0; i < typ.NumField(); i++ {
+		field := typ.Field(i)
+
+		// Skip unexported fields
+		if !field.IsExported() {
+			continue
+		}
+
+		// Skip embedded Document field
+		if field.Anonymous && field.Type == reflect.TypeOf(nanostore.Document{}) {
+			continue
+		}
+
+		// Check if this is a dimension field
+		dimTag := field.Tag.Get("dimension")
+		isEnumeratedDimension := field.Tag.Get("values") != ""
+
+		// If it's not a dimension field, it's a data field
+		if dimTag == "" && !isEnumeratedDimension {
+			// Add both PascalCase (Go field name) and snake_case (storage format)
+			dataFields = append(dataFields, field.Name)
+			snakeFieldName := normalizeFieldName(field.Name)
+			if snakeFieldName != field.Name {
+				dataFields = append(dataFields, snakeFieldName)
+			}
+		}
+	}
+
+	return dataFields, nil
+}
+
+// validateDataFieldName checks if a field name is valid for data queries.
+//
+// This function eliminates silent failures in data field queries by validating field names
+// against the actual Go struct fields. Key features:
+//
+// - **Case-insensitive validation**: Accepts field names in any case (e.g., "assignee", "Assignee", "ASSIGNEE")
+// - **Auto-correction**: Returns the correct Go field name case for storage consistency
+// - **Helpful error messages**: Provides suggestions for typos and lists valid field names
+// - **No silent failures**: Invalid field names always return clear error messages
+//
+// Example:
+//   - Input: "assignee" → Output: "Assignee" (if struct has field named "Assignee")
+//   - Input: "assigne" → Error: "invalid data field name 'assigne', did you mean: [Assignee]?"
+//
+// Returns the correct case field name if valid, or an error with suggestions if invalid
+func validateDataFieldName(fieldName string, validFields []string) (string, error) {
+	// Convert field names to lowercase for case-insensitive comparison
+	fieldNameLower := strings.ToLower(fieldName)
+
+	for _, validField := range validFields {
+		if strings.ToLower(validField) == fieldNameLower {
+			// Field exists - return the snake_case version for storage consistency
+			return normalizeFieldName(validField), nil
+		}
+	}
+
+	// Field doesn't exist - provide helpful error with suggestions
+	var suggestions []string
+	for _, validField := range validFields {
+		// Simple similarity check: if field name is contained in valid field or vice versa
+		if strings.Contains(strings.ToLower(validField), fieldNameLower) ||
+			strings.Contains(fieldNameLower, strings.ToLower(validField)) {
+			suggestions = append(suggestions, validField)
+		}
+	}
+
+	errMsg := fmt.Sprintf("invalid data field name '%s'", fieldName)
+
+	if len(suggestions) > 0 {
+		errMsg += fmt.Sprintf(", did you mean one of: %v?", suggestions)
+	} else if len(validFields) > 0 {
+		errMsg += fmt.Sprintf(", valid data fields are: %v", validFields)
+	} else {
+		errMsg += " (no data fields available for this type)"
+	}
+
+	return "", fmt.Errorf("%s", errMsg)
 }
 
 // ValidateSimpleType ensures a dimension value is a simple type (string, number, bool)
@@ -381,7 +706,7 @@ func ValidateSimpleType(value interface{}, dimensionName string) error {
 		if _, ok := value.(time.Time); ok {
 			return nil
 		}
-		return fmt.Errorf("dimension '%s' cannot be a struct type, got %T", dimensionName, value)
+		return fmt.Errorf("dimension '%s' cannot be a struct type, got %T (time.Time check failed)", dimensionName, value)
 	case reflect.Ptr, reflect.Interface:
 		// Dereference and check the underlying type
 		if v.IsNil() {
@@ -391,4 +716,38 @@ func ValidateSimpleType(value interface{}, dimensionName string) error {
 	default:
 		return fmt.Errorf("dimension '%s' must be a simple type (string, number, or bool), got %T", dimensionName, value)
 	}
+}
+
+// validateEnumeratedValue validates that a field value is one of the allowed enumerated values
+// specified in the "values" struct tag. This prevents invalid enumerated dimension values
+// from being stored in the system.
+//
+// Parameters:
+//   - value: The actual field value to validate
+//   - valuesTag: The "values" tag content (e.g., "pending,active,done")
+//   - fieldName: The struct field name for error reporting
+//
+// Returns an error if the value is not in the allowed values list.
+func validateEnumeratedValue(value interface{}, valuesTag, fieldName string) error {
+	// Convert value to string for comparison
+	valueStr := fmt.Sprintf("%v", value)
+
+	// Parse the allowed values from the tag
+	allowedValues := strings.Split(valuesTag, ",")
+
+	// Trim whitespace from each allowed value
+	for i, v := range allowedValues {
+		allowedValues[i] = strings.TrimSpace(v)
+	}
+
+	// Check if the value is in the allowed list
+	for _, allowed := range allowedValues {
+		if valueStr == allowed {
+			return nil // Value is valid
+		}
+	}
+
+	// Value is not in the allowed list - return standardized error message
+	return fmt.Errorf("invalid value '%s' for field '%s': must be one of [%s]",
+		valueStr, fieldName, strings.Join(allowedValues, ", "))
 }

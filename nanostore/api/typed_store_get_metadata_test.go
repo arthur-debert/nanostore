@@ -129,7 +129,7 @@ func TestTypedStoreGetMetadata(t *testing.T) {
 		if err == nil {
 			t.Error("expected error for non-existent document")
 		}
-		if err.Error() != "document with ID non-existent-uuid not found" {
+		if err.Error() != "document with ID 'non-existent-uuid' not found" {
 			t.Errorf("unexpected error message: %v", err)
 		}
 	})
@@ -362,7 +362,7 @@ func TestTypedStoreGetMetadataWithUpdates(t *testing.T) {
 	time.Sleep(10 * time.Millisecond)
 
 	// Update the document
-	err = store.Update(uuid, &TodoItem{
+	_, err = store.Update(uuid, &TodoItem{
 		Status:   "active",
 		Priority: "high",
 		Activity: "active",

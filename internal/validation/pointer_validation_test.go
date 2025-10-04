@@ -53,8 +53,8 @@ func TestPointerFieldValidation(t *testing.T) {
 				_, err := api.NewFromType[StructWithStringPointer](filename)
 				return err
 			},
-			expectErr: true,
-			errMsg:    "pointer fields are not supported",
+			expectErr: false, // Now supported
+			errMsg:    "",
 		},
 		{
 			name: "int pointer with dimension tag",
@@ -62,8 +62,8 @@ func TestPointerFieldValidation(t *testing.T) {
 				_, err := api.NewFromType[StructWithIntPointer](filename)
 				return err
 			},
-			expectErr: true,
-			errMsg:    "pointer fields are not supported",
+			expectErr: false, // Now supported
+			errMsg:    "",
 		},
 		{
 			name: "nested struct pointer",
@@ -71,8 +71,8 @@ func TestPointerFieldValidation(t *testing.T) {
 				_, err := api.NewFromType[StructWithNestedPointer](filename)
 				return err
 			},
-			expectErr: true,
-			errMsg:    "pointer fields are not supported",
+			expectErr: true, // Still not supported
+			errMsg:    "pointer type",
 		},
 		{
 			name: "pointer field without tag",
@@ -80,8 +80,8 @@ func TestPointerFieldValidation(t *testing.T) {
 				_, err := api.NewFromType[StructWithPointerNoTag](filename)
 				return err
 			},
-			expectErr: true,
-			errMsg:    "pointer fields are not supported",
+			expectErr: false, // Data fields with pointers are fine
+			errMsg:    "",
 		},
 	}
 

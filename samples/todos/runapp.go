@@ -183,7 +183,7 @@ func main() {
 	// Step 9: Complete bread task
 	printStep(stepNum, `$ too complete 1.2  # Complete "Bread"`, `
     // Behind the scenes: status update
-    err := store.Update("1.2", &TodoItem{
+    _, err := store.Update("1.2", &TodoItem{
         Status: "done",
     })
     // ID automatically changes from "1.2" to "d1.2" due to prefix`)
@@ -205,7 +205,7 @@ func main() {
 	// Step 10: Set passport as active
 	printStep(stepNum, `$ too activate h2.3  # Activate "Passport"`, `
     // Behind the scenes: status update
-    err := store.Update("h2.3", &TodoItem{
+    _, err := store.Update("h2.3", &TodoItem{
         Status: "active",
     })`)
 

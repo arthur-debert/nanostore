@@ -21,7 +21,7 @@ type TodoItem struct {
 	Activity string `values:"active,archived,deleted" default:"active"`
 	ParentID string `dimension:"parent_id,ref"`
 
-	// Data fields (stored as _data.*)
+	// Data fields (stored as _data.* with snake_case names)
 	Assignee   string  // Custom field for assignee
 	Estimate   int     // Custom field for effort estimate
 	Tags       string  // Custom field for tags

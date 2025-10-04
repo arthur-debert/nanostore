@@ -9,7 +9,6 @@ package store_test
 // 3. Use assertion helpers for cleaner test code
 // 4. Only create fresh stores for specific scenarios (see model_test.go)
 
-
 import (
 	"testing"
 

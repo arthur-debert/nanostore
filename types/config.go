@@ -10,6 +10,18 @@ const (
 	Hierarchical
 )
 
+// String returns the string representation of the DimensionType
+func (dt DimensionType) String() string {
+	switch dt {
+	case Enumerated:
+		return "enumerated"
+	case Hierarchical:
+		return "hierarchical"
+	default:
+		return "unknown"
+	}
+}
+
 // DimensionConfig defines a single dimension for ID partitioning
 type DimensionConfig struct {
 	// Name is the database column name and identifier for this dimension
