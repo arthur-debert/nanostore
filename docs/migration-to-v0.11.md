@@ -1,13 +1,13 @@
 # Migration Guide: Nanostore v0.11
 
-Nanostore v0.11 introduces a **major API consolidation** - the TypedStore API is now the single, unified interface. This migration guide helps you upgrade from previous versions.
+Nanostore v0.11 introduces a **major API consolidation** - the Store API is now the single, unified interface. This migration guide helps you upgrade from previous versions.
 
 ## Breaking Changes Summary
 
 🚨 **Major API Changes:**
 - Direct Store API (`nanostore.New()`) has been **removed**
-- TypedStore is renamed to **Store** - it's now the only API
-- `api.NewFromType[T]()` becomes `api.New[T]()`
+- Store is renamed to **Store** - it's now the only API
+- `api.New[T]()` becomes `api.New[T]()`
 - Simplified package structure and imports
 
 ## Quick Migration
@@ -19,13 +19,13 @@ import (
     "github.com/arthur-debert/nanostore/nanostore/api"
 )
 
-// TypedStore API
+// Store API
 type Task struct {
     nanostore.Document
     Status string `values:"pending,done" default:"pending"`
 }
 
-store, err := api.NewFromType[Task]("tasks.json")
+store, err := api.New[Task]("tasks.json")
 ```
 
 ### After (v0.11+)
@@ -49,8 +49,8 @@ store, err := api.New[Task]("tasks.json")
 ### 1. Update Function Calls
 
 Replace all instances:
-- `api.NewFromType[T]()` → `api.New[T]()`
-- TypedStore references → Store
+- `api.New[T]()` → `api.New[T]()`
+- Store references → Store
 
 ### 2. Remove Direct Store API Usage
 
@@ -80,7 +80,7 @@ store, err := api.New[Item]("data.json")
 
 ### 3. Update Documentation References
 
-- Replace "TypedStore" with "Store" in comments and docs
+- Replace "Store" with "Store" in comments and docs
 - Update import examples
 - Remove references to "Direct Store API"
 
@@ -144,12 +144,12 @@ These functions are **no longer available**:
 
 | Old (v0.10.x) | New (v0.11+) |
 |----------------|--------------|
-| `api.NewFromType[T]()` | `api.New[T]()` |
-| TypedStore terminology | Store terminology |
+| `api.New[T]()` | `api.New[T]()` |
+| Store terminology | Store terminology |
 
 ## Migration Checklist
 
-- [ ] Replace `api.NewFromType[T]()` with `api.New[T]()`
+- [ ] Replace `api.New[T]()` with `api.New[T]()`
 - [ ] Convert any Direct Store API usage to typed structs with tags
 - [ ] Update variable names from `typedStore` to `store`
 - [ ] Update documentation and comments
@@ -181,7 +181,7 @@ tasks, err := store.Query().Data("nonexistent", "value").Find()
 
 ## Example: Complete Migration
 
-### Before (v0.10.x with TypedStore)
+### Before (v0.10.x with Store)
 ```go
 package main
 
@@ -198,7 +198,7 @@ type Task struct {
 }
 
 func main() {
-    typedStore, err := api.NewFromType[Task]("tasks.json")
+    typedStore, err := api.New[Task]("tasks.json")
     if err != nil {
         log.Fatal(err)
     }

@@ -23,7 +23,7 @@ type TestBulkClearingItem struct {
 }
 
 func TestBulkUpdateFieldClearing(t *testing.T) {
-	// Create a temporary file for typed store
+	// Create a temporary file for store
 	tmpfile, err := os.CreateTemp("", "test_bulk_update_field_clearing*.json")
 	if err != nil {
 		t.Fatal(err)

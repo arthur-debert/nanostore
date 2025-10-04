@@ -107,7 +107,7 @@ Nanostore Technical Architecture
 
     High-level declarative interfaces:
 
-    TypedStore[T]:
+    Store[T]:
     - Generated from struct definitions with tags
     - Type-safe query methods based on dimension definitions
     - Automatic configuration derivation

@@ -18,7 +18,7 @@ import (
 )
 
 func TestStoreList(t *testing.T) {
-	// Create a temporary file for typed store
+	// Create a temporary file for store
 	tmpfile, err := os.CreateTemp("", "test*.json")
 	if err != nil {
 		t.Fatal(err)
@@ -295,7 +295,7 @@ func TestStoreList(t *testing.T) {
 }
 
 func TestStoreListErrorHandling(t *testing.T) {
-	// Create a temporary file for typed store
+	// Create a temporary file for store
 	tmpfile, err := os.CreateTemp("", "test*.json")
 	if err != nil {
 		t.Fatal(err)

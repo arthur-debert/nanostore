@@ -1,10 +1,10 @@
 Nanostore API Reference
 
-1. TypedStore Interface
+1. Store Interface
 
 1.1 Creating a Typed Store
 
-    The primary way to use nanostore is through the TypedStore API, which automatically
+    The primary way to use nanostore is through the Store API, which automatically
     generates configuration from struct tags:
     
         import "github.com/arthur-debert/nanostore/nanostore"
@@ -21,17 +21,17 @@ Nanostore API Reference
             DueDate     time.Time
         }
         
-        store, err := nanostore.NewFromType[TaskItem]("tasks.json")
+        store, err := nanostore.New[TaskItem]("tasks.json")
         if err != nil {
             return err
         }
         defer store.Close()
 
-1.2 TypedStore Interface Methods
+1.2 Store Interface Methods
 
-    The TypedStore provides type-safe operations:
+    The Store provides type-safe operations:
 
-    type TypedStore[T any] interface {
+    type Store[T any] interface {
         Create(title string, data *T) (string, error)
         Get(id string) (*T, error)
         Update(id string, data *T) error
@@ -365,7 +365,7 @@ Nanostore API Reference
         // offset defaults to 0
         topResults, err := store.List(opts)
 
-4. Declarative API (TypedStore)
+4. Declarative API (Store)
 
 4.1 Generated Query Methods
 
@@ -419,7 +419,7 @@ Nanostore API Reference
 
 4.4 CRUD Operations
 
-    Create with TypedStore:
+    Create with Store:
     
         id, err := store.Create("New Task", &TaskItem{
             Status:      "pending",
@@ -429,7 +429,7 @@ Nanostore API Reference
             AssignedTo:  "alice",
         })
 
-    Update with TypedStore:
+    Update with Store:
     
         task, err := store.Get(id)
         if err != nil {
@@ -570,7 +570,7 @@ Nanostore API Reference
     Use Declarative API:
     
         // Good: Type-safe operations
-        store, err := nanostore.NewFromType[TaskItem](path)
+        store, err := nanostore.New[TaskItem](path)
         results, err := store.Query().Status("pending").Find()
         
         // Avoid: String-based operations when types are available

@@ -30,7 +30,7 @@ func TestGetDimensionConfigPerformance(t *testing.T) {
 	defer func() { _ = os.Remove(tmpfile.Name()) }()
 	_ = tmpfile.Close()
 
-	// Create typed store
+	// Create store
 	store, err := api.New[ComplexTodoItem](tmpfile.Name())
 	if err != nil {
 		t.Fatalf("Failed to create store: %v", err)
@@ -89,7 +89,7 @@ func TestGetDimensionConfigConsistency(t *testing.T) {
 	defer func() { _ = os.Remove(tmpfile.Name()) }()
 	_ = tmpfile.Close()
 
-	// Create typed store
+	// Create store
 	store, err := api.New[ComplexTodoItem](tmpfile.Name())
 	if err != nil {
 		t.Fatalf("Failed to create store: %v", err)

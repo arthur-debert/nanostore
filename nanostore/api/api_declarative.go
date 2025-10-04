@@ -21,7 +21,7 @@ type DocumentMetadata struct {
 	UpdatedAt time.Time // Last update timestamp
 }
 
-// DebugInfo contains comprehensive debugging information about a TypedStore
+// DebugInfo contains comprehensive debugging information about a Store
 type DebugInfo struct {
 	StoreType     string            // Type of underlying store implementation
 	FilePath      string            // Location of store data file (if applicable)
@@ -32,7 +32,7 @@ type DebugInfo struct {
 	LastError     string            // Last error encountered (if any)
 }
 
-// TypeDebugInfo contains information about the Go type used with TypedStore
+// TypeDebugInfo contains information about the Go type used with Store
 type TypeDebugInfo struct {
 	TypeName    string           // Full Go type name
 	PackageName string           // Package name containing the type
@@ -185,7 +185,7 @@ type DataFieldInfo struct {
 //
 // # Struct Tag Conventions
 //
-// The TypedStore uses struct tags to automatically generate dimension configurations:
+// The Store uses struct tags to automatically generate dimension configurations:
 //
 //	type Task struct {
 //	    nanostore.Document        // Required embedded field
@@ -1341,7 +1341,7 @@ func (ts *Store[T]) GetMetadata(id string) (*DocumentMetadata, error) {
 //	    Status("active").
 //	    Exists()
 
-// GetDimensionConfig returns the runtime configuration for this TypedStore.
+// GetDimensionConfig returns the runtime configuration for this Store.
 //
 // This method provides introspection capabilities for the automatically generated
 // dimension configuration. It allows applications to examine:
@@ -1397,7 +1397,7 @@ func (ts *Store[T]) GetMetadata(id string) (*DocumentMetadata, error) {
 // # Performance Notes
 //
 // This method returns a copy of the configuration, not a reference.
-// The configuration is generated once at TypedStore creation and cached,
+// The configuration is generated once at Store creation and cached,
 // so this method is O(1) with respect to runtime performance.
 func (ts *Store[T]) GetDimensionConfig() (*nanostore.Config, error) {
 	// Return a copy of the cached configuration
@@ -1484,7 +1484,7 @@ func (ts *Store[T]) SetTimeFunc(timeFunc func() time.Time) error {
 	return nil
 }
 
-// ValidateConfiguration performs runtime validation of the TypedStore configuration.
+// ValidateConfiguration performs runtime validation of the Store configuration.
 //
 // This method checks for configuration issues that might not be caught during
 // store creation, including:
@@ -1528,7 +1528,7 @@ func (ts *Store[T]) SetTimeFunc(timeFunc func() time.Time) error {
 //
 //	// Validate configuration during testing
 //	func TestStoreConfiguration(t *testing.T) {
-//	    store, err := api.NewFromType[TodoItem]("test.json")
+//	    store, err := api.New[TodoItem]("test.json")
 //	    require.NoError(t, err)
 //	    defer store.Close()
 //
@@ -1629,7 +1629,7 @@ func (ts *Store[T]) ValidateConfiguration() error {
 	return nil
 }
 
-// GetDebugInfo returns comprehensive debugging information about the TypedStore.
+// GetDebugInfo returns comprehensive debugging information about the Store.
 //
 // This method provides developers with detailed insights into the store's current
 // state, configuration, and runtime characteristics. It's invaluable for debugging
@@ -2049,7 +2049,7 @@ func (ts *Store[T]) ValidateStoreIntegrity() (*IntegrityReport, error) {
 // - **Enumerated Only**: Only works with enumerated dimensions, not hierarchical
 // - **Additive Only**: Cannot remove or modify existing values
 // - **No Store Update**: Changes don't persist to underlying store configuration
-// - **Session Only**: Changes are lost when TypedStore is recreated
+// - **Session Only**: Changes are lost when Store is recreated
 // - **No Migration**: Existing documents are not affected
 //
 // # Future Enhancements
@@ -3429,7 +3429,7 @@ func (tq *Query[T]) Limit(n int) *Query[T] {
 //
 // **Real-World Pagination Example:**
 //
-//	func GetTasksPage(store *TypedStore[Task], page, pageSize int, filters TaskFilters) ([]Task, error) {
+//	func GetTasksPage(store *Store[Task], page, pageSize int, filters TaskFilters) ([]Task, error) {
 //	    query := store.Query()
 //
 //	    // Apply filters

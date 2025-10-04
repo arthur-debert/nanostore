@@ -26,7 +26,7 @@ func TestHardcodedNOTMethodsFlexibility(t *testing.T) {
 	defer func() { _ = os.Remove(tmpfile.Name()) }()
 	_ = tmpfile.Close()
 
-	// Create typed store with custom enum values
+	// Create store with custom enum values
 	store, err := api.New[CustomTodoItem](tmpfile.Name())
 	if err != nil {
 		t.Fatalf("Failed to create store: %v", err)

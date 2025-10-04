@@ -45,7 +45,7 @@ func ExportConfigFromType[T any]() ([]byte, error) {
 		typ = typ.Elem()
 	}
 
-	// Ensure T embeds Document (same validation as NewFromType)
+	// Ensure T embeds Document (same validation as New)
 	if !embedsDocument(typ) {
 		return nil, fmt.Errorf("type %s must embed nanostore.Document", typ.Name())
 	}

@@ -22,7 +22,7 @@ type TestFieldCasing struct {
 }
 
 func TestFieldNameCasingConsistency(t *testing.T) {
-	// Create a temporary file for typed store
+	// Create a temporary file for store
 	tmpfile, err := os.CreateTemp("", "test_field_casing*.json")
 	if err != nil {
 		t.Fatal(err)

@@ -22,7 +22,7 @@ type TestSilentFailuresItem struct {
 }
 
 func TestSilentFailuresInQueries(t *testing.T) {
-	// Create a temporary file for typed store
+	// Create a temporary file for store
 	tmpfile, err := os.CreateTemp("", "test_silent_failures*.json")
 	if err != nil {
 		t.Fatal(err)

@@ -30,7 +30,7 @@ type TestEnumeratedValidationNoDefaults struct {
 }
 
 func TestEnumeratedValueValidation(t *testing.T) {
-	// Create a temporary file for typed store
+	// Create a temporary file for store
 	tmpfile, err := os.CreateTemp("", "test_enumerated_validation*.json")
 	if err != nil {
 		t.Fatal(err)

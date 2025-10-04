@@ -38,8 +38,8 @@ type MixedFieldsItemMigrated struct {
 }
 
 func TestNonDimensionFieldsPreservedMigrated(t *testing.T) {
-	// Note: This test specifically tests typed store behavior that requires
-	// a custom type, so we create a separate typed store rather than using
+	// Note: This test specifically tests store behavior that requires
+	// a custom type, so we create a separate store rather than using
 	// the fixture's direct store
 	tmpfile, err := os.CreateTemp("", "test*.json")
 	if err != nil {
@@ -48,10 +48,10 @@ func TestNonDimensionFieldsPreservedMigrated(t *testing.T) {
 	defer func() { _ = os.Remove(tmpfile.Name()) }()
 	_ = tmpfile.Close()
 
-	// Create typed store
+	// Create store
 	store, err := api.New[MixedFieldsItemMigrated](tmpfile.Name())
 	if err != nil {
-		t.Fatalf("failed to create typed store: %v", err)
+		t.Fatalf("failed to create store: %v", err)
 	}
 	defer func() { _ = store.Close() }()
 

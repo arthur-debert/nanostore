@@ -18,7 +18,7 @@ import (
 )
 
 func TestTypedQueryWhereClause(t *testing.T) {
-	// Create a temporary file for typed store
+	// Create a temporary file for store
 	tmpfile, err := os.CreateTemp("", "test*.json")
 	if err != nil {
 		t.Fatal(err)
@@ -234,7 +234,7 @@ func TestTypedQueryWhereClause(t *testing.T) {
 }
 
 func TestTypedQueryWhereEdgeCases(t *testing.T) {
-	// Create a temporary file for typed store
+	// Create a temporary file for store
 	tmpfile, err := os.CreateTemp("", "test*.json")
 	if err != nil {
 		t.Fatal(err)

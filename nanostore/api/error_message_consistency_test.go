@@ -21,7 +21,7 @@ type TestErrorMessageStandardization struct {
 }
 
 func TestErrorMessageConsistency(t *testing.T) {
-	// Create a temporary file for typed store
+	// Create a temporary file for store
 	tmpfile, err := os.CreateTemp("", "test_error_consistency*.json")
 	if err != nil {
 		t.Fatal(err)

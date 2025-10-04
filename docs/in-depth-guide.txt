@@ -92,7 +92,7 @@ Table of Contents
     Now let's create our store and start building todos:
 
         // Initialize the store from our type definition
-        store, err := nanostore.NewFromType[TodoItem]("todos.json")
+        store, err := nanostore.New[TodoItem]("todos.json")
         if err != nil {
             log.Fatal(err)
         }
@@ -312,7 +312,7 @@ Output:
     Filtering by Non-Dimension Fields
 
     // Create a direct store for advanced filtering (non-dimension fields)
-    // Note: The TypedStore doesn't expose all filtering capabilities yet
+    // Note: The Store doesn't expose all filtering capabilities yet
     directStore, err := nanostore.New("todos.json", config)
     if err != nil {
         log.Fatal(err)
@@ -588,7 +588,7 @@ Output with --all flag to show completed items:
 
     func main() {
         // Initialize the store
-        store, err := nanostore.NewFromType[TodoItem]("todos.json")
+        store, err := nanostore.New[TodoItem]("todos.json")
         if err != nil {
             log.Fatal(err)
         }
@@ -704,7 +704,7 @@ Output with --all flag to show completed items:
         fmt.Printf("High priority todos: %d\n", highPriorityCount)
     }
 
-    func printTodos(store *nanostore.TypedStore[TodoItem]) {
+    func printTodos(store *nanostore.Store[TodoItem]) {
         todos, _ := store.Query().
             Activity("active").
             StatusIn("pending", "active").
@@ -726,7 +726,7 @@ Output with --all flag to show completed items:
         }
     }
 
-    func printTodosWithCompleted(store *nanostore.TypedStore[TodoItem]) {
+    func printTodosWithCompleted(store *nanostore.Store[TodoItem]) {
         todos, _ := store.Query().
             Activity("active").
             OrderBy("created_at").

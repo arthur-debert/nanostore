@@ -17,7 +17,7 @@ func TestGetGetRawIDResolutionConsistency(t *testing.T) {
 	defer func() { _ = os.Remove(tmpfile.Name()) }()
 	_ = tmpfile.Close()
 
-	// Create typed store
+	// Create store
 	store, err := api.New[TodoItem](tmpfile.Name())
 	if err != nil {
 		t.Fatalf("Failed to create store: %v", err)
@@ -135,7 +135,7 @@ func TestSubtleIDResolutionDifferences(t *testing.T) {
 	defer func() { _ = os.Remove(tmpfile.Name()) }()
 	_ = tmpfile.Close()
 
-	// Create typed store
+	// Create store
 	store, err := api.New[TodoItem](tmpfile.Name())
 	if err != nil {
 		t.Fatalf("Failed to create store: %v", err)
@@ -220,7 +220,7 @@ func TestIDResolutionEdgeCases(t *testing.T) {
 	defer func() { _ = os.Remove(tmpfile.Name()) }()
 	_ = tmpfile.Close()
 
-	// Create typed store
+	// Create store
 	store, err := api.New[TodoItem](tmpfile.Name())
 	if err != nil {
 		t.Fatalf("Failed to create store: %v", err)

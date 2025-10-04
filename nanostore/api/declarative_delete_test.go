@@ -26,10 +26,10 @@ func TestDeclarativeDelete(t *testing.T) {
 	defer func() { _ = os.Remove(tmpfile.Name()) }()
 	_ = tmpfile.Close()
 
-	// Create typed store
+	// Create store
 	store, err := api.New[TodoItem](tmpfile.Name())
 	if err != nil {
-		t.Fatalf("failed to create typed store: %v", err)
+		t.Fatalf("failed to create store: %v", err)
 	}
 	defer func() { _ = store.Close() }()
 

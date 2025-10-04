@@ -20,7 +20,7 @@ type TestBodyContentHandling struct {
 }
 
 func TestBodyContentHandlingInCreate(t *testing.T) {
-	// Create a temporary file for typed store
+	// Create a temporary file for store
 	tmpfile, err := os.CreateTemp("", "test_body_content*.json")
 	if err != nil {
 		t.Fatal(err)

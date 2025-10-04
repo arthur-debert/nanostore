@@ -19,7 +19,7 @@ import (
 )
 
 func TestStoreGetMetadata(t *testing.T) {
-	// Create a temporary file for typed store
+	// Create a temporary file for store
 	tmpfile, err := os.CreateTemp("", "test*.json")
 	if err != nil {
 		t.Fatal(err)
@@ -212,7 +212,7 @@ func TestStoreGetMetadata(t *testing.T) {
 }
 
 func TestStoreGetMetadataWithHierarchy(t *testing.T) {
-	// Create a temporary file for typed store
+	// Create a temporary file for store
 	tmpfile, err := os.CreateTemp("", "test*.json")
 	if err != nil {
 		t.Fatal(err)

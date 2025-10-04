@@ -18,7 +18,7 @@ import (
 	"github.com/arthur-debert/nanostore/nanostore/testutil"
 )
 
-// TestTaskMigrated is a test type for typed store tests
+// TestTaskMigrated is a test type for store tests
 type TestTaskMigrated struct {
 	nanostore.Document
 	Status   string `values:"todo,done" default:"todo"`
@@ -26,7 +26,7 @@ type TestTaskMigrated struct {
 }
 
 func TestStoreUpdateWithSmartIDMigrated(t *testing.T) {
-	// Create a temporary file for typed store
+	// Create a temporary file for store
 	tmpfile, err := os.CreateTemp("", "test*.json")
 	if err != nil {
 		t.Fatal(err)
@@ -114,7 +114,7 @@ func TestStoreUpdateWithSmartIDMigrated(t *testing.T) {
 }
 
 func TestStoreDeleteWithSmartIDMigrated(t *testing.T) {
-	// Create a temporary file for typed store
+	// Create a temporary file for store
 	tmpfile, err := os.CreateTemp("", "test*.json")
 	if err != nil {
 		t.Fatal(err)
@@ -212,7 +212,7 @@ func TestStoreDeleteWithSmartIDMigrated(t *testing.T) {
 	})
 }
 
-// TestStoreSmartIDWithFixtureMigrated tests typed store behavior with fixture data
+// TestStoreSmartIDWithFixtureMigrated tests store behavior with fixture data
 func TestStoreSmartIDWithFixtureMigrated(t *testing.T) {
 	// Load fixture to verify smart IDs work consistently
 	store, universe := testutil.LoadUniverse(t)
