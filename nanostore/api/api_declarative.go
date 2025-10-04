@@ -161,11 +161,11 @@ type DataFieldInfo struct {
 	Tags string // Complete struct tag string
 }
 
-// TypedStore wraps a Store with type-safe operations for a specific document type T.
+// Store wraps a Store with type-safe operations for a specific document type T.
 //
 // This is the primary interface for applications using nanostore, providing compile-time
 // type safety while leveraging the sophisticated ID generation and dimensional organization
-// features of the underlying store. The TypedStore automatically handles:
+// features of the underlying store. The Store automatically handles:
 //
 // - **Automatic Configuration**: Generates dimension configuration from struct tags
 // - **Type Marshaling/Unmarshaling**: Converts between Go structs and store documents
@@ -174,7 +174,7 @@ type DataFieldInfo struct {
 //
 // # Design Philosophy
 //
-// The TypedStore is designed around "configuration by convention" principles:
+// The Store is designed around "configuration by convention" principles:
 //
 //  1. **Struct Tags Drive Configuration**: Instead of separate config files, dimensions
 //     are defined directly on Go struct fields using tags
@@ -204,7 +204,7 @@ type DataFieldInfo struct {
 //
 // # Document Embedding Requirement
 //
-// All types used with TypedStore must embed nanostore.Document:
+// All types used with Store must embed nanostore.Document:
 //
 //	type MyDoc struct {
 //	    nanostore.Document  // Required - provides UUID, SimpleID, Title, Body, etc.
@@ -220,7 +220,7 @@ type DataFieldInfo struct {
 //
 // # Automatic ID Resolution
 //
-// The TypedStore automatically handles Smart ID resolution throughout:
+// The Store automatically handles Smart ID resolution throughout:
 //
 // - **User Input**: Methods accept SimpleIDs from users (e.g., "1.2", "dh3")
 // - **Internal Processing**: Automatically resolves to UUIDs for store operations
@@ -229,7 +229,7 @@ type DataFieldInfo struct {
 //
 // # Error Handling Strategy
 //
-// The TypedStore provides clear error messages for common issues:
+// The Store provides clear error messages for common issues:
 //
 // - **Type Validation**: Ensures T embeds Document before operation
 // - **Configuration Errors**: Clear messages for invalid struct tags
@@ -245,20 +245,20 @@ type DataFieldInfo struct {
 //
 // # Thread Safety
 //
-// TypedStore is thread-safe:
+// Store is thread-safe:
 // - Immutable after creation (config and type information cached)
 // - All operations delegate to thread-safe underlying store
-// - Multiple goroutines can safely share a single TypedStore instance
-type TypedStore[T any] struct {
-	store  nanostore.Store  // Underlying nanostore implementation
+// - Multiple goroutines can safely share a single Store instance
+type Store[T any] struct {
+	store  store.Store      // Underlying nanostore implementation
 	config nanostore.Config // Generated configuration from struct tags
 	typ    reflect.Type     // Cached type information for T
 }
 
-// NewFromType creates a new TypedStore for the given type T, automatically generating
+// New creates a new Store for the given type T, automatically generating
 // the configuration from struct tags.
 //
-// This is the primary constructor for TypedStore and performs several critical setup steps:
+// This is the primary constructor for Store and performs several critical setup steps:
 //
 // 1. **Type Validation**: Ensures T properly embeds nanostore.Document
 // 2. **Configuration Generation**: Analyzes struct tags to create dimension config
@@ -307,7 +307,7 @@ type TypedStore[T any] struct {
 //	    ParentID string `dimension:"parent_id,ref"`
 //	}
 //
-//	store, err := NewFromType[Task]("tasks.json")
+//	store, err := New[Task]("tasks.json")
 //	if err != nil {
 //	    log.Fatal(err)
 //	}
@@ -316,9 +316,9 @@ type TypedStore[T any] struct {
 // # Performance Notes
 //
 // - Reflection is only used during initialization, not per-operation
-// - Generated configuration is cached for the lifetime of the TypedStore
+// - Generated configuration is cached for the lifetime of the Store
 // - File creation is deferred until first document is added
-func NewFromType[T any](filePath string) (*TypedStore[T], error) {
+func New[T any](filePath string) (*Store[T], error) {
 	var zero T
 	typ := reflect.TypeOf(zero)
 
@@ -334,12 +334,12 @@ func NewFromType[T any](filePath string) (*TypedStore[T], error) {
 	}
 
 	// Create underlying store
-	store, err := nanostore.New(filePath, config)
+	store, err := store.New(filePath, &config)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create store: %w", err)
 	}
 
-	return &TypedStore[T]{
+	return &Store[T]{
 		store:  store,
 		config: config,
 		typ:    typ,
@@ -453,7 +453,7 @@ func NewFromType[T any](filePath string) (*TypedStore[T], error) {
 //	}
 //	childID, err := store.Create("Subtask of feature X", subtask)
 //	// childID might be "1.1" (first child of parent "1")
-func (ts *TypedStore[T]) Create(title string, data *T) (string, error) {
+func (ts *Store[T]) Create(title string, data *T) (string, error) {
 	dimensions, extraData, err := MarshalDimensions(data)
 	if err != nil {
 		return "", fmt.Errorf("failed to marshal dimensions: %w", err)
@@ -587,7 +587,7 @@ func (ts *TypedStore[T]) Create(title string, data *T) (string, error) {
 // - GetMetadata() - Returns only metadata (UUID, SimpleID, timestamps)
 // - GetDimensions() - Returns raw dimensions map
 // - List() - Bulk retrieval with filtering
-func (ts *TypedStore[T]) Get(id string) (*T, error) {
+func (ts *Store[T]) Get(id string) (*T, error) {
 	// Consistent ID resolution: try SimpleID first, fallback to direct UUID
 	uuid, err := ts.store.ResolveUUID(id)
 	if err != nil {
@@ -624,7 +624,7 @@ func (ts *TypedStore[T]) Get(id string) (*T, error) {
 // buildUpdateRequest creates an UpdateRequest from typed data
 // This helper eliminates ~100 lines of code duplication across Update methods
 // by centralizing the complex struct-to-update-request conversion logic
-func (ts *TypedStore[T]) buildUpdateRequest(data *T) (nanostore.UpdateRequest, error) {
+func (ts *Store[T]) buildUpdateRequest(data *T) (nanostore.UpdateRequest, error) {
 	// MarshalDimensionsForUpdate preserves zero values for field clearing in updates
 	// This is where struct tag parsing happens and values are validated
 	dimensions, extraData, err := MarshalDimensionsForUpdate(data)
@@ -749,7 +749,7 @@ func (ts *TypedStore[T]) buildUpdateRequest(data *T) (nanostore.UpdateRequest, e
 // - UpdateByDimension() - Update multiple documents by filter criteria
 // - UpdateWhere() - Update with custom SQL conditions
 // - UpdateByUUIDs() - Update specific documents by UUID list
-func (ts *TypedStore[T]) Update(id string, data *T) (int, error) {
+func (ts *Store[T]) Update(id string, data *T) (int, error) {
 	req, err := ts.buildUpdateRequest(data)
 	if err != nil {
 		return 0, err
@@ -848,13 +848,13 @@ func (ts *TypedStore[T]) Update(id string, data *T) (int, error) {
 // For bulk deletion operations, consider:
 // - DeleteByDimension() for deleting multiple documents by filter criteria
 // - DeleteWhere() for deleting with custom SQL conditions
-func (ts *TypedStore[T]) Delete(id string, cascade bool) error {
+func (ts *Store[T]) Delete(id string, cascade bool) error {
 	return ts.store.Delete(id, cascade)
 }
 
 // DeleteByDimension removes all documents matching the given dimension filters
 // Multiple filters are combined with AND. Returns the number of documents deleted.
-func (ts *TypedStore[T]) DeleteByDimension(filters map[string]interface{}) (int, error) {
+func (ts *Store[T]) DeleteByDimension(filters map[string]interface{}) (int, error) {
 	return ts.store.DeleteByDimension(filters)
 }
 
@@ -874,7 +874,7 @@ func (ts *TypedStore[T]) DeleteByDimension(filters map[string]interface{}) (int,
 //	count, err := store.DeleteWhere("status = '" + userInput + "'") // DON'T DO THIS
 //
 // Returns the number of documents deleted.
-func (ts *TypedStore[T]) DeleteWhere(whereClause string, args ...interface{}) (int, error) {
+func (ts *Store[T]) DeleteWhere(whereClause string, args ...interface{}) (int, error) {
 	// Pass through to underlying store which implements the secure WHERE clause evaluation
 	return ts.store.DeleteWhere(whereClause, args...)
 }
@@ -888,7 +888,7 @@ func (ts *TypedStore[T]) DeleteWhere(whereClause string, args ...interface{}) (i
 // See Update() method documentation for complete field clearing behavior details.
 //
 // Returns the number of documents updated.
-func (ts *TypedStore[T]) UpdateByDimension(filters map[string]interface{}, data *T) (int, error) {
+func (ts *Store[T]) UpdateByDimension(filters map[string]interface{}, data *T) (int, error) {
 	req, err := ts.buildUpdateRequest(data)
 	if err != nil {
 		return 0, err
@@ -922,7 +922,7 @@ func (ts *TypedStore[T]) UpdateByDimension(filters map[string]interface{}, data 
 // See Update() method documentation for complete field clearing behavior details.
 //
 // Returns the number of documents updated.
-func (ts *TypedStore[T]) UpdateWhere(whereClause string, data *T, args ...interface{}) (int, error) {
+func (ts *Store[T]) UpdateWhere(whereClause string, data *T, args ...interface{}) (int, error) {
 	// Convert typed data to UpdateRequest using shared helper
 	req, err := ts.buildUpdateRequest(data)
 	if err != nil {
@@ -949,7 +949,7 @@ func (ts *TypedStore[T]) UpdateWhere(whereClause string, data *T, args ...interf
 // See Update() method documentation for complete field clearing behavior details.
 //
 // Returns the number of documents updated.
-func (ts *TypedStore[T]) UpdateByUUIDs(uuids []string, data *T) (int, error) {
+func (ts *Store[T]) UpdateByUUIDs(uuids []string, data *T) (int, error) {
 	req, err := ts.buildUpdateRequest(data)
 	if err != nil {
 		return 0, err
@@ -960,13 +960,13 @@ func (ts *TypedStore[T]) UpdateByUUIDs(uuids []string, data *T) (int, error) {
 
 // DeleteByUUIDs deletes multiple documents by their UUIDs in a single operation
 // Returns the number of documents deleted.
-func (ts *TypedStore[T]) DeleteByUUIDs(uuids []string) (int, error) {
+func (ts *Store[T]) DeleteByUUIDs(uuids []string) (int, error) {
 	return ts.store.DeleteByUUIDs(uuids)
 }
 
 // Query returns a new typed query builder
-func (ts *TypedStore[T]) Query() *TypedQuery[T] {
-	return &TypedQuery[T]{
+func (ts *Store[T]) Query() *Query[T] {
+	return &Query[T]{
 		store:      ts.store,
 		typedStore: ts,
 		options: types.ListOptions{
@@ -976,25 +976,25 @@ func (ts *TypedStore[T]) Query() *TypedQuery[T] {
 }
 
 // Close closes the underlying store
-func (ts *TypedStore[T]) Close() error {
+func (ts *Store[T]) Close() error {
 	return ts.store.Close()
 }
 
-// Store returns the underlying nanostore.Store for operations that need direct access
+// Store returns the underlying store.Store for operations that need direct access
 // This is useful for operations like export that work with the raw Store interface
-func (ts *TypedStore[T]) Store() nanostore.Store {
+func (ts *Store[T]) Store() store.Store {
 	return ts.store
 }
 
 // ResolveUUID converts a simple ID (e.g., "1.2.c3") to a UUID
 // This provides direct access to ID resolution without needing to access the underlying store
-func (ts *TypedStore[T]) ResolveUUID(simpleID string) (string, error) {
+func (ts *Store[T]) ResolveUUID(simpleID string) (string, error) {
 	return ts.store.ResolveUUID(simpleID)
 }
 
 // List returns documents based on the provided ListOptions, converted to typed structs
 // This provides direct access to the underlying store's List functionality while maintaining type safety
-func (ts *TypedStore[T]) List(opts types.ListOptions) ([]T, error) {
+func (ts *Store[T]) List(opts types.ListOptions) ([]T, error) {
 	// Validate and transform field names in query options
 	transformedOpts, err := ts.validateAndTransformListOptions(opts)
 	if err != nil {
@@ -1024,7 +1024,7 @@ func (ts *TypedStore[T]) List(opts types.ListOptions) ([]T, error) {
 }
 
 // validateAndTransformListOptions validates field names and transforms them to the canonical storage format
-func (ts *TypedStore[T]) validateAndTransformListOptions(opts types.ListOptions) (types.ListOptions, error) {
+func (ts *Store[T]) validateAndTransformListOptions(opts types.ListOptions) (types.ListOptions, error) {
 	// Create a copy to avoid modifying the original
 	transformedOpts := opts
 
@@ -1090,7 +1090,7 @@ func (ts *TypedStore[T]) validateAndTransformListOptions(opts types.ListOptions)
 }
 
 // validateDataFieldName checks if a field name (either snake_case or PascalCase) exists in the struct
-func (ts *TypedStore[T]) validateDataFieldName(typ reflect.Type, fieldName string) error {
+func (ts *Store[T]) validateDataFieldName(typ reflect.Type, fieldName string) error {
 	// Try to find the field by name (supports both conventions)
 	if _, found := findFieldByName(typ, fieldName); found {
 		return nil
@@ -1103,7 +1103,7 @@ func (ts *TypedStore[T]) validateDataFieldName(typ reflect.Type, fieldName strin
 }
 
 // getAvailableDataFields returns a list of available data field names (non-dimension fields)
-func (ts *TypedStore[T]) getAvailableDataFields(typ reflect.Type) []string {
+func (ts *Store[T]) getAvailableDataFields(typ reflect.Type) []string {
 	var fields []string
 
 	for i := 0; i < typ.NumField(); i++ {
@@ -1149,7 +1149,7 @@ func (ts *TypedStore[T]) getAvailableDataFields(typ reflect.Type) []string {
 // - Working with documents that partially match the struct schema
 // - Debugging and introspection
 // - Administrative operations
-func (ts *TypedStore[T]) GetRaw(id string) (*types.Document, error) {
+func (ts *Store[T]) GetRaw(id string) (*types.Document, error) {
 	// Consistent ID resolution: try SimpleID first, fallback to direct UUID
 	// This dual approach handles both user-provided SimpleIDs ("1", "h2")
 	// and system-provided UUIDs transparently
@@ -1192,7 +1192,7 @@ func (ts *TypedStore[T]) GetRaw(id string) (*types.Document, error) {
 // - You want to bypass struct tag validation
 // - You're migrating data that has different dimension names
 // Returns the UUID of the created document
-func (ts *TypedStore[T]) AddRaw(title string, dimensions map[string]interface{}) (string, error) {
+func (ts *Store[T]) AddRaw(title string, dimensions map[string]interface{}) (string, error) {
 	// Normalize _data field names to ensure consistent storage format
 	// This ensures compatibility with typed queries while maintaining raw capability
 	normalizedDimensions := make(map[string]interface{})
@@ -1218,7 +1218,7 @@ func (ts *TypedStore[T]) AddRaw(title string, dimensions map[string]interface{})
 // - Introspecting the full dimension structure
 // Accepts both UUID and SimpleID for maximum flexibility
 // Returns a copy of the dimensions map to prevent accidental modifications
-func (ts *TypedStore[T]) GetDimensions(id string) (map[string]interface{}, error) {
+func (ts *Store[T]) GetDimensions(id string) (map[string]interface{}, error) {
 	doc, err := ts.GetRaw(id)
 	if err != nil {
 		return nil, err
@@ -1241,7 +1241,7 @@ func (ts *TypedStore[T]) GetDimensions(id string) (map[string]interface{}, error
 // - Building document lists with metadata-only information
 // - Debugging and administrative operations
 // Accepts both UUID and SimpleID for maximum flexibility
-func (ts *TypedStore[T]) GetMetadata(id string) (*DocumentMetadata, error) {
+func (ts *Store[T]) GetMetadata(id string) (*DocumentMetadata, error) {
 	doc, err := ts.GetRaw(id)
 	if err != nil {
 		return nil, err
@@ -1399,7 +1399,7 @@ func (ts *TypedStore[T]) GetMetadata(id string) (*DocumentMetadata, error) {
 // This method returns a copy of the configuration, not a reference.
 // The configuration is generated once at TypedStore creation and cached,
 // so this method is O(1) with respect to runtime performance.
-func (ts *TypedStore[T]) GetDimensionConfig() (*nanostore.Config, error) {
+func (ts *Store[T]) GetDimensionConfig() (*nanostore.Config, error) {
 	// Return a copy of the cached configuration
 	// Critical: This is cached from struct tag parsing done ONCE at store creation.
 	// We don't regenerate via reflection here because:
@@ -1467,7 +1467,7 @@ func (ts *TypedStore[T]) GetDimensionConfig() (*nanostore.Config, error) {
 // This method is primarily intended for testing scenarios. Production code typically
 // should not need to override system time, though the capability exists if needed
 // for specific use cases like migration or data import.
-func (ts *TypedStore[T]) SetTimeFunc(timeFunc func() time.Time) error {
+func (ts *Store[T]) SetTimeFunc(timeFunc func() time.Time) error {
 	// Attempt to cast underlying store to TestStore interface
 	// This interface check is necessary because not all store implementations
 	// support time function override (production stores may omit this feature)
@@ -1546,7 +1546,7 @@ func (ts *TypedStore[T]) SetTimeFunc(timeFunc func() time.Time) error {
 // This method performs O(n²) validation for prefix conflicts where n is the
 // total number of configured values across all dimensions. It should typically
 // be called during application startup or testing, not in hot paths.
-func (ts *TypedStore[T]) ValidateConfiguration() error {
+func (ts *Store[T]) ValidateConfiguration() error {
 	config, err := ts.GetDimensionConfig()
 	if err != nil {
 		return fmt.Errorf("failed to get configuration: %w", err)
@@ -1698,7 +1698,7 @@ func (ts *TypedStore[T]) ValidateConfiguration() error {
 // - **Testing**: Validate store state in unit tests
 // - **Monitoring**: Get runtime statistics for health checks
 // - **Documentation**: Generate documentation from live configuration
-func (ts *TypedStore[T]) GetDebugInfo() (*DebugInfo, error) {
+func (ts *Store[T]) GetDebugInfo() (*DebugInfo, error) {
 	var zero T
 	typ := reflect.TypeOf(zero)
 
@@ -1789,7 +1789,7 @@ func (ts *TypedStore[T]) GetDebugInfo() (*DebugInfo, error) {
 // This method iterates through all documents to calculate statistics.
 // For large stores, this can be expensive. Consider caching results
 // or calling periodically rather than on every request.
-func (ts *TypedStore[T]) GetStoreStats() (*StoreStats, error) {
+func (ts *Store[T]) GetStoreStats() (*StoreStats, error) {
 	// Get all documents for analysis using raw store access
 	allDocs, err := ts.store.List(types.ListOptions{})
 	if err != nil {
@@ -1924,7 +1924,7 @@ func (ts *TypedStore[T]) GetStoreStats() (*StoreStats, error) {
 // This method performs extensive validation by examining all documents and
 // their relationships. For large stores, this can take significant time.
 // Consider running periodically or during maintenance windows.
-func (ts *TypedStore[T]) ValidateStoreIntegrity() (*IntegrityReport, error) {
+func (ts *Store[T]) ValidateStoreIntegrity() (*IntegrityReport, error) {
 	// Get all documents and configuration using raw store access
 	allDocs, err := ts.store.List(types.ListOptions{})
 	if err != nil {
@@ -2102,7 +2102,7 @@ func (ts *TypedStore[T]) ValidateStoreIntegrity() (*IntegrityReport, error) {
 // This method modifies in-memory configuration only. Changes do not persist
 // across application restarts and do not affect the underlying store's
 // configuration or existing documents.
-func (ts *TypedStore[T]) AddDimensionValue(dimensionName, value, prefix string) error {
+func (ts *Store[T]) AddDimensionValue(dimensionName, value, prefix string) error {
 	if strings.TrimSpace(dimensionName) == "" {
 		return fmt.Errorf("dimension name cannot be empty")
 	}
@@ -2188,7 +2188,7 @@ func (ts *TypedStore[T]) AddDimensionValue(dimensionName, value, prefix string) 
 //
 // Same limitations as AddDimensionValue - this is an API demonstration
 // that shows the intended design pattern for future full implementation.
-func (ts *TypedStore[T]) ModifyDimensionDefault(dimensionName, newDefault string) error {
+func (ts *Store[T]) ModifyDimensionDefault(dimensionName, newDefault string) error {
 	if strings.TrimSpace(dimensionName) == "" {
 		return fmt.Errorf("dimension name cannot be empty")
 	}
@@ -2279,7 +2279,7 @@ func (ts *TypedStore[T]) ModifyDimensionDefault(dimensionName, newDefault string
 // - Find fields that might benefit from being made dimensional
 // - Understand data completeness across your document set
 // - Guide struct design decisions
-func (ts *TypedStore[T]) GetFieldUsageStats() (*FieldUsageStats, error) {
+func (ts *Store[T]) GetFieldUsageStats() (*FieldUsageStats, error) {
 	stats := &FieldUsageStats{
 		TotalDocuments: 0,
 		DimensionUsage: make(map[string]DimensionUsageInfo),
@@ -2415,7 +2415,7 @@ func (ts *TypedStore[T]) GetFieldUsageStats() (*FieldUsageStats, error) {
 // - Incorrectly tagged dimension fields
 // - Type compatibility issues
 // - Struct design problems
-func (ts *TypedStore[T]) GetTypeSchema() (*TypeSchema, error) {
+func (ts *Store[T]) GetTypeSchema() (*TypeSchema, error) {
 	var zero T
 	typ := reflect.TypeOf(zero)
 
@@ -2491,15 +2491,15 @@ func (ts *TypedStore[T]) GetTypeSchema() (*TypeSchema, error) {
 	return schema, nil
 }
 
-type TypedQuery[T any] struct {
-	store      nanostore.Store   // Underlying store for query execution
-	typedStore *TypedStore[T]    // Parent TypedStore for validation
+type Query[T any] struct {
+	store      store.Store       // Underlying store for query execution
+	typedStore *Store[T]         // Parent Store for validation
 	options    types.ListOptions // Accumulated query options
 }
 
 // getDimensionConfig returns the dimension configuration for type T
 // This is used internally by NOT methods to get valid values dynamically
-func (tq *TypedQuery[T]) getDimensionConfig() (*nanostore.Config, error) {
+func (tq *Query[T]) getDimensionConfig() (*nanostore.Config, error) {
 	var zero T
 	typ := reflect.TypeOf(zero)
 
@@ -2530,7 +2530,7 @@ func (tq *TypedQuery[T]) getDimensionConfig() (*nanostore.Config, error) {
 // - **Consistency**: Ensures all data field operations use the same validation logic
 //
 // This method should be called before executing any query to catch invalid field names early.
-func (tq *TypedQuery[T]) validateDataFieldReferences() error {
+func (tq *Query[T]) validateDataFieldReferences() error {
 	// Get valid data fields for type T
 	var zero T
 	validFields, err := getValidDataFields(zero)
@@ -2596,7 +2596,7 @@ func (tq *TypedQuery[T]) validateDataFieldReferences() error {
 // Instead of hardcoding ["pending", "active", "done"], we dynamically discover
 // values from the actual struct tag configuration at runtime.
 // Returns nil if the dimension doesn't exist or isn't enumerated
-func (tq *TypedQuery[T]) getEnumeratedValues(dimensionName string) ([]string, error) {
+func (tq *Query[T]) getEnumeratedValues(dimensionName string) ([]string, error) {
 	// Get configuration from the cached dimension config (performance optimized)
 	config, err := tq.getDimensionConfig()
 	if err != nil {
@@ -2617,7 +2617,7 @@ func (tq *TypedQuery[T]) getEnumeratedValues(dimensionName string) ([]string, er
 // Activity filters by activity value.
 // This is a domain-specific filter method - applications should define their own
 // filter methods based on their configured dimensions.
-func (tq *TypedQuery[T]) Activity(value string) *TypedQuery[T] {
+func (tq *Query[T]) Activity(value string) *Query[T] {
 	tq.options.Filters["activity"] = value
 	return tq
 }
@@ -2630,7 +2630,7 @@ func (tq *TypedQuery[T]) Activity(value string) *TypedQuery[T] {
 //
 //	// Find documents that are either active or archived
 //	results, err := store.Query().ActivityIn("active", "archived").Find()
-func (tq *TypedQuery[T]) ActivityIn(values ...string) *TypedQuery[T] {
+func (tq *Query[T]) ActivityIn(values ...string) *Query[T] {
 	tq.options.Filters["activity"] = values
 	return tq
 }
@@ -2642,7 +2642,7 @@ func (tq *TypedQuery[T]) ActivityIn(values ...string) *TypedQuery[T] {
 //
 //	// Find all tasks that are NOT deleted
 //	results, err := store.Query().ActivityNot("deleted").Find()
-func (tq *TypedQuery[T]) ActivityNot(value string) *TypedQuery[T] {
+func (tq *Query[T]) ActivityNot(value string) *Query[T] {
 	// Dynamically get all known activity values from type configuration
 	allActivities, err := tq.getEnumeratedValues("activity")
 	if err != nil {
@@ -2670,7 +2670,7 @@ func (tq *TypedQuery[T]) ActivityNot(value string) *TypedQuery[T] {
 //
 //	// Find all tasks that are NOT deleted or archived (i.e., active only)
 //	results, err := store.Query().ActivityNotIn("deleted", "archived").Find()
-func (tq *TypedQuery[T]) ActivityNotIn(values ...string) *TypedQuery[T] {
+func (tq *Query[T]) ActivityNotIn(values ...string) *Query[T] {
 	// Dynamically get all known activity values from type configuration
 	allActivities, err := tq.getEnumeratedValues("activity")
 	if err != nil {
@@ -2704,7 +2704,7 @@ func (tq *TypedQuery[T]) ActivityNotIn(values ...string) *TypedQuery[T] {
 //
 //	// Find all active documents
 //	results, err := store.Query().Status("active").Find()
-func (tq *TypedQuery[T]) Status(value string) *TypedQuery[T] {
+func (tq *Query[T]) Status(value string) *Query[T] {
 	tq.options.Filters["status"] = value
 	return tq
 }
@@ -2717,7 +2717,7 @@ func (tq *TypedQuery[T]) Status(value string) *TypedQuery[T] {
 //
 //	// Find documents that are either pending or active
 //	results, err := store.Query().StatusIn("pending", "active").Find()
-func (tq *TypedQuery[T]) StatusIn(values ...string) *TypedQuery[T] {
+func (tq *Query[T]) StatusIn(values ...string) *Query[T] {
 	tq.options.Filters["status"] = values
 	return tq
 }
@@ -2735,7 +2735,7 @@ func (tq *TypedQuery[T]) StatusIn(values ...string) *TypedQuery[T] {
 //
 //	// Find all tasks that are NOT done
 //	results, err := store.Query().StatusNot("done").Find()
-func (tq *TypedQuery[T]) StatusNot(value string) *TypedQuery[T] {
+func (tq *Query[T]) StatusNot(value string) *Query[T] {
 	// Dynamically get all known status values from type configuration
 	// CRITICAL FIX: This replaces hardcoded ["pending", "active", "done"] with
 	// actual values from struct tags, making this work with ANY enum configuration
@@ -2768,7 +2768,7 @@ func (tq *TypedQuery[T]) StatusNot(value string) *TypedQuery[T] {
 //
 //	// Find all tasks that are NOT done or archived
 //	results, err := store.Query().StatusNotIn("done", "archived").Find()
-func (tq *TypedQuery[T]) StatusNotIn(values ...string) *TypedQuery[T] {
+func (tq *Query[T]) StatusNotIn(values ...string) *Query[T] {
 	// Dynamically get all known status values from type configuration
 	allStatuses, err := tq.getEnumeratedValues("status")
 	if err != nil {
@@ -2801,7 +2801,7 @@ func (tq *TypedQuery[T]) StatusNotIn(values ...string) *TypedQuery[T] {
 //
 //	// Find all high priority items
 //	results, err := store.Query().Priority("high").Find()
-func (tq *TypedQuery[T]) Priority(value string) *TypedQuery[T] {
+func (tq *Query[T]) Priority(value string) *Query[T] {
 	tq.options.Filters["priority"] = value
 	return tq
 }
@@ -2814,7 +2814,7 @@ func (tq *TypedQuery[T]) Priority(value string) *TypedQuery[T] {
 //
 //	// Find documents that are either high or medium priority
 //	results, err := store.Query().PriorityIn("high", "medium").Find()
-func (tq *TypedQuery[T]) PriorityIn(values ...string) *TypedQuery[T] {
+func (tq *Query[T]) PriorityIn(values ...string) *Query[T] {
 	tq.options.Filters["priority"] = values
 	return tq
 }
@@ -2826,7 +2826,7 @@ func (tq *TypedQuery[T]) PriorityIn(values ...string) *TypedQuery[T] {
 //
 //	// Find all tasks that are NOT low priority
 //	results, err := store.Query().PriorityNot("low").Find()
-func (tq *TypedQuery[T]) PriorityNot(value string) *TypedQuery[T] {
+func (tq *Query[T]) PriorityNot(value string) *Query[T] {
 	// Dynamically get all known priority values from type configuration
 	allPriorities, err := tq.getEnumeratedValues("priority")
 	if err != nil {
@@ -2854,7 +2854,7 @@ func (tq *TypedQuery[T]) PriorityNot(value string) *TypedQuery[T] {
 //
 //	// Find all tasks that are NOT low or medium priority (i.e., high priority only)
 //	results, err := store.Query().PriorityNotIn("low", "medium").Find()
-func (tq *TypedQuery[T]) PriorityNotIn(values ...string) *TypedQuery[T] {
+func (tq *Query[T]) PriorityNotIn(values ...string) *Query[T] {
 	// Dynamically get all known priority values from type configuration
 	allPriorities, err := tq.getEnumeratedValues("priority")
 	if err != nil {
@@ -2902,7 +2902,7 @@ func (tq *TypedQuery[T]) PriorityNotIn(values ...string) *TypedQuery[T] {
 //
 // Performance Note: Data field queries may be slower than dimension queries
 // since they typically cannot leverage specialized indexes.
-func (tq *TypedQuery[T]) Data(field string, value interface{}) *TypedQuery[T] {
+func (tq *Query[T]) Data(field string, value interface{}) *Query[T] {
 	// Validate and transform field name immediately for better error reporting
 	var zeroT T
 	typ := reflect.TypeOf(zeroT)
@@ -2937,7 +2937,7 @@ func (tq *TypedQuery[T]) Data(field string, value interface{}) *TypedQuery[T] {
 //
 //	// Find documents with multiple possible tags
 //	results, err := store.Query().DataIn("category", "urgent", "important").Find()
-func (tq *TypedQuery[T]) DataIn(field string, values ...interface{}) *TypedQuery[T] {
+func (tq *Query[T]) DataIn(field string, values ...interface{}) *Query[T] {
 	// Validate and transform field name immediately for better error reporting
 	var zeroT T
 	typ := reflect.TypeOf(zeroT)
@@ -2974,7 +2974,7 @@ func (tq *TypedQuery[T]) DataIn(field string, values ...interface{}) *TypedQuery
 //
 //	// Find documents NOT tagged as urgent
 //	results, err := store.Query().DataNot("tags", "urgent").Find()
-func (tq *TypedQuery[T]) DataNot(field string, value interface{}) *TypedQuery[T] {
+func (tq *Query[T]) DataNot(field string, value interface{}) *Query[T] {
 	// Validate and transform field name immediately for better error reporting
 	var zeroT T
 	typ := reflect.TypeOf(zeroT)
@@ -3004,7 +3004,7 @@ func (tq *TypedQuery[T]) DataNot(field string, value interface{}) *TypedQuery[T]
 //
 //	// Find documents NOT assigned to Alice or Bob
 //	results, err := store.Query().DataNotIn("assignee", "alice", "bob").Find()
-func (tq *TypedQuery[T]) DataNotIn(field string, values ...interface{}) *TypedQuery[T] {
+func (tq *Query[T]) DataNotIn(field string, values ...interface{}) *Query[T] {
 	// Validate and transform field name immediately for better error reporting
 	var zeroT T
 	typ := reflect.TypeOf(zeroT)
@@ -3074,7 +3074,7 @@ func (tq *TypedQuery[T]) DataNotIn(field string, values ...interface{}) *TypedQu
 //
 // The security design requires that query structure be established BEFORE
 // user parameters are considered. Parameter substitution happens safely after parsing.
-func (tq *TypedQuery[T]) Where(whereClause string, args ...interface{}) *TypedQuery[T] {
+func (tq *Query[T]) Where(whereClause string, args ...interface{}) *Query[T] {
 	// Use special filter key to mark for post-processing
 	tq.options.Filters["__where_clause__"] = map[string]interface{}{
 		"clause": whereClause,
@@ -3102,7 +3102,7 @@ func (tq *TypedQuery[T]) Where(whereClause string, args ...interface{}) *TypedQu
 //
 // Performance Note: ID resolution adds slight overhead but is typically fast
 // due to internal caching in the store layer.
-func (tq *TypedQuery[T]) ParentID(id string) *TypedQuery[T] {
+func (tq *Query[T]) ParentID(id string) *Query[T] {
 	// Try to resolve SimpleID to UUID for internal querying
 	if uuid, err := tq.store.ResolveUUID(id); err == nil {
 		tq.options.Filters["parent_id"] = uuid
@@ -3114,7 +3114,7 @@ func (tq *TypedQuery[T]) ParentID(id string) *TypedQuery[T] {
 }
 
 // ParentIDNotExists filters for documents without a parent
-func (tq *TypedQuery[T]) ParentIDNotExists() *TypedQuery[T] {
+func (tq *Query[T]) ParentIDNotExists() *Query[T] {
 	// We need to filter in post-processing since the store doesn't
 	// support "not exists" queries directly
 	// For now, we'll get all and filter
@@ -3125,7 +3125,7 @@ func (tq *TypedQuery[T]) ParentIDNotExists() *TypedQuery[T] {
 
 // ParentIDStartsWith filters for documents whose parent ID starts with a prefix
 // Useful for finding all descendants of a node
-func (tq *TypedQuery[T]) ParentIDStartsWith(prefix string) *TypedQuery[T] {
+func (tq *Query[T]) ParentIDStartsWith(prefix string) *Query[T] {
 	// This would need custom support in the store layer
 	// For now, we'll skip implementation
 	return tq
@@ -3212,13 +3212,13 @@ func (tq *TypedQuery[T]) ParentIDStartsWith(prefix string) *TypedQuery[T] {
 //
 // Search() only searches Title and Body fields. To search custom data fields
 // (like Assignee, Description, etc.), use Data() or Where() methods instead.
-func (tq *TypedQuery[T]) Search(text string) *TypedQuery[T] {
+func (tq *Query[T]) Search(text string) *Query[T] {
 	tq.options.FilterBySearch = text
 	return tq
 }
 
 // OrderBy adds ordering
-func (tq *TypedQuery[T]) OrderBy(column string) *TypedQuery[T] {
+func (tq *Query[T]) OrderBy(column string) *Query[T] {
 	tq.options.OrderBy = append(tq.options.OrderBy, types.OrderClause{
 		Column:     column,
 		Descending: false,
@@ -3227,7 +3227,7 @@ func (tq *TypedQuery[T]) OrderBy(column string) *TypedQuery[T] {
 }
 
 // OrderByDesc adds descending ordering
-func (tq *TypedQuery[T]) OrderByDesc(column string) *TypedQuery[T] {
+func (tq *Query[T]) OrderByDesc(column string) *Query[T] {
 	tq.options.OrderBy = append(tq.options.OrderBy, types.OrderClause{
 		Column:     column,
 		Descending: true,
@@ -3258,7 +3258,7 @@ func (tq *TypedQuery[T]) OrderByDesc(column string) *TypedQuery[T] {
 //
 // Performance Note: Ordering by data fields may be slower than dimension ordering
 // since they typically cannot leverage specialized indexes.
-func (tq *TypedQuery[T]) OrderByData(field string) *TypedQuery[T] {
+func (tq *Query[T]) OrderByData(field string) *Query[T] {
 	// Validate and transform field name immediately for better error reporting
 	var zeroT T
 	typ := reflect.TypeOf(zeroT)
@@ -3294,7 +3294,7 @@ func (tq *TypedQuery[T]) OrderByData(field string) *TypedQuery[T] {
 //
 //	// Order by last update timestamp (most recent first)
 //	results, err := store.Query().OrderByDataDesc("last_updated").Find()
-func (tq *TypedQuery[T]) OrderByDataDesc(field string) *TypedQuery[T] {
+func (tq *Query[T]) OrderByDataDesc(field string) *Query[T] {
 	// Validate and transform field name immediately for better error reporting
 	var zeroT T
 	typ := reflect.TypeOf(zeroT)
@@ -3395,7 +3395,7 @@ func (tq *TypedQuery[T]) OrderByDataDesc(field string) *TypedQuery[T] {
 // - OrderBy() - Essential for predictable pagination
 // - First() - Equivalent to Limit(1) with error handling
 // - Count() - Get total count (ignores Limit for full count)
-func (tq *TypedQuery[T]) Limit(n int) *TypedQuery[T] {
+func (tq *Query[T]) Limit(n int) *Query[T] {
 	tq.options.Limit = &n
 	return tq
 }
@@ -3519,7 +3519,7 @@ func (tq *TypedQuery[T]) Limit(n int) *TypedQuery[T] {
 // - OrderBy() - Required for consistent pagination
 // - Count() - Get total count for pagination info (ignores Offset)
 // - Find() - Execute paginated query
-func (tq *TypedQuery[T]) Offset(n int) *TypedQuery[T] {
+func (tq *Query[T]) Offset(n int) *Query[T] {
 	tq.options.Offset = &n
 	return tq
 }
@@ -3585,7 +3585,7 @@ func (tq *TypedQuery[T]) Offset(n int) *TypedQuery[T] {
 //	    OrderByDesc("created_at").
 //	    Limit(10).
 //	    Find()
-func (tq *TypedQuery[T]) Find() ([]T, error) {
+func (tq *Query[T]) Find() ([]T, error) {
 	// Check for validation errors first
 	if validationErr, ok := tq.options.Filters["__validation_error__"]; ok {
 		delete(tq.options.Filters, "__validation_error__")
@@ -3791,7 +3791,7 @@ func (tq *TypedQuery[T]) Find() ([]T, error) {
 // - Find() - Returns all matching documents
 // - Exists() - Check if any documents exist without retrieving data
 // - Count() - Get count of matching documents
-func (tq *TypedQuery[T]) First() (*T, error) {
+func (tq *Query[T]) First() (*T, error) {
 	limit := 1
 	tq.options.Limit = &limit
 
@@ -3897,7 +3897,7 @@ func (tq *TypedQuery[T]) First() (*T, error) {
 // - Find() - Returns the actual documents being counted
 // - Exists() - More efficient for checking if any documents exist
 // - First() - Get just the first matching document
-func (tq *TypedQuery[T]) Count() (int, error) {
+func (tq *Query[T]) Count() (int, error) {
 	// Use Find to get filtered results including post-processing
 	results, err := tq.Find()
 	if err != nil {
@@ -4025,7 +4025,7 @@ func (tq *TypedQuery[T]) Count() (int, error) {
 // - **Combine with conditional logic** for efficient workflows
 // - **Use with indexable fields** (dimensions) for best performance
 // - **Avoid for operations that need the actual documents** (use First() or Find())
-func (tq *TypedQuery[T]) Exists() (bool, error) {
+func (tq *Query[T]) Exists() (bool, error) {
 	// Set limit to 1 for efficiency
 	limit := 1
 	tq.options.Limit = &limit
@@ -4075,7 +4075,7 @@ func (tq *TypedQuery[T]) Exists() (bool, error) {
 //
 // Use this information to optimize query performance by restructuring
 // queries to use more dimensional filters when possible.
-func (tq *TypedQuery[T]) GetQueryPlan() (*QueryPlan, error) {
+func (tq *Query[T]) GetQueryPlan() (*QueryPlan, error) {
 	plan := &QueryPlan{
 		TotalFilters:            0,
 		IndexedFilterCount:      0,

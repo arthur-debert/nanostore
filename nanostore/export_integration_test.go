@@ -4,6 +4,7 @@ import (
 	"os"
 	"testing"
 
+	"github.com/arthur-debert/nanostore/nanostore/store"
 	"github.com/arthur-debert/nanostore/types"
 )
 
@@ -12,23 +13,23 @@ func TestExportIntegration(t *testing.T) {
 	tempFile := t.TempDir() + "/test-store.json"
 
 	// Create configuration
-	config := Config{
-		Dimensions: []DimensionConfig{
+	config := types.Config{
+		Dimensions: []types.DimensionConfig{
 			{
 				Name:   "status",
-				Type:   Enumerated,
+				Type:   types.Enumerated,
 				Values: []string{"pending", "active", "completed"},
 			},
 			{
 				Name:   "priority",
-				Type:   Enumerated,
+				Type:   types.Enumerated,
 				Values: []string{"low", "medium", "high"},
 			},
 		},
 	}
 
 	// Create store
-	store, err := New(tempFile, config)
+	store, err := store.New(tempFile, &config)
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}

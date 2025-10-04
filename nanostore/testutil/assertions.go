@@ -4,11 +4,12 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/arthur-debert/nanostore/nanostore"
+	"github.com/arthur-debert/nanostore/nanostore/store"
+	"github.com/arthur-debert/nanostore/types"
 )
 
 // AssertDocumentCount checks that the slice contains the expected number of documents
-func AssertDocumentCount(t *testing.T, docs []nanostore.Document, expected int, context ...string) {
+func AssertDocumentCount(t *testing.T, docs []types.Document, expected int, context ...string) {
 	t.Helper()
 	if len(docs) != expected {
 		ctx := ""
@@ -20,7 +21,7 @@ func AssertDocumentCount(t *testing.T, docs []nanostore.Document, expected int, 
 }
 
 // AssertDocumentExists verifies that a document with the given UUID exists in the slice
-func AssertDocumentExists(t *testing.T, docs []nanostore.Document, uuid string) {
+func AssertDocumentExists(t *testing.T, docs []types.Document, uuid string) {
 	t.Helper()
 	for _, doc := range docs {
 		if doc.UUID == uuid {
@@ -31,7 +32,7 @@ func AssertDocumentExists(t *testing.T, docs []nanostore.Document, uuid string) 
 }
 
 // AssertDocumentNotExists verifies that a document with the given UUID does not exist in the slice
-func AssertDocumentNotExists(t *testing.T, docs []nanostore.Document, uuid string) {
+func AssertDocumentNotExists(t *testing.T, docs []types.Document, uuid string) {
 	t.Helper()
 	for _, doc := range docs {
 		if doc.UUID == uuid {
@@ -42,9 +43,9 @@ func AssertDocumentNotExists(t *testing.T, docs []nanostore.Document, uuid strin
 }
 
 // AssertChildCount verifies that a parent has the expected number of direct children
-func AssertChildCount(t *testing.T, store nanostore.Store, parentUUID string, expected int) {
+func AssertChildCount(t *testing.T, store store.Store, parentUUID string, expected int) {
 	t.Helper()
-	children, err := store.List(nanostore.ListOptions{
+	children, err := store.List(types.ListOptions{
 		Filters: map[string]interface{}{
 			"parent_id": parentUUID,
 		},
@@ -59,9 +60,9 @@ func AssertChildCount(t *testing.T, store nanostore.Store, parentUUID string, ex
 }
 
 // AssertPendingChildCount counts children with status="pending" for a given parent
-func AssertPendingChildCount(t *testing.T, store nanostore.Store, parentUUID string, expected int) {
+func AssertPendingChildCount(t *testing.T, store store.Store, parentUUID string, expected int) {
 	t.Helper()
-	children, err := store.List(nanostore.ListOptions{
+	children, err := store.List(types.ListOptions{
 		Filters: map[string]interface{}{
 			"parent_id": parentUUID,
 			"status":    "pending",
@@ -77,9 +78,9 @@ func AssertPendingChildCount(t *testing.T, store nanostore.Store, parentUUID str
 }
 
 // AssertActiveChildCount counts children with status="active" for a given parent
-func AssertActiveChildCount(t *testing.T, store nanostore.Store, parentUUID string, expected int) {
+func AssertActiveChildCount(t *testing.T, store store.Store, parentUUID string, expected int) {
 	t.Helper()
-	children, err := store.List(nanostore.ListOptions{
+	children, err := store.List(types.ListOptions{
 		Filters: map[string]interface{}{
 			"parent_id": parentUUID,
 			"status":    "active",
@@ -95,9 +96,9 @@ func AssertActiveChildCount(t *testing.T, store nanostore.Store, parentUUID stri
 }
 
 // AssertDoneChildCount counts children with status="done" for a given parent
-func AssertDoneChildCount(t *testing.T, store nanostore.Store, parentUUID string, expected int) {
+func AssertDoneChildCount(t *testing.T, store store.Store, parentUUID string, expected int) {
 	t.Helper()
-	children, err := store.List(nanostore.ListOptions{
+	children, err := store.List(types.ListOptions{
 		Filters: map[string]interface{}{
 			"parent_id": parentUUID,
 			"status":    "done",
@@ -113,7 +114,7 @@ func AssertDoneChildCount(t *testing.T, store nanostore.Store, parentUUID string
 }
 
 // AssertIsRoot verifies that a document has no parent
-func AssertIsRoot(t *testing.T, doc nanostore.Document) {
+func AssertIsRoot(t *testing.T, doc types.Document) {
 	t.Helper()
 	if _, hasParent := doc.Dimensions["parent_id"]; hasParent {
 		t.Errorf("document %s should be a root (no parent_id), but has parent_id=%v",
@@ -122,7 +123,7 @@ func AssertIsRoot(t *testing.T, doc nanostore.Document) {
 }
 
 // AssertHasParent verifies that a document has a specific parent
-func AssertHasParent(t *testing.T, doc nanostore.Document, expectedParentUUID string) {
+func AssertHasParent(t *testing.T, doc types.Document, expectedParentUUID string) {
 	t.Helper()
 	parentID, hasParent := doc.Dimensions["parent_id"]
 	if !hasParent {
@@ -138,7 +139,7 @@ func AssertHasParent(t *testing.T, doc nanostore.Document, expectedParentUUID st
 }
 
 // AssertAllHaveDimension verifies that all documents have a specific dimension value
-func AssertAllHaveDimension(t *testing.T, docs []nanostore.Document, dimension, value string) {
+func AssertAllHaveDimension(t *testing.T, docs []types.Document, dimension, value string) {
 	t.Helper()
 	for _, doc := range docs {
 		actual, exists := doc.Dimensions[dimension]
@@ -154,7 +155,7 @@ func AssertAllHaveDimension(t *testing.T, docs []nanostore.Document, dimension, 
 }
 
 // AssertDimensionValues verifies that a document has all expected dimension values
-func AssertDimensionValues(t *testing.T, doc nanostore.Document, expected map[string]string) {
+func AssertDimensionValues(t *testing.T, doc types.Document, expected map[string]string) {
 	t.Helper()
 	for dim, expectedVal := range expected {
 		actual, exists := doc.Dimensions[dim]
@@ -170,7 +171,7 @@ func AssertDimensionValues(t *testing.T, doc nanostore.Document, expected map[st
 }
 
 // AssertHasStatus verifies that a document has a specific status
-func AssertHasStatus(t *testing.T, doc nanostore.Document, status string) {
+func AssertHasStatus(t *testing.T, doc types.Document, status string) {
 	t.Helper()
 	actual, exists := doc.Dimensions["status"]
 	if !exists {
@@ -183,7 +184,7 @@ func AssertHasStatus(t *testing.T, doc nanostore.Document, status string) {
 }
 
 // AssertHasPriority verifies that a document has a specific priority
-func AssertHasPriority(t *testing.T, doc nanostore.Document, priority string) {
+func AssertHasPriority(t *testing.T, doc types.Document, priority string) {
 	t.Helper()
 	actual, exists := doc.Dimensions["priority"]
 	if !exists {
@@ -196,13 +197,13 @@ func AssertHasPriority(t *testing.T, doc nanostore.Document, priority string) {
 }
 
 // AssertOrderedBy verifies that documents are ordered by a specific field
-func AssertOrderedBy(t *testing.T, docs []nanostore.Document, field string, ascending bool) {
+func AssertOrderedBy(t *testing.T, docs []types.Document, field string, ascending bool) {
 	t.Helper()
 	if len(docs) < 2 {
 		return // Nothing to check
 	}
 
-	getFieldValue := func(doc nanostore.Document) string {
+	getFieldValue := func(doc types.Document) string {
 		switch field {
 		case "title":
 			return doc.Title
@@ -234,7 +235,7 @@ func AssertOrderedBy(t *testing.T, docs []nanostore.Document, field string, asce
 }
 
 // AssertIDsInOrder verifies that documents appear in a specific ID order
-func AssertIDsInOrder(t *testing.T, docs []nanostore.Document, expectedUUIDs []string) {
+func AssertIDsInOrder(t *testing.T, docs []types.Document, expectedUUIDs []string) {
 	t.Helper()
 	if len(docs) != len(expectedUUIDs) {
 		t.Errorf("expected %d documents, got %d", len(expectedUUIDs), len(docs))
@@ -253,7 +254,7 @@ func AssertIDsInOrder(t *testing.T, docs []nanostore.Document, expectedUUIDs []s
 }
 
 // AssertQueryReturns verifies that a query returns exactly the expected documents
-func AssertQueryReturns(t *testing.T, store nanostore.Store, opts nanostore.ListOptions, expectedUUIDs ...string) {
+func AssertQueryReturns(t *testing.T, store store.Store, opts types.ListOptions, expectedUUIDs ...string) {
 	t.Helper()
 	results, err := store.List(opts)
 	if err != nil {
@@ -285,7 +286,7 @@ func AssertQueryReturns(t *testing.T, store nanostore.Store, opts nanostore.List
 }
 
 // AssertQueryEmpty verifies that a query returns no results
-func AssertQueryEmpty(t *testing.T, store nanostore.Store, opts nanostore.ListOptions) {
+func AssertQueryEmpty(t *testing.T, store store.Store, opts types.ListOptions) {
 	t.Helper()
 	results, err := store.List(opts)
 	if err != nil {
@@ -301,9 +302,9 @@ func AssertQueryEmpty(t *testing.T, store nanostore.Store, opts nanostore.ListOp
 }
 
 // AssertSearchFinds verifies that a search query returns the expected number of results
-func AssertSearchFinds(t *testing.T, store nanostore.Store, query string, expectedCount int) {
+func AssertSearchFinds(t *testing.T, store store.Store, query string, expectedCount int) {
 	t.Helper()
-	results, err := store.List(nanostore.ListOptions{
+	results, err := store.List(types.ListOptions{
 		FilterBySearch: query,
 	})
 	if err != nil {
@@ -320,7 +321,7 @@ func AssertSearchFinds(t *testing.T, store nanostore.Store, query string, expect
 }
 
 // AssertContainsDocument verifies that at least one document in the slice matches a condition
-func AssertContainsDocument(t *testing.T, docs []nanostore.Document, predicate func(nanostore.Document) bool, description string) {
+func AssertContainsDocument(t *testing.T, docs []types.Document, predicate func(types.Document) bool, description string) {
 	t.Helper()
 	for _, doc := range docs {
 		if predicate(doc) {
@@ -331,7 +332,7 @@ func AssertContainsDocument(t *testing.T, docs []nanostore.Document, predicate f
 }
 
 // AssertAllDocuments verifies that all documents in the slice match a condition
-func AssertAllDocuments(t *testing.T, docs []nanostore.Document, predicate func(nanostore.Document) bool, description string) {
+func AssertAllDocuments(t *testing.T, docs []types.Document, predicate func(types.Document) bool, description string) {
 	t.Helper()
 	for _, doc := range docs {
 		if !predicate(doc) {
@@ -342,7 +343,7 @@ func AssertAllDocuments(t *testing.T, docs []nanostore.Document, predicate func(
 
 // AssertHierarchyDepth verifies the depth of a document in the hierarchy
 // Depth is calculated by counting parent relationships
-func AssertHierarchyDepth(t *testing.T, store nanostore.Store, doc nanostore.Document, expectedDepth int) {
+func AssertHierarchyDepth(t *testing.T, store store.Store, doc types.Document, expectedDepth int) {
 	t.Helper()
 
 	depth := 0
@@ -360,7 +361,7 @@ func AssertHierarchyDepth(t *testing.T, store nanostore.Store, doc nanostore.Doc
 		}
 
 		// Get parent document
-		parents, err := store.List(nanostore.ListOptions{
+		parents, err := store.List(types.ListOptions{
 			Filters: map[string]interface{}{
 				"uuid": parentID,
 			},

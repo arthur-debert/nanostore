@@ -93,7 +93,9 @@ run_checks() {
     fi
 
     # Run build check (suppress output)
-    if go build -v ./... >/dev/null 2>&1 && (cd "${PROJECT_ROOT}"/samples/todos && go build -v ./... >/dev/null 2>&1); then
+    if go build -v ./... >/dev/null 2>&1 && \
+       (cd "${PROJECT_ROOT}"/samples/todos && go build -v ./... >/dev/null 2>&1) && \
+       (cd "${PROJECT_ROOT}"/nanostore/cmd && go build -v ./... >/dev/null 2>&1); then
         echo -e "    ${GREEN}✓ Build${NC}"
     else
         echo -e "    ${RED}✗ Build failed${NC}"

@@ -38,7 +38,7 @@ func TestEnumeratedValueValidation(t *testing.T) {
 	defer func() { _ = os.Remove(tmpfile.Name()) }()
 	_ = tmpfile.Close()
 
-	store, err := api.NewFromType[TestEnumeratedValidationItem](tmpfile.Name())
+	store, err := api.New[TestEnumeratedValidationItem](tmpfile.Name())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -235,7 +235,7 @@ func TestEnumeratedValueValidation(t *testing.T) {
 		defer func() { _ = os.Remove(tmpfile2.Name()) }()
 		_ = tmpfile2.Close()
 
-		store2, err := api.NewFromType[TestEnumeratedValidationNoDefaults](tmpfile2.Name())
+		store2, err := api.New[TestEnumeratedValidationNoDefaults](tmpfile2.Name())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -282,7 +282,7 @@ func TestEnumeratedValidationErrorMessages(t *testing.T) {
 	defer func() { _ = os.Remove(tmpfile.Name()) }()
 	_ = tmpfile.Close()
 
-	store, err := api.NewFromType[TestEnumeratedValidationItem](tmpfile.Name())
+	store, err := api.New[TestEnumeratedValidationItem](tmpfile.Name())
 	if err != nil {
 		t.Fatal(err)
 	}

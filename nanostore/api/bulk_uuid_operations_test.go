@@ -24,7 +24,7 @@ type TestItem struct {
 	Priority string `values:"low,medium,high" default:"medium"`
 }
 
-func TestTypedStoreUpdateByUUIDs(t *testing.T) {
+func TestStoreUpdateByUUIDs(t *testing.T) {
 	// Create a temporary file
 	tmpfile, err := os.CreateTemp("", "test*.json")
 	if err != nil {
@@ -34,7 +34,7 @@ func TestTypedStoreUpdateByUUIDs(t *testing.T) {
 	_ = tmpfile.Close()
 
 	// Create typed store
-	store, err := api.NewFromType[TestItem](tmpfile.Name())
+	store, err := api.New[TestItem](tmpfile.Name())
 	if err != nil {
 		t.Fatalf("failed to create typed store: %v", err)
 	}
@@ -180,7 +180,7 @@ func TestTypedStoreUpdateByUUIDs(t *testing.T) {
 	})
 }
 
-func TestTypedStoreDeleteByUUIDs(t *testing.T) {
+func TestStoreDeleteByUUIDs(t *testing.T) {
 	// Create a temporary file
 	tmpfile, err := os.CreateTemp("", "test*.json")
 	if err != nil {
@@ -190,7 +190,7 @@ func TestTypedStoreDeleteByUUIDs(t *testing.T) {
 	_ = tmpfile.Close()
 
 	// Create typed store
-	store, err := api.NewFromType[TestItem](tmpfile.Name())
+	store, err := api.New[TestItem](tmpfile.Name())
 	if err != nil {
 		t.Fatalf("failed to create typed store: %v", err)
 	}
@@ -287,7 +287,7 @@ func TestTypedStoreDeleteByUUIDs(t *testing.T) {
 	})
 }
 
-func TestTypedStoreResolveUUID(t *testing.T) {
+func TestStoreResolveUUID(t *testing.T) {
 	// Create a temporary file
 	tmpfile, err := os.CreateTemp("", "test*.json")
 	if err != nil {
@@ -297,7 +297,7 @@ func TestTypedStoreResolveUUID(t *testing.T) {
 	_ = tmpfile.Close()
 
 	// Create typed store
-	store, err := api.NewFromType[TestItem](tmpfile.Name())
+	store, err := api.New[TestItem](tmpfile.Name())
 	if err != nil {
 		t.Fatalf("failed to create typed store: %v", err)
 	}

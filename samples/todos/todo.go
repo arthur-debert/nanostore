@@ -25,12 +25,12 @@ type TodoItem struct {
 
 // TodoApp manages the todo store and operations
 type TodoApp struct {
-	store *api.TypedStore[TodoItem]
+	store *api.Store[TodoItem]
 }
 
 // NewTodoApp creates a new todo application
 func NewTodoApp(filePath string) (*TodoApp, error) {
-	store, err := api.NewFromType[TodoItem](filePath)
+	store, err := api.New[TodoItem](filePath)
 	if err != nil {
 		return nil, err
 	}

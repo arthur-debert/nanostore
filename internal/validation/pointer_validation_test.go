@@ -50,7 +50,7 @@ func TestPointerFieldValidation(t *testing.T) {
 		{
 			name: "string pointer with dimension tag",
 			createFunc: func(filename string) error {
-				_, err := api.NewFromType[StructWithStringPointer](filename)
+				_, err := api.New[StructWithStringPointer](filename)
 				return err
 			},
 			expectErr: false, // Now supported
@@ -59,7 +59,7 @@ func TestPointerFieldValidation(t *testing.T) {
 		{
 			name: "int pointer with dimension tag",
 			createFunc: func(filename string) error {
-				_, err := api.NewFromType[StructWithIntPointer](filename)
+				_, err := api.New[StructWithIntPointer](filename)
 				return err
 			},
 			expectErr: false, // Now supported
@@ -68,7 +68,7 @@ func TestPointerFieldValidation(t *testing.T) {
 		{
 			name: "nested struct pointer",
 			createFunc: func(filename string) error {
-				_, err := api.NewFromType[StructWithNestedPointer](filename)
+				_, err := api.New[StructWithNestedPointer](filename)
 				return err
 			},
 			expectErr: true, // Still not supported
@@ -77,7 +77,7 @@ func TestPointerFieldValidation(t *testing.T) {
 		{
 			name: "pointer field without tag",
 			createFunc: func(filename string) error {
-				_, err := api.NewFromType[StructWithPointerNoTag](filename)
+				_, err := api.New[StructWithPointerNoTag](filename)
 				return err
 			},
 			expectErr: false, // Data fields with pointers are fine
@@ -114,7 +114,7 @@ func TestValidStructsWithoutPointers(t *testing.T) {
 	}
 
 	// This should work fine
-	store, err := api.NewFromType[ValidStruct]("/tmp/test_valid_struct.json")
+	store, err := api.New[ValidStruct]("/tmp/test_valid_struct.json")
 	if err != nil {
 		t.Fatalf("expected valid struct to work, got error: %v", err)
 	}

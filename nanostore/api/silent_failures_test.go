@@ -30,7 +30,7 @@ func TestSilentFailuresInQueries(t *testing.T) {
 	defer func() { _ = os.Remove(tmpfile.Name()) }()
 	_ = tmpfile.Close()
 
-	store, err := api.NewFromType[TestSilentFailuresItem](tmpfile.Name())
+	store, err := api.New[TestSilentFailuresItem](tmpfile.Name())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -222,7 +222,7 @@ func TestSilentFailuresInCustomOrderBy(t *testing.T) {
 	defer func() { _ = os.Remove(tmpfile.Name()) }()
 	_ = tmpfile.Close()
 
-	store, err := api.NewFromType[TestSilentFailuresItem](tmpfile.Name())
+	store, err := api.New[TestSilentFailuresItem](tmpfile.Name())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -270,7 +270,7 @@ func TestFieldValidationErrorMessages(t *testing.T) {
 	defer func() { _ = os.Remove(tmpfile.Name()) }()
 	_ = tmpfile.Close()
 
-	store, err := api.NewFromType[TestSilentFailuresItem](tmpfile.Name())
+	store, err := api.New[TestSilentFailuresItem](tmpfile.Name())
 	if err != nil {
 		t.Fatal(err)
 	}

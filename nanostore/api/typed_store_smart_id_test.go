@@ -25,7 +25,7 @@ type TestTaskMigrated struct {
 	Priority string `values:"low,high" default:"low"`
 }
 
-func TestTypedStoreUpdateWithSmartIDMigrated(t *testing.T) {
+func TestStoreUpdateWithSmartIDMigrated(t *testing.T) {
 	// Create a temporary file for typed store
 	tmpfile, err := os.CreateTemp("", "test*.json")
 	if err != nil {
@@ -34,7 +34,7 @@ func TestTypedStoreUpdateWithSmartIDMigrated(t *testing.T) {
 	defer func() { _ = os.Remove(tmpfile.Name()) }()
 	_ = tmpfile.Close()
 
-	store, err := api.NewFromType[TestTaskMigrated](tmpfile.Name())
+	store, err := api.New[TestTaskMigrated](tmpfile.Name())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -113,7 +113,7 @@ func TestTypedStoreUpdateWithSmartIDMigrated(t *testing.T) {
 	})
 }
 
-func TestTypedStoreDeleteWithSmartIDMigrated(t *testing.T) {
+func TestStoreDeleteWithSmartIDMigrated(t *testing.T) {
 	// Create a temporary file for typed store
 	tmpfile, err := os.CreateTemp("", "test*.json")
 	if err != nil {
@@ -122,7 +122,7 @@ func TestTypedStoreDeleteWithSmartIDMigrated(t *testing.T) {
 	defer func() { _ = os.Remove(tmpfile.Name()) }()
 	_ = tmpfile.Close()
 
-	store, err := api.NewFromType[TestTaskMigrated](tmpfile.Name())
+	store, err := api.New[TestTaskMigrated](tmpfile.Name())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -212,8 +212,8 @@ func TestTypedStoreDeleteWithSmartIDMigrated(t *testing.T) {
 	})
 }
 
-// TestTypedStoreSmartIDWithFixtureMigrated tests typed store behavior with fixture data
-func TestTypedStoreSmartIDWithFixtureMigrated(t *testing.T) {
+// TestStoreSmartIDWithFixtureMigrated tests typed store behavior with fixture data
+func TestStoreSmartIDWithFixtureMigrated(t *testing.T) {
 	// Load fixture to verify smart IDs work consistently
 	store, universe := testutil.LoadUniverse(t)
 

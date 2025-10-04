@@ -18,8 +18,8 @@ import (
 	"github.com/arthur-debert/nanostore/nanostore/api"
 )
 
-// TestTypedStoreConfiguration holds all configuration-related tests
-func TestTypedStoreConfiguration(t *testing.T) {
+// TestStoreConfiguration holds all configuration-related tests
+func TestStoreConfiguration(t *testing.T) {
 	// Create a temporary file for typed store
 	tmpfile, err := os.CreateTemp("", "test*.json")
 	if err != nil {
@@ -28,7 +28,7 @@ func TestTypedStoreConfiguration(t *testing.T) {
 	defer func() { _ = os.Remove(tmpfile.Name()) }()
 	_ = tmpfile.Close()
 
-	store, err := api.NewFromType[TodoItem](tmpfile.Name())
+	store, err := api.New[TodoItem](tmpfile.Name())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -157,7 +157,7 @@ func TestConfigurationValidation(t *testing.T) {
 		defer func() { _ = os.Remove(tmpfile.Name()) }()
 		_ = tmpfile.Close()
 
-		store, err := api.NewFromType[ValidConfigItem](tmpfile.Name())
+		store, err := api.New[ValidConfigItem](tmpfile.Name())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -177,7 +177,7 @@ func TestConfigurationValidation(t *testing.T) {
 		defer func() { _ = os.Remove(tmpfile.Name()) }()
 		_ = tmpfile.Close()
 
-		store, err := api.NewFromType[ComplexPrefixItem](tmpfile.Name())
+		store, err := api.New[ComplexPrefixItem](tmpfile.Name())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -224,7 +224,7 @@ func TestConfigurationValidation(t *testing.T) {
 		_ = tmpfile.Close()
 
 		// This should fail during store creation due to invalid default
-		_, err = api.NewFromType[InvalidDefaultItem](tmpfile.Name())
+		_, err = api.New[InvalidDefaultItem](tmpfile.Name())
 		if err == nil {
 			t.Error("expected error for invalid default value, got none")
 		} else if !strings.Contains(err.Error(), "default value") {
@@ -241,7 +241,7 @@ func TestConfigurationValidation(t *testing.T) {
 		_ = tmpfile.Close()
 
 		// Create store - might succeed initially
-		store, err := api.NewFromType[PrefixConflictItem](tmpfile.Name())
+		store, err := api.New[PrefixConflictItem](tmpfile.Name())
 		if err != nil {
 			// If creation fails, that's also acceptable for conflict detection
 			if strings.Contains(err.Error(), "prefix") || strings.Contains(err.Error(), "conflict") {
@@ -272,7 +272,7 @@ func TestConfigurationValidation(t *testing.T) {
 		_ = tmpfile.Close()
 
 		// Should fail due to empty values
-		_, err = api.NewFromType[EmptyValuesItem](tmpfile.Name())
+		_, err = api.New[EmptyValuesItem](tmpfile.Name())
 		if err == nil {
 			t.Error("expected error for empty values, got none")
 		}
@@ -287,7 +287,7 @@ func TestConfigurationIntrospection(t *testing.T) {
 	defer func() { _ = os.Remove(tmpfile.Name()) }()
 	_ = tmpfile.Close()
 
-	store, err := api.NewFromType[ComplexPrefixItem](tmpfile.Name())
+	store, err := api.New[ComplexPrefixItem](tmpfile.Name())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -366,7 +366,7 @@ func TestRuntimeConfigurationModification(t *testing.T) {
 	defer func() { _ = os.Remove(tmpfile.Name()) }()
 	_ = tmpfile.Close()
 
-	store, err := api.NewFromType[ValidConfigItem](tmpfile.Name())
+	store, err := api.New[ValidConfigItem](tmpfile.Name())
 	if err != nil {
 		t.Fatal(err)
 	}

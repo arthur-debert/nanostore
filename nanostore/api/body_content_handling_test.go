@@ -28,7 +28,7 @@ func TestBodyContentHandlingInCreate(t *testing.T) {
 	defer func() { _ = os.Remove(tmpfile.Name()) }()
 	_ = tmpfile.Close()
 
-	store, err := api.NewFromType[TestBodyContentHandling](tmpfile.Name())
+	store, err := api.New[TestBodyContentHandling](tmpfile.Name())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -221,7 +221,7 @@ func TestCreateMethodSignatureOptions(t *testing.T) {
 	defer func() { _ = os.Remove(tmpfile.Name()) }()
 	_ = tmpfile.Close()
 
-	store, err := api.NewFromType[TestBodyContentHandling](tmpfile.Name())
+	store, err := api.New[TestBodyContentHandling](tmpfile.Name())
 	if err != nil {
 		t.Fatal(err)
 	}

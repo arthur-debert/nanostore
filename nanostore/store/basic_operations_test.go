@@ -13,11 +13,12 @@ import (
 	"testing"
 
 	"github.com/arthur-debert/nanostore/nanostore"
+	"github.com/arthur-debert/nanostore/nanostore/store"
 	"github.com/arthur-debert/nanostore/nanostore/testutil"
 )
 
 func TestBasicOperationsMigrated(t *testing.T) {
-	var store nanostore.Store
+	var store store.Store
 	var universe *testutil.UniverseData
 
 	// Initial load

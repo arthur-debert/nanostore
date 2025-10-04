@@ -85,7 +85,7 @@ func TestDeclarativeRobustness(t *testing.T) {
 
 		// Note: Pointer fields in data fields (non-dimensions) are now supported
 		// This struct has a *string data field which should be fine
-		store, err := api.NewFromType[EdgeCaseItem](tmpfile.Name())
+		store, err := api.New[EdgeCaseItem](tmpfile.Name())
 		if err != nil {
 			t.Fatalf("expected success for data field pointer, got error: %v", err)
 		}
@@ -105,7 +105,7 @@ func TestDeclarativeRobustness(t *testing.T) {
 		_ = tmpfile.Close()
 
 		// This might fail during store creation
-		store, err := api.NewFromType[InvalidTagsItem](tmpfile.Name())
+		store, err := api.New[InvalidTagsItem](tmpfile.Name())
 		if err != nil {
 			// Expected - invalid tags should be caught
 			t.Logf("Store creation failed as expected: %v", err)
@@ -131,7 +131,7 @@ func TestDeclarativeRobustness(t *testing.T) {
 		defer func() { _ = os.Remove(tmpfile.Name()) }()
 		_ = tmpfile.Close()
 
-		store, err := api.NewFromType[SafeEdgeCaseItem](tmpfile.Name())
+		store, err := api.New[SafeEdgeCaseItem](tmpfile.Name())
 		if err != nil {
 			t.Fatalf("failed to create store: %v", err)
 		}
@@ -195,7 +195,7 @@ func TestDeclarativeRobustness(t *testing.T) {
 		defer func() { _ = os.Remove(tmpfile.Name()) }()
 		_ = tmpfile.Close()
 
-		store, err := api.NewFromType[SafeEdgeCaseItem](tmpfile.Name())
+		store, err := api.New[SafeEdgeCaseItem](tmpfile.Name())
 		if err != nil {
 			t.Fatalf("failed to create store: %v", err)
 		}
@@ -269,7 +269,7 @@ func TestDeclarativeRobustness(t *testing.T) {
 		defer func() { _ = os.Remove(tmpfile.Name()) }()
 		_ = tmpfile.Close()
 
-		store, err := api.NewFromType[SafeEdgeCaseItem](tmpfile.Name())
+		store, err := api.New[SafeEdgeCaseItem](tmpfile.Name())
 		if err != nil {
 			t.Fatalf("failed to create store: %v", err)
 		}

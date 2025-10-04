@@ -26,7 +26,7 @@ func TestUpdateMethodsAfterRefactoring(t *testing.T) {
 	_ = tmpfile.Close()
 
 	// Create typed store
-	store, err := api.NewFromType[TodoItem](tmpfile.Name())
+	store, err := api.New[TodoItem](tmpfile.Name())
 	if err != nil {
 		t.Fatalf("Failed to create store: %v", err)
 	}

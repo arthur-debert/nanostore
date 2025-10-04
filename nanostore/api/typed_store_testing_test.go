@@ -25,7 +25,7 @@ func TestSetTimeFunc(t *testing.T) {
 	defer func() { _ = os.Remove(tmpfile.Name()) }()
 	_ = tmpfile.Close()
 
-	store, err := api.NewFromType[TodoItem](tmpfile.Name())
+	store, err := api.New[TodoItem](tmpfile.Name())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -249,7 +249,7 @@ func TestSetTimeFunc(t *testing.T) {
 		defer func() { _ = os.Remove(tmpfile2.Name()) }()
 		_ = tmpfile2.Close()
 
-		orderStore, err := api.NewFromType[TodoItem](tmpfile2.Name())
+		orderStore, err := api.New[TodoItem](tmpfile2.Name())
 		if err != nil {
 			t.Fatalf("failed to create order test store: %v", err)
 		}
@@ -310,7 +310,7 @@ func TestSetTimeFuncEdgeCases(t *testing.T) {
 	defer func() { _ = os.Remove(tmpfile.Name()) }()
 	_ = tmpfile.Close()
 
-	store, err := api.NewFromType[TodoItem](tmpfile.Name())
+	store, err := api.New[TodoItem](tmpfile.Name())
 	if err != nil {
 		t.Fatal(err)
 	}

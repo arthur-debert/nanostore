@@ -17,7 +17,7 @@ import (
 	"github.com/arthur-debert/nanostore/types"
 )
 
-func TestTypedStoreAddRaw(t *testing.T) {
+func TestStoreAddRaw(t *testing.T) {
 	// Create a temporary file for typed store
 	tmpfile, err := os.CreateTemp("", "test*.json")
 	if err != nil {
@@ -26,7 +26,7 @@ func TestTypedStoreAddRaw(t *testing.T) {
 	defer func() { _ = os.Remove(tmpfile.Name()) }()
 	_ = tmpfile.Close()
 
-	store, err := api.NewFromType[TodoItem](tmpfile.Name())
+	store, err := api.New[TodoItem](tmpfile.Name())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -211,7 +211,7 @@ func TestTypedStoreAddRaw(t *testing.T) {
 		})
 
 		// This should still work in AddRaw mode - it bypasses struct validation
-		// The validation happens at the store level, not the TypedStore level
+		// The validation happens at the store level, not the Store level
 		if err != nil {
 			t.Logf("AddRaw with invalid dimension value returned error: %v", err)
 			// This is acceptable behavior - some stores may validate, others may not
@@ -287,7 +287,7 @@ func TestTypedStoreAddRaw(t *testing.T) {
 	})
 }
 
-func TestTypedStoreAddRawIntegration(t *testing.T) {
+func TestStoreAddRawIntegration(t *testing.T) {
 	// Test mixing AddRaw with regular typed operations
 	tmpfile, err := os.CreateTemp("", "test*.json")
 	if err != nil {
@@ -296,7 +296,7 @@ func TestTypedStoreAddRawIntegration(t *testing.T) {
 	defer func() { _ = os.Remove(tmpfile.Name()) }()
 	_ = tmpfile.Close()
 
-	store, err := api.NewFromType[TodoItem](tmpfile.Name())
+	store, err := api.New[TodoItem](tmpfile.Name())
 	if err != nil {
 		t.Fatal(err)
 	}

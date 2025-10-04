@@ -17,7 +17,7 @@ import (
 	"github.com/arthur-debert/nanostore/types"
 )
 
-func TestTypedStoreList(t *testing.T) {
+func TestStoreList(t *testing.T) {
 	// Create a temporary file for typed store
 	tmpfile, err := os.CreateTemp("", "test*.json")
 	if err != nil {
@@ -26,7 +26,7 @@ func TestTypedStoreList(t *testing.T) {
 	defer func() { _ = os.Remove(tmpfile.Name()) }()
 	_ = tmpfile.Close()
 
-	store, err := api.NewFromType[TodoItem](tmpfile.Name())
+	store, err := api.New[TodoItem](tmpfile.Name())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -294,7 +294,7 @@ func TestTypedStoreList(t *testing.T) {
 	})
 }
 
-func TestTypedStoreListErrorHandling(t *testing.T) {
+func TestStoreListErrorHandling(t *testing.T) {
 	// Create a temporary file for typed store
 	tmpfile, err := os.CreateTemp("", "test*.json")
 	if err != nil {
@@ -303,7 +303,7 @@ func TestTypedStoreListErrorHandling(t *testing.T) {
 	defer func() { _ = os.Remove(tmpfile.Name()) }()
 	_ = tmpfile.Close()
 
-	store, err := api.NewFromType[TodoItem](tmpfile.Name())
+	store, err := api.New[TodoItem](tmpfile.Name())
 	if err != nil {
 		t.Fatal(err)
 	}

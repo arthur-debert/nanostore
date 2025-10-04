@@ -22,12 +22,12 @@ type Note struct {
 
 // NoteApp manages the note store and operations
 type NoteApp struct {
-	store *api.TypedStore[Note]
+	store *api.Store[Note]
 }
 
 // NewNoteApp creates a new note application
 func NewNoteApp(filePath string) (*NoteApp, error) {
-	store, err := api.NewFromType[Note](filePath)
+	store, err := api.New[Note](filePath)
 	if err != nil {
 		return nil, err
 	}
