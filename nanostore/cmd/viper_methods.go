@@ -221,6 +221,17 @@ func (cli *ViperCLI) executeListCommand(cmd *cobra.Command) error {
 	filters := cli.viperInst.GetStringSlice("filter")
 	whereClause := cli.viperInst.GetString("where")
 	whereArgsStr := cli.viperInst.GetStringSlice("where-args")
+
+	// Date range flags
+	createdAfter := cli.viperInst.GetString("created-after")
+	createdBefore := cli.viperInst.GetString("created-before")
+	updatedAfter := cli.viperInst.GetString("updated-after")
+	updatedBefore := cli.viperInst.GetString("updated-before")
+
+	// NULL handling flags
+	nullFields := cli.viperInst.GetStringSlice("null-fields")
+	notNullFields := cli.viperInst.GetStringSlice("not-null-fields")
+
 	sort := cli.viperInst.GetString("sort")
 	limit := cli.viperInst.GetInt("limit")
 	offset := cli.viperInst.GetInt("offset")
@@ -241,24 +252,37 @@ func (cli *ViperCLI) executeListCommand(cmd *cobra.Command) error {
 	var documents interface{}
 	var err error
 
-	// Use WHERE clause if provided, otherwise fall back to basic List
-	if whereClause != "" {
-		// Convert string args to interface{} slice
-		whereArgs := make([]interface{}, len(whereArgsStr))
+	// Build date and NULL WHERE clauses
+	dateNullWhere, dateNullArgs, err := cli.reflectionExec.buildDateAndNullWhere(
+		createdAfter, createdBefore, updatedAfter, updatedBefore,
+		nullFields, notNullFields)
+	if err != nil {
+		return fmt.Errorf("failed to build date/NULL filters: %w", err)
+	}
+
+	// Check if we need to use complex querying (WHERE clauses, dates, or NULL checks)
+	needsComplexQuery := whereClause != "" || dateNullWhere != ""
+
+	if needsComplexQuery {
+		// Convert string args to interface{} slice for explicit WHERE clause
+		explicitArgs := make([]interface{}, len(whereArgsStr))
 		for i, arg := range whereArgsStr {
-			whereArgs[i] = arg
+			explicitArgs[i] = arg
 		}
 
-		// Execute query with WHERE clause
-		documents, err = cli.reflectionExec.ExecuteQuery(typeName, dbPath, whereClause, whereArgs, sort, limit, offset)
+		// Combine explicit WHERE clause with date/NULL filters
+		finalWhere, finalArgs := cli.reflectionExec.combineWhereClauses(
+			whereClause, explicitArgs, dateNullWhere, dateNullArgs)
+
+		// Execute complex query
+		documents, err = cli.reflectionExec.ExecuteQuery(typeName, dbPath, finalWhere, finalArgs, sort, limit, offset)
 		if err != nil {
-			return fmt.Errorf("failed to execute WHERE query: %w", err)
+			return fmt.Errorf("failed to execute complex query: %w", err)
 		}
 	} else {
-		// Parse list options for basic filtering
+		// Use basic List for simple filtering (just --filter flags)
 		options := cli.reflectionExec.parseListOptions(filters, sort, limit, offset)
 
-		// Execute basic list operation
 		documents, err = cli.reflectionExec.ExecuteList(typeName, dbPath, options)
 		if err != nil {
 			return fmt.Errorf("failed to list documents: %w", err)
@@ -554,44 +578,6 @@ func (cli *ViperCLI) collectFieldValues(typeName string) map[string]interface{} 
 	}
 
 	return data
-}
-
-// generateMockDocument generates a mock document for simulation
-func (cli *ViperCLI) generateMockDocument(id, typeName string) map[string]interface{} {
-	doc := map[string]interface{}{
-		"simple_id":  id,
-		"uuid":       "mock-uuid-" + id,
-		"title":      "Mock Document " + id,
-		"created_at": "2024-01-01T10:00:00Z",
-		"updated_at": "2024-01-01T10:00:00Z",
-	}
-
-	// Add mock values based on type schema
-	typeDef, exists := cli.registry.GetTypeDefinition(typeName)
-	if exists {
-		for dimName, dimSchema := range typeDef.Schema.Dimensions {
-			if len(dimSchema.Values) > 0 {
-				doc[dimName] = dimSchema.Values[0]
-			} else {
-				doc[dimName] = "mock-" + dimName
-			}
-		}
-
-		for fieldName, fieldSchema := range typeDef.Schema.Fields {
-			switch fieldSchema.Type {
-			case "string":
-				doc[fieldName] = "mock-" + fieldName + "-value"
-			case "int", "int64":
-				doc[fieldName] = 42
-			case "bool":
-				doc[fieldName] = true
-			default:
-				doc[fieldName] = nil
-			}
-		}
-	}
-
-	return doc
 }
 
 // showDryRun displays what would be executed in dry-run mode

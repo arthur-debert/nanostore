@@ -9,7 +9,7 @@ import (
 func TestReflectionExecutorIntegration(t *testing.T) {
 	// Setup test database
 	testDB := "test_reflection.db"
-	defer os.Remove(testDB)
+	defer func() { _ = os.Remove(testDB) }()
 
 	// Create registry and executor
 	registry := NewEnhancedTypeRegistry()
@@ -126,7 +126,7 @@ func TestReflectionExecutorIntegration(t *testing.T) {
 func TestReflectionExecutorWithNote(t *testing.T) {
 	// Setup test database
 	testDB := "test_note_reflection.db"
-	defer os.Remove(testDB)
+	defer func() { _ = os.Remove(testDB) }()
 
 	// Create registry and executor
 	registry := NewEnhancedTypeRegistry()

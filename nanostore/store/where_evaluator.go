@@ -316,10 +316,21 @@ func (we *WhereEvaluator) getDocumentValue(doc *types.Document, field string) (i
 	case "updated_at":
 		return doc.UpdatedAt, nil
 	default:
-		// Check dimensions and data fields
+		// Handle _data. prefixed fields - they're stored directly in Dimensions with the _data. prefix
+		if strings.HasPrefix(field, "_data.") {
+			// Look for the field as-is in Dimensions (with _data. prefix)
+			if value, exists := doc.Dimensions[field]; exists {
+				return value, nil
+			}
+			// Field exists in schema but not set, return nil
+			return nil, nil
+		}
+
+		// Check dimensions for non-_data fields
 		if value, exists := doc.Dimensions[field]; exists {
 			return value, nil
 		}
+
 		// Field not found
 		return nil, nil
 	}
@@ -327,6 +338,18 @@ func (we *WhereEvaluator) getDocumentValue(doc *types.Document, field string) (i
 
 // compareValues compares two values using the specified operator
 func (we *WhereEvaluator) compareValues(actual interface{}, operator, expected string) (bool, error) {
+	// Handle special NULL check marker
+	if expected == "__NULL_CHECK__" {
+		switch operator {
+		case "=":
+			return actual == nil, nil // Field is NULL (doesn't exist)
+		case "!=":
+			return actual != nil, nil // Field is NOT NULL (exists)
+		default:
+			return false, fmt.Errorf("NULL check marker only supports = and != operators")
+		}
+	}
+
 	// Handle NULL comparisons
 	if actual == nil {
 		switch operator {
@@ -337,6 +360,11 @@ func (we *WhereEvaluator) compareValues(actual interface{}, operator, expected s
 		default:
 			return false, nil // NULL comparisons with other operators are false
 		}
+	}
+
+	// Special handling for time comparisons
+	if actualTime, ok := actual.(time.Time); ok {
+		return we.compareTimeValues(actualTime, operator, expected)
 	}
 
 	// Convert actual value to string for comparison
@@ -361,9 +389,11 @@ func (we *WhereEvaluator) compareValues(actual interface{}, operator, expected s
 		match, err := we.matchLike(actualStr, expected)
 		return !match, err
 	case "is null":
-		return actual == nil, nil
+		result := actual == nil
+		return result, nil
 	case "is not null":
-		return actual != nil, nil
+		result := actual != nil
+		return result, nil
 	default:
 		return false, fmt.Errorf("unsupported operator: %s", operator)
 	}
@@ -434,4 +464,47 @@ func (we *WhereEvaluator) matchLike(actual, pattern string) (bool, error) {
 	}
 
 	return matched, nil
+}
+
+// compareTimeValues compares time.Time values with proper parsing of expected string values
+func (we *WhereEvaluator) compareTimeValues(actualTime time.Time, operator, expected string) (bool, error) {
+	// Try to parse expected value as time using common formats
+	var expectedTime time.Time
+	var err error
+
+	// Try RFC3339 format first (most common for parameters)
+	expectedTime, err = time.Parse(time.RFC3339, expected)
+	if err != nil {
+		// Try RFC3339Nano format
+		expectedTime, err = time.Parse(time.RFC3339Nano, expected)
+		if err != nil {
+			// Try Go's default time format (for string literals)
+			expectedTime, err = time.Parse("2006-01-02 15:04:05.999999999 -0700 MST", expected)
+			if err != nil {
+				// If we can't parse as time, fall back to string comparison
+				return we.compareStrings(actualTime.Format(time.RFC3339), expected), nil
+			}
+		}
+	}
+
+	switch operator {
+	case "=":
+		return actualTime.Equal(expectedTime), nil
+	case "!=":
+		return !actualTime.Equal(expectedTime), nil
+	case ">":
+		return actualTime.After(expectedTime), nil
+	case ">=":
+		return actualTime.After(expectedTime) || actualTime.Equal(expectedTime), nil
+	case "<":
+		return actualTime.Before(expectedTime), nil
+	case "<=":
+		return actualTime.Before(expectedTime) || actualTime.Equal(expectedTime), nil
+	case "is null":
+		return false, nil // time.Time is never nil (zero time is different)
+	case "is not null":
+		return true, nil // time.Time is never nil
+	default:
+		return false, fmt.Errorf("unsupported operator for time comparison: %s", operator)
+	}
 }

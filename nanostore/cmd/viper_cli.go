@@ -93,11 +93,9 @@ Examples:
 
 			// For create and update commands, try to add type-specific flags if type is known
 			if (cmd.Name() == "create" || cmd.Name() == "update") && cli.viperInst.GetString("type") != "" {
-				err := cli.addTypeSpecificFlags(cmd, cmd.Name())
-				if err != nil {
-					// Don't fail if we can't add type-specific flags, just continue
-					// This allows for help commands and basic usage
-				}
+				_ = cli.addTypeSpecificFlags(cmd, cmd.Name())
+				// Don't fail if we can't add type-specific flags, just continue
+				// This allows for help commands and basic usage
 			}
 
 			return nil
@@ -297,8 +295,16 @@ Examples:
   nanostore --type Task list --where "status = ?" --where-args active
   nanostore --type Task list --where "status = ? AND priority = ?" --where-args active --where-args high
   
-  # Complex conditions
-  nanostore --type Task list --where "priority = ? OR status = ?" --where-args high --where-args urgent
+  # Date range queries
+  nanostore --type Task list --created-after "2024-01-01T00:00:00Z" --created-before "2024-12-31T23:59:59Z"
+  nanostore --type Task list --updated-after "2024-10-01T00:00:00Z"
+  
+  # NULL/NOT NULL checks
+  nanostore --type Task list --null-fields assignee,due_date
+  nanostore --type Task list --not-null-fields assignee --created-after "2024-01-01T00:00:00Z"
+  
+  # Complex WHERE clauses with dates
+  nanostore --type Task list --where "created_at > ? AND status = ?" --where-args "2024-01-01T00:00:00Z" --where-args active
   
   # Sorting and pagination  
   nanostore --type Task list --where "status != ?" --where-args done --sort created_at --limit 10`,
@@ -312,12 +318,23 @@ Examples:
 	listCmd.Flags().StringSlice("filter", []string{}, "Dimension filters (key=value)")
 	listCmd.Flags().String("where", "", "WHERE clause with ? placeholders (e.g., \"status = ? AND priority = ?\")")
 	listCmd.Flags().StringSlice("where-args", []string{}, "Arguments for WHERE clause placeholders")
+
+	// Date range flags
+	listCmd.Flags().String("created-after", "", "Find documents created after date (RFC3339 format: 2024-01-01T00:00:00Z)")
+	listCmd.Flags().String("created-before", "", "Find documents created before date (RFC3339 format: 2024-01-01T00:00:00Z)")
+	listCmd.Flags().String("updated-after", "", "Find documents updated after date (RFC3339 format: 2024-01-01T00:00:00Z)")
+	listCmd.Flags().String("updated-before", "", "Find documents updated before date (RFC3339 format: 2024-01-01T00:00:00Z)")
+
+	// NULL handling flags
+	listCmd.Flags().StringSlice("null-fields", []string{}, "Find documents where specified fields are NULL")
+	listCmd.Flags().StringSlice("not-null-fields", []string{}, "Find documents where specified fields are NOT NULL")
+
 	listCmd.Flags().String("sort", "", "Sort field")
 	listCmd.Flags().Int("limit", 0, "Limit number of results")
 	listCmd.Flags().Int("offset", 0, "Offset for pagination")
 
 	// Bind flags
-	for _, flag := range []string{"filter", "where", "where-args", "sort", "limit", "offset"} {
+	for _, flag := range []string{"filter", "where", "where-args", "created-after", "created-before", "updated-after", "updated-before", "null-fields", "not-null-fields", "sort", "limit", "offset"} {
 		_ = cli.viperInst.BindPFlag(flag, listCmd.Flags().Lookup(flag))
 	}
 

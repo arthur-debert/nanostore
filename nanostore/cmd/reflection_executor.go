@@ -226,7 +226,7 @@ func (re *ReflectionExecutor) ExecuteCreate(typeName, dbPath, title string, data
 		if err != nil {
 			return nil, err
 		}
-		defer store.Close()
+		defer func() { _ = store.Close() }()
 
 		task := &TaskDocument{}
 		task.Title = title
@@ -239,7 +239,7 @@ func (re *ReflectionExecutor) ExecuteCreate(typeName, dbPath, title string, data
 		if err != nil {
 			return nil, err
 		}
-		defer store.Close()
+		defer func() { _ = store.Close() }()
 
 		note := &NoteDocument{}
 		note.Title = title
@@ -260,7 +260,7 @@ func (re *ReflectionExecutor) ExecuteGet(typeName, dbPath, id string) (interface
 		if err != nil {
 			return nil, err
 		}
-		defer store.Close()
+		defer func() { _ = store.Close() }()
 
 		return store.Get(id)
 
@@ -269,7 +269,7 @@ func (re *ReflectionExecutor) ExecuteGet(typeName, dbPath, id string) (interface
 		if err != nil {
 			return nil, err
 		}
-		defer store.Close()
+		defer func() { _ = store.Close() }()
 
 		return store.Get(id)
 
@@ -286,7 +286,7 @@ func (re *ReflectionExecutor) ExecuteUpdate(typeName, dbPath, id string, data ma
 		if err != nil {
 			return nil, err
 		}
-		defer store.Close()
+		defer func() { _ = store.Close() }()
 
 		task := &TaskDocument{}
 		re.populateDocumentFromMap(task, data)
@@ -298,7 +298,7 @@ func (re *ReflectionExecutor) ExecuteUpdate(typeName, dbPath, id string, data ma
 		if err != nil {
 			return nil, err
 		}
-		defer store.Close()
+		defer func() { _ = store.Close() }()
 
 		note := &NoteDocument{}
 		re.populateDocumentFromMap(note, data)
@@ -318,7 +318,7 @@ func (re *ReflectionExecutor) ExecuteDelete(typeName, dbPath, id string, cascade
 		if err != nil {
 			return err
 		}
-		defer store.Close()
+		defer func() { _ = store.Close() }()
 
 		return store.Delete(id, cascade)
 
@@ -327,7 +327,7 @@ func (re *ReflectionExecutor) ExecuteDelete(typeName, dbPath, id string, cascade
 		if err != nil {
 			return err
 		}
-		defer store.Close()
+		defer func() { _ = store.Close() }()
 
 		return store.Delete(id, cascade)
 
@@ -344,7 +344,7 @@ func (re *ReflectionExecutor) ExecuteList(typeName, dbPath string, options types
 		if err != nil {
 			return nil, err
 		}
-		defer store.Close()
+		defer func() { _ = store.Close() }()
 
 		return store.List(options)
 
@@ -353,7 +353,7 @@ func (re *ReflectionExecutor) ExecuteList(typeName, dbPath string, options types
 		if err != nil {
 			return nil, err
 		}
-		defer store.Close()
+		defer func() { _ = store.Close() }()
 
 		return store.List(options)
 
@@ -370,7 +370,7 @@ func (re *ReflectionExecutor) ExecuteQuery(typeName, dbPath, whereClause string,
 		if err != nil {
 			return nil, err
 		}
-		defer store.Close()
+		defer func() { _ = store.Close() }()
 
 		query := store.Query()
 
@@ -401,7 +401,7 @@ func (re *ReflectionExecutor) ExecuteQuery(typeName, dbPath, whereClause string,
 		if err != nil {
 			return nil, err
 		}
-		defer store.Close()
+		defer func() { _ = store.Close() }()
 
 		query := store.Query()
 
@@ -526,4 +526,98 @@ func (re *ReflectionExecutor) parseListOptions(filters []string, sort string, li
 	}
 
 	return options
+}
+
+// buildDateAndNullWhere builds WHERE clauses from date range and NULL flags
+func (re *ReflectionExecutor) buildDateAndNullWhere(createdAfter, createdBefore, updatedAfter, updatedBefore string, nullFields, notNullFields []string) (string, []interface{}, error) {
+	var clauses []string
+	var args []interface{}
+
+	// Handle date range filters
+	if createdAfter != "" {
+		t, err := time.Parse(time.RFC3339, createdAfter)
+		if err != nil {
+			return "", nil, fmt.Errorf("invalid created-after date format: %w", err)
+		}
+		clauses = append(clauses, "created_at > ?")
+		args = append(args, t)
+	}
+
+	if createdBefore != "" {
+		t, err := time.Parse(time.RFC3339, createdBefore)
+		if err != nil {
+			return "", nil, fmt.Errorf("invalid created-before date format: %w", err)
+		}
+		clauses = append(clauses, "created_at < ?")
+		args = append(args, t)
+	}
+
+	if updatedAfter != "" {
+		t, err := time.Parse(time.RFC3339, updatedAfter)
+		if err != nil {
+			return "", nil, fmt.Errorf("invalid updated-after date format: %w", err)
+		}
+		clauses = append(clauses, "updated_at > ?")
+		args = append(args, t)
+	}
+
+	if updatedBefore != "" {
+		t, err := time.Parse(time.RFC3339, updatedBefore)
+		if err != nil {
+			return "", nil, fmt.Errorf("invalid updated-before date format: %w", err)
+		}
+		clauses = append(clauses, "updated_at < ?")
+		args = append(args, t)
+	}
+
+	// Handle NULL field filters using simple parameter-based approach
+	// Instead of complex IS NULL syntax, use a special marker value
+	for _, field := range nullFields {
+		// Use a simple equality check with special NULL marker
+		fieldName := field
+		if !strings.Contains(field, ".") {
+			fieldName = fmt.Sprintf("_data.%s", field)
+		}
+		clauses = append(clauses, fmt.Sprintf("%s = ?", fieldName))
+		args = append(args, "__NULL_CHECK__")
+	}
+
+	// Handle NOT NULL field filters
+	for _, field := range notNullFields {
+		// Use a simple inequality check with special NULL marker
+		fieldName := field
+		if !strings.Contains(field, ".") {
+			fieldName = fmt.Sprintf("_data.%s", field)
+		}
+		clauses = append(clauses, fmt.Sprintf("%s != ?", fieldName))
+		args = append(args, "__NULL_CHECK__")
+	}
+
+	if len(clauses) == 0 {
+		return "", nil, nil
+	}
+
+	whereClause := strings.Join(clauses, " AND ")
+	return whereClause, args, nil
+}
+
+// combineWhereClauses combines explicit WHERE clause with date/NULL filters
+func (re *ReflectionExecutor) combineWhereClauses(explicitWhere string, explicitArgs []interface{}, dateNullWhere string, dateNullArgs []interface{}) (string, []interface{}) {
+	if explicitWhere == "" && dateNullWhere == "" {
+		return "", nil
+	}
+
+	if explicitWhere == "" {
+		return dateNullWhere, dateNullArgs
+	}
+
+	if dateNullWhere == "" {
+		return explicitWhere, explicitArgs
+	}
+
+	// Combine both WHERE clauses
+	combinedWhere := fmt.Sprintf("(%s) AND (%s)", explicitWhere, dateNullWhere)
+	combinedArgs := append(explicitArgs, dateNullArgs...)
+
+	return combinedWhere, combinedArgs
 }

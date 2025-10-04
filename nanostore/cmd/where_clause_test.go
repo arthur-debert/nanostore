@@ -9,7 +9,7 @@ import (
 func TestWhereClauseIntegration(t *testing.T) {
 	// Setup test database
 	testDB := "test_where_integration.db"
-	defer os.Remove(testDB)
+	defer func() { _ = os.Remove(testDB) }()
 
 	// Create registry and executor
 	registry := NewEnhancedTypeRegistry()
@@ -31,23 +31,16 @@ func TestWhereClauseIntegration(t *testing.T) {
 		{"Active Medium Task", "active", "medium"},
 	}
 
-	var taskIDs []string
 	for _, task := range testTasks {
 		data := map[string]interface{}{
 			"status":   task.status,
 			"priority": task.priority,
 		}
 
-		result, err := executor.ExecuteCreate("Task", testDB, task.title, data)
+		_, err := executor.ExecuteCreate("Task", testDB, task.title, data)
 		if err != nil {
 			t.Fatalf("Failed to create task %s: %v", task.title, err)
 		}
-
-		taskID, ok := result.(string)
-		if !ok {
-			t.Fatalf("Expected string ID, got %T", result)
-		}
-		taskIDs = append(taskIDs, taskID)
 	}
 
 	// Test cases for WHERE clauses
@@ -124,7 +117,7 @@ func TestWhereClauseIntegration(t *testing.T) {
 func TestWhereClauseWithSortingAndPagination(t *testing.T) {
 	// Setup test database
 	testDB := "test_where_sorting.db"
-	defer os.Remove(testDB)
+	defer func() { _ = os.Remove(testDB) }()
 
 	registry := NewEnhancedTypeRegistry()
 	if err := registry.LoadBuiltinTypes(); err != nil {
@@ -208,7 +201,7 @@ func TestWhereClauseWithSortingAndPagination(t *testing.T) {
 
 func TestWhereClauseErrorHandling(t *testing.T) {
 	testDB := "test_where_errors.db"
-	defer os.Remove(testDB)
+	defer func() { _ = os.Remove(testDB) }()
 
 	registry := NewEnhancedTypeRegistry()
 	if err := registry.LoadBuiltinTypes(); err != nil {
