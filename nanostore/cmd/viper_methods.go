@@ -13,12 +13,14 @@ import (
 func (cli *ViperCLI) addTypeSpecificFlags(cmd *cobra.Command, commandName string) error {
 	typeName := cli.viperInst.GetString("type")
 	if typeName == "" {
-		return fmt.Errorf("--type flag is required for %s command", commandName)
+		availableTypes := cli.registry.ListTypes()
+		return NewTypeError(commandName, "", availableTypes)
 	}
 
 	typeDef, exists := cli.registry.GetTypeDefinition(typeName)
 	if !exists {
-		return fmt.Errorf("type %s not registered. Available types: %v", typeName, cli.registry.ListTypes())
+		availableTypes := cli.registry.ListTypes()
+		return NewTypeError(commandName, typeName, availableTypes)
 	}
 
 	// Add dimension flags
@@ -81,7 +83,9 @@ func (cli *ViperCLI) executeTypesCommand(args []string) error {
 	typeName := args[0]
 	schema, err := cli.registry.GetSchemaJSON(typeName)
 	if err != nil {
-		return fmt.Errorf("failed to get schema for type %s: %w", typeName, err)
+		return WrapError("get schema for type "+typeName, err,
+			CommonSuggestions.CheckType,
+			"Verify type is properly registered")
 	}
 
 	fmt.Printf("Schema for %s:\n%s\n", typeName, schema)
@@ -111,7 +115,10 @@ func (cli *ViperCLI) executeCreateCommand(title string, cmd *cobra.Command) erro
 	// Execute actual create operation
 	result, err := cli.reflectionExec.ExecuteCreate(typeName, dbPath, title, data)
 	if err != nil {
-		return fmt.Errorf("failed to create document: %w", err)
+		return WrapError("create document", err,
+			CommonSuggestions.CheckDB,
+			CommonSuggestions.CheckType,
+			CommonSuggestions.TryDryRun)
 	}
 
 	return cli.outputResult(result)
@@ -137,7 +144,10 @@ func (cli *ViperCLI) executeGetCommand(id string) error {
 	// Execute actual get operation
 	result, err := cli.reflectionExec.ExecuteGet(typeName, dbPath, id)
 	if err != nil {
-		return fmt.Errorf("failed to get document: %w", err)
+		return WrapError("get document", err,
+			CommonSuggestions.CheckID,
+			CommonSuggestions.CheckDB,
+			"Try 'list' command to see available documents")
 	}
 
 	return cli.outputResult(result)
@@ -167,7 +177,11 @@ func (cli *ViperCLI) executeUpdateCommand(id string, cmd *cobra.Command) error {
 	// Execute actual update operation
 	result, err := cli.reflectionExec.ExecuteUpdate(typeName, dbPath, id, updates)
 	if err != nil {
-		return fmt.Errorf("failed to update document: %w", err)
+		return WrapError("update document", err,
+			CommonSuggestions.CheckID,
+			CommonSuggestions.CheckDB,
+			CommonSuggestions.CheckType,
+			CommonSuggestions.TryDryRun)
 	}
 
 	return cli.outputResult(result)
@@ -195,7 +209,10 @@ func (cli *ViperCLI) executeDeleteCommand(id string, cmd *cobra.Command) error {
 	// Execute actual delete operation
 	err := cli.reflectionExec.ExecuteDelete(typeName, dbPath, id, cascade)
 	if err != nil {
-		return fmt.Errorf("failed to delete document: %w", err)
+		return WrapError("delete document", err,
+			CommonSuggestions.CheckID,
+			CommonSuggestions.CheckDB,
+			"Use --cascade flag if document has children")
 	}
 
 	result := map[string]interface{}{
@@ -282,7 +299,11 @@ func (cli *ViperCLI) executeListCommand(cmd *cobra.Command) error {
 		filterEq, filterNe, filterGt, filterLt, filterGte, filterLte, filterLike, filterIn,
 		status, priority, statusIn, priorityIn)
 	if err != nil {
-		return fmt.Errorf("failed to build filters: %w", err)
+		return WrapError("build query filters", err,
+			"Check filter format: field=value",
+			"Use RFC3339 dates: 2024-01-01T00:00:00Z",
+			"Verify field names match document schema",
+			CommonSuggestions.RunHelp)
 	}
 
 	// Check if we need to use complex querying (WHERE clauses, dates, NULL checks, or text search)
@@ -302,7 +323,11 @@ func (cli *ViperCLI) executeListCommand(cmd *cobra.Command) error {
 		// Execute complex query
 		documents, err = cli.reflectionExec.ExecuteQuery(typeName, dbPath, finalWhere, finalArgs, sort, limit, offset)
 		if err != nil {
-			return fmt.Errorf("failed to execute complex query: %w", err)
+			return WrapError("execute complex query", err,
+				"Check WHERE clause syntax and parameters",
+				"Verify field names match document schema",
+				CommonSuggestions.CheckDB,
+				CommonSuggestions.TryDryRun)
 		}
 	} else {
 		// Use basic List for simple filtering (just --filter flags)
@@ -310,7 +335,10 @@ func (cli *ViperCLI) executeListCommand(cmd *cobra.Command) error {
 
 		documents, err = cli.reflectionExec.ExecuteList(typeName, dbPath, options)
 		if err != nil {
-			return fmt.Errorf("failed to list documents: %w", err)
+			return WrapError("list documents", err,
+				CommonSuggestions.CheckDB,
+				CommonSuggestions.CheckType,
+				"Verify filter values match document fields")
 		}
 	}
 
@@ -407,7 +435,10 @@ func (cli *ViperCLI) executeGetRaw(id string) error {
 	// Execute actual get-raw operation
 	result, err := cli.reflectionExec.ExecuteGetRaw(typeName, dbPath, id)
 	if err != nil {
-		return fmt.Errorf("failed to get raw document: %w", err)
+		return WrapError("get raw document", err,
+			CommonSuggestions.CheckID,
+			CommonSuggestions.CheckDB,
+			"Try 'list' command to see available documents")
 	}
 
 	return cli.outputResult(result)
@@ -433,7 +464,10 @@ func (cli *ViperCLI) executeGetDimensions(id string) error {
 	// Execute actual get-dimensions operation
 	result, err := cli.reflectionExec.ExecuteGetDimensions(typeName, dbPath, id)
 	if err != nil {
-		return fmt.Errorf("failed to get document dimensions: %w", err)
+		return WrapError("get document dimensions", err,
+			CommonSuggestions.CheckID,
+			CommonSuggestions.CheckDB,
+			"Try 'list' command to see available documents")
 	}
 
 	return cli.outputResult(result)
@@ -459,7 +493,10 @@ func (cli *ViperCLI) executeGetMetadata(id string) error {
 	// Execute actual get-metadata operation
 	result, err := cli.reflectionExec.ExecuteGetMetadata(typeName, dbPath, id)
 	if err != nil {
-		return fmt.Errorf("failed to get document metadata: %w", err)
+		return WrapError("get document metadata", err,
+			CommonSuggestions.CheckID,
+			CommonSuggestions.CheckDB,
+			"Try 'list' command to see available documents")
 	}
 
 	return cli.outputResult(result)
@@ -553,7 +590,8 @@ func (cli *ViperCLI) executeShowConfig() error {
 func (cli *ViperCLI) executeGenerateConfig(typeName, outputFile string) error {
 	typeDef, exists := cli.registry.GetTypeDefinition(typeName)
 	if !exists {
-		return fmt.Errorf("type %s not registered. Available types: %v", typeName, cli.registry.ListTypes())
+		availableTypes := cli.registry.ListTypes()
+		return NewTypeError("generate config", typeName, availableTypes)
 	}
 
 	config := map[string]interface{}{
@@ -571,14 +609,18 @@ func (cli *ViperCLI) executeGenerateConfig(typeName, outputFile string) error {
 
 	configJSON, err := json.MarshalIndent(config, "", "  ")
 	if err != nil {
-		return fmt.Errorf("failed to marshal config: %w", err)
+		return WrapError("marshal configuration", err,
+			"Configuration data may be invalid",
+			"Try with a different document type")
 	}
 
 	if outputFile == "" {
 		fmt.Println(string(configJSON))
 	} else {
 		if err := os.WriteFile(outputFile, configJSON, 0644); err != nil {
-			return fmt.Errorf("failed to write config file: %w", err)
+			return WrapError("write config file", err,
+				CommonSuggestions.CheckPerms,
+				"Verify output directory exists and is writable")
 		}
 		fmt.Printf("Configuration written to %s\n", outputFile)
 	}
@@ -605,11 +647,15 @@ func (cli *ViperCLI) validateRequiredFlags(command string) error {
 	}
 
 	if typeName == "" {
-		return fmt.Errorf("--type flag is required for %s command", command)
+		availableTypes := cli.registry.ListTypes()
+		return NewTypeError(command, "", availableTypes)
 	}
 
 	if dbPath == "" {
-		return fmt.Errorf("--db flag is required for %s command", command)
+		return NewConfigError(command, "missing database path",
+			"Set --db flag to specify database file path",
+			"Use environment variable: export NANOSTORE_DB=path/to/db.json",
+			"Add \"db\": \"path/to/db.json\" to your config file")
 	}
 
 	return nil

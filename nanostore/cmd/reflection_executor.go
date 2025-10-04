@@ -26,7 +26,8 @@ func NewReflectionExecutor(registry *EnhancedTypeRegistry) *ReflectionExecutor {
 func (re *ReflectionExecutor) CreateStoreInstance(typeName, dbPath string) (interface{}, error) {
 	_, exists := re.registry.GetTypeDefinition(typeName)
 	if !exists {
-		return nil, fmt.Errorf("type %s not registered", typeName)
+		availableTypes := re.registry.ListTypes()
+		return nil, NewTypeError("create store", typeName, availableTypes)
 	}
 
 	// Use reflection to call api.New with the dynamic type
@@ -87,7 +88,10 @@ func (re *ReflectionExecutor) ExecuteMethod(typeName, methodName string, args []
 	// Find the method
 	method := storeValue.MethodByName(methodName)
 	if !method.IsValid() {
-		return nil, fmt.Errorf("method %s not found on store type %s", methodName, storeType)
+		return nil, NewStoreError("invoke method",
+			fmt.Errorf("method %s not found on store type %s", methodName, storeType),
+			"Check method name spelling",
+			"Verify method exists on Store type")
 	}
 
 	// Convert arguments to proper types
@@ -102,7 +106,10 @@ func (re *ReflectionExecutor) ExecuteMethod(typeName, methodName string, args []
 		expectedType := methodType.In(i - 1)
 		convertedArg, err := re.convertArgument(args[i], expectedType)
 		if err != nil {
-			return nil, fmt.Errorf("failed to convert argument %d: %w", i, err)
+			return nil, NewStoreError("convert argument",
+				fmt.Errorf("failed to convert argument %d: %w", i, err),
+				"Check argument type and format",
+				"Ensure argument matches expected type")
 		}
 		reflectArgs = append(reflectArgs, convertedArg)
 	}
@@ -137,7 +144,10 @@ func (re *ReflectionExecutor) convertArgument(arg interface{}, expectedType refl
 		return re.convertMapToStruct(arg.(map[string]interface{}), expectedType)
 	}
 
-	return reflect.Value{}, fmt.Errorf("cannot convert %T to %s", arg, expectedType)
+	return reflect.Value{}, NewStoreError("convert type",
+		fmt.Errorf("cannot convert %T to %s", arg, expectedType),
+		"Check data type compatibility",
+		"Use correct format for the expected type")
 }
 
 // convertFromString converts a string to the expected type
@@ -164,13 +174,19 @@ func (re *ReflectionExecutor) convertFromString(s string, expectedType reflect.T
 		}
 	}
 
-	return reflect.Value{}, fmt.Errorf("cannot convert string %q to %s", s, expectedType)
+	return reflect.Value{}, NewStoreError("convert string",
+		fmt.Errorf("cannot convert string %q to %s", s, expectedType),
+		"Check string format and value",
+		"Ensure string can be parsed as expected type")
 }
 
 // convertMapToStruct converts a map[string]interface{} to a struct pointer
 func (re *ReflectionExecutor) convertMapToStruct(data map[string]interface{}, expectedType reflect.Type) (reflect.Value, error) {
 	if expectedType.Kind() != reflect.Ptr || expectedType.Elem().Kind() != reflect.Struct {
-		return reflect.Value{}, fmt.Errorf("expected pointer to struct, got %s", expectedType)
+		return reflect.Value{}, NewStoreError("convert to struct",
+			fmt.Errorf("expected pointer to struct, got %s", expectedType),
+			"Ensure target type is a struct pointer",
+			"Check document type definition")
 	}
 
 	// Create new instance of the struct
@@ -248,7 +264,7 @@ func (re *ReflectionExecutor) ExecuteCreate(typeName, dbPath, title string, data
 		return store.Create(title, note)
 
 	default:
-		return nil, fmt.Errorf("create not implemented for type %s", typeName)
+		return nil, NewTypeError("create", typeName, []string{"Task", "Note"})
 	}
 }
 
@@ -274,7 +290,7 @@ func (re *ReflectionExecutor) ExecuteGet(typeName, dbPath, id string) (interface
 		return store.Get(id)
 
 	default:
-		return nil, fmt.Errorf("get not implemented for type %s", typeName)
+		return nil, NewTypeError("get", typeName, []string{"Task", "Note"})
 	}
 }
 
@@ -300,7 +316,7 @@ func (re *ReflectionExecutor) ExecuteGetRaw(typeName, dbPath, id string) (interf
 		return store.GetRaw(id)
 
 	default:
-		return nil, fmt.Errorf("getRaw not implemented for type %s", typeName)
+		return nil, NewTypeError("get raw", typeName, []string{"Task", "Note"})
 	}
 }
 
@@ -326,7 +342,7 @@ func (re *ReflectionExecutor) ExecuteGetDimensions(typeName, dbPath, id string) 
 		return store.GetDimensions(id)
 
 	default:
-		return nil, fmt.Errorf("getDimensions not implemented for type %s", typeName)
+		return nil, NewTypeError("get dimensions", typeName, []string{"Task", "Note"})
 	}
 }
 
@@ -352,7 +368,7 @@ func (re *ReflectionExecutor) ExecuteGetMetadata(typeName, dbPath, id string) (i
 		return store.GetMetadata(id)
 
 	default:
-		return nil, fmt.Errorf("getMetadata not implemented for type %s", typeName)
+		return nil, NewTypeError("get metadata", typeName, []string{"Task", "Note"})
 	}
 }
 
@@ -384,7 +400,7 @@ func (re *ReflectionExecutor) ExecuteUpdate(typeName, dbPath, id string, data ma
 		return store.Update(id, note)
 
 	default:
-		return nil, fmt.Errorf("update not implemented for type %s", typeName)
+		return nil, NewTypeError("update", typeName, []string{"Task", "Note"})
 	}
 }
 
@@ -410,7 +426,7 @@ func (re *ReflectionExecutor) ExecuteDelete(typeName, dbPath, id string, cascade
 		return store.Delete(id, cascade)
 
 	default:
-		return fmt.Errorf("delete not implemented for type %s", typeName)
+		return NewTypeError("delete", typeName, []string{"Task", "Note"})
 	}
 }
 
@@ -436,7 +452,7 @@ func (re *ReflectionExecutor) ExecuteList(typeName, dbPath string, options types
 		return store.List(options)
 
 	default:
-		return nil, fmt.Errorf("list not implemented for type %s", typeName)
+		return nil, NewTypeError("list", typeName, []string{"Task", "Note"})
 	}
 }
 
@@ -506,7 +522,7 @@ func (re *ReflectionExecutor) ExecuteQuery(typeName, dbPath, whereClause string,
 		return query.Find()
 
 	default:
-		return nil, fmt.Errorf("query not implemented for type %s", typeName)
+		return nil, NewTypeError("query", typeName, []string{"Task", "Note"})
 	}
 }
 
@@ -620,7 +636,9 @@ func (re *ReflectionExecutor) buildFilterWhere(
 	if createdAfter != "" {
 		t, err := time.Parse(time.RFC3339, createdAfter)
 		if err != nil {
-			return "", nil, fmt.Errorf("invalid created-after date format: %w", err)
+			return "", nil, NewValidationError("parse date", "created-after", createdAfter,
+				"Use RFC3339 format: 2024-01-01T00:00:00Z",
+				"Check date syntax and timezone")
 		}
 		clauses = append(clauses, "created_at > ?")
 		args = append(args, t)
@@ -629,7 +647,9 @@ func (re *ReflectionExecutor) buildFilterWhere(
 	if createdBefore != "" {
 		t, err := time.Parse(time.RFC3339, createdBefore)
 		if err != nil {
-			return "", nil, fmt.Errorf("invalid created-before date format: %w", err)
+			return "", nil, NewValidationError("parse date", "created-before", createdBefore,
+				"Use RFC3339 format: 2024-01-01T00:00:00Z",
+				"Check date syntax and timezone")
 		}
 		clauses = append(clauses, "created_at < ?")
 		args = append(args, t)
@@ -638,7 +658,9 @@ func (re *ReflectionExecutor) buildFilterWhere(
 	if updatedAfter != "" {
 		t, err := time.Parse(time.RFC3339, updatedAfter)
 		if err != nil {
-			return "", nil, fmt.Errorf("invalid updated-after date format: %w", err)
+			return "", nil, NewValidationError("parse date", "updated-after", updatedAfter,
+				"Use RFC3339 format: 2024-01-01T00:00:00Z",
+				"Check date syntax and timezone")
 		}
 		clauses = append(clauses, "updated_at > ?")
 		args = append(args, t)
@@ -647,7 +669,9 @@ func (re *ReflectionExecutor) buildFilterWhere(
 	if updatedBefore != "" {
 		t, err := time.Parse(time.RFC3339, updatedBefore)
 		if err != nil {
-			return "", nil, fmt.Errorf("invalid updated-before date format: %w", err)
+			return "", nil, NewValidationError("parse date", "updated-before", updatedBefore,
+				"Use RFC3339 format: 2024-01-01T00:00:00Z",
+				"Check date syntax and timezone")
 		}
 		clauses = append(clauses, "updated_at < ?")
 		args = append(args, t)
@@ -722,7 +746,7 @@ func (re *ReflectionExecutor) buildFilterWhere(
 		for _, filter := range filters {
 			field, value, err := re.parseFieldValue(filter)
 			if err != nil {
-				return "", nil, fmt.Errorf("invalid filter format '%s': %w", filter, err)
+				return "", nil, NewFilterError("parse filter", filter, err.Error())
 			}
 			clauses = append(clauses, fmt.Sprintf("%s %s ?", field, operator))
 			args = append(args, value)
@@ -736,7 +760,7 @@ func (re *ReflectionExecutor) buildFilterWhere(
 	for _, filter := range filterIn {
 		field, valueList, err := re.parseFieldValue(filter)
 		if err != nil {
-			return "", nil, fmt.Errorf("invalid filter-in format '%s': %w", filter, err)
+			return "", nil, NewFilterError("parse IN filter", filter, err.Error())
 		}
 		values := strings.Split(valueList, ",")
 		// For now, we'll skip IN filters as they require OR logic which isn't supported
@@ -780,7 +804,9 @@ func (re *ReflectionExecutor) buildFilterWhere(
 func (re *ReflectionExecutor) parseFieldValue(filter string) (string, string, error) {
 	parts := strings.SplitN(filter, "=", 2)
 	if len(parts) != 2 {
-		return "", "", fmt.Errorf("expected format 'field=value', got '%s'", filter)
+		return "", "", NewValidationError("parse filter", "filter format", filter,
+			"Use format: field=value",
+			"Ensure there is exactly one '=' character")
 	}
 	return strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1]), nil
 }
