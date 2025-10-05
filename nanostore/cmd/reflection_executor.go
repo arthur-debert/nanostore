@@ -627,8 +627,8 @@ func (re *ReflectionExecutor) buildFilterWhere(
 	createdAfter, createdBefore, updatedAfter, updatedBefore string,
 	nullFields, notNullFields []string,
 	searchText, titleContains, bodyContains string, caseSensitive bool,
-	filterEq, filterNe, filterGt, filterLt, filterGte, filterLte, filterLike, filterIn []string,
-	status, priority string, statusIn, priorityIn []string) (string, []interface{}, error) {
+	filterEq, filterNe, filterGt, filterLt, filterGte, filterLte, filterLike []string,
+	status, priority string) (string, []interface{}, error) {
 	var clauses []string
 	var args []interface{}
 
@@ -753,23 +753,8 @@ func (re *ReflectionExecutor) buildFilterWhere(
 		}
 	}
 
-	// Handle IN filters (convert to multiple equality conditions)
-	// Since WhereEvaluator doesn't support IN operator, we create multiple equality clauses
-	// Note: This will use AND logic, so IN filters work as "must match all values" instead of "match any value"
-	// This is a limitation - for true OR logic, we'd need to enhance WhereEvaluator
-	for _, filter := range filterIn {
-		field, valueList, err := re.parseFieldValue(filter)
-		if err != nil {
-			return "", nil, NewFilterError("parse IN filter", filter, err.Error())
-		}
-		values := strings.Split(valueList, ",")
-		// For now, we'll skip IN filters as they require OR logic which isn't supported
-		// TODO: Enhance WhereEvaluator to support OR logic for proper IN filter implementation
-		_ = field
-		_ = values
-		// Skip IN filters for now
-		continue
-	}
+	// Note: IN filters are not supported due to lack of OR logic in WhereEvaluator
+	// Users can achieve similar results with multiple WHERE clauses or equality filters
 
 	// Handle convenience flags
 	if status != "" {
@@ -780,17 +765,8 @@ func (re *ReflectionExecutor) buildFilterWhere(
 		clauses = append(clauses, "priority = ?")
 		args = append(args, priority)
 	}
-	// Handle statusIn and priorityIn convenience flags
-	// Skip these for now since WhereEvaluator doesn't support IN operator
-	// TODO: Implement OR logic support in WhereEvaluator for proper IN functionality
-	if len(statusIn) > 0 {
-		// Skip statusIn for now - requires OR logic
-		_ = statusIn
-	}
-	if len(priorityIn) > 0 {
-		// Skip priorityIn for now - requires OR logic
-		_ = priorityIn
-	}
+	// Note: statusIn and priorityIn convenience flags are not supported due to lack of OR logic in WhereEvaluator
+	// Users can achieve similar results with multiple WHERE clauses or separate commands
 
 	if len(clauses) == 0 {
 		return "", nil, nil

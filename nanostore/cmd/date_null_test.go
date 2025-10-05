@@ -100,8 +100,8 @@ func TestDateRangeQueries(t *testing.T) {
 			whereClause, whereArgs, err := executor.buildFilterWhere(
 				tt.createdAfter, tt.createdBefore, tt.updatedAfter, tt.updatedBefore,
 				nil, nil, "", "", "", false,
-				nil, nil, nil, nil, nil, nil, nil, nil,
-				"", "", nil, nil)
+				nil, nil, nil, nil, nil, nil, nil, // No enhanced filters
+				"", "") // No status/priority filters
 			if err != nil {
 				t.Fatalf("Failed to build date WHERE clause: %v", err)
 			}
@@ -251,8 +251,8 @@ func TestNullHandling(t *testing.T) {
 			// Build NULL WHERE clause
 			whereClause, whereArgs, err := executor.buildFilterWhere(
 				"", "", "", "", tt.nullFields, tt.notNullFields, "", "", "", false,
-				nil, nil, nil, nil, nil, nil, nil, nil,
-				"", "", nil, nil)
+				nil, nil, nil, nil, nil, nil, nil, // No enhanced filters
+				"", "") // No status/priority filters
 			if err != nil {
 				t.Fatalf("Failed to build NULL WHERE clause: %v", err)
 			}
@@ -390,8 +390,8 @@ func TestDateParsingValidation(t *testing.T) {
 	for _, invalidDate := range invalidDates {
 		t.Run(fmt.Sprintf("InvalidDate_%s", invalidDate), func(t *testing.T) {
 			_, _, err := executor.buildFilterWhere(invalidDate, "", "", "", nil, nil, "", "", "", false,
-				nil, nil, nil, nil, nil, nil, nil, nil,
-				"", "", nil, nil)
+				nil, nil, nil, nil, nil, nil, nil, // No enhanced filters
+				"", "") // No status/priority filters
 			if err == nil {
 				t.Errorf("Expected error for invalid date '%s', but got none", invalidDate)
 			}
@@ -409,8 +409,8 @@ func TestDateParsingValidation(t *testing.T) {
 	for _, validDate := range validDates {
 		t.Run(fmt.Sprintf("ValidDate_%s", validDate), func(t *testing.T) {
 			whereClause, args, err := executor.buildFilterWhere(validDate, "", "", "", nil, nil, "", "", "", false,
-				nil, nil, nil, nil, nil, nil, nil, nil,
-				"", "", nil, nil)
+				nil, nil, nil, nil, nil, nil, nil, // No enhanced filters
+				"", "") // No status/priority filters
 			if err != nil {
 				t.Errorf("Expected no error for valid date '%s', but got: %v", validDate, err)
 			}

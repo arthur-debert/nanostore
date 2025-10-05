@@ -118,8 +118,8 @@ func TestTextSearchIntegration(t *testing.T) {
 				"", "", "", "", // No date filters
 				nil, nil, // No NULL filters
 				tt.searchText, tt.titleContains, tt.bodyContains, tt.caseSensitive,
-				nil, nil, nil, nil, nil, nil, nil, nil,
-				"", "", nil, nil)
+				nil, nil, nil, nil, nil, nil, nil, // No enhanced filters
+				"", "") // No convenience filters
 			if err != nil {
 				t.Fatalf("Failed to build text search WHERE clause: %v", err)
 			}
@@ -200,8 +200,8 @@ func TestCombinedTextAndFilterSearch(t *testing.T) {
 		"", "", "", "", // No date filters
 		nil, nil, // No NULL filters
 		"bug", "", "", false, // Search for "bug"
-		nil, nil, nil, nil, nil, nil, nil, nil,
-		"", "", nil, nil)
+		nil, nil, nil, nil, nil, nil, nil, // No enhanced filters
+		"", "") // No status/priority filters
 	if err != nil {
 		t.Fatalf("Failed to build combined WHERE clause: %v", err)
 	}

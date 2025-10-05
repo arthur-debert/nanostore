@@ -327,8 +327,9 @@ Examples:
   
   # Enhanced filtering with operators
   nanostore --type Task list --filter-eq status=active --filter-ne priority=low
-  nanostore --type Task list --filter-in status=active,pending --filter-gt created_at="2024-01-01"
-  nanostore --type Task list --status active --priority high
+  nanostore --type Task list --filter-gt created_at="2024-01-01" --filter-lt created_at="2024-12-31"
+  nanostore --type Task list --filter-gte priority=medium --filter-lte priority=high
+  nanostore --type Task list --filter-like title="%urgent%" --status active --priority high
   
   # Complex WHERE clauses with dates
   nanostore --type Task list --where "created_at > ? AND status = ?" --where-args "2024-01-01T00:00:00Z" --where-args active
@@ -354,13 +355,12 @@ Examples:
 	listCmd.Flags().StringSlice("filter-gte", []string{}, "Greater than or equal filters (field=value)")
 	listCmd.Flags().StringSlice("filter-lte", []string{}, "Less than or equal filters (field=value)")
 	listCmd.Flags().StringSlice("filter-like", []string{}, "Pattern match filters (field=pattern)")
-	listCmd.Flags().StringSlice("filter-in", []string{}, "Value in list filters (field=val1,val2,val3)")
+	// Note: filter-in not supported due to WhereEvaluator OR logic limitations
 
 	// Convenience flags for common Task fields
 	listCmd.Flags().String("status", "", "Filter by status")
 	listCmd.Flags().String("priority", "", "Filter by priority")
-	listCmd.Flags().StringSlice("status-in", []string{}, "Filter by multiple status values")
-	listCmd.Flags().StringSlice("priority-in", []string{}, "Filter by multiple priority values")
+	// Note: status-in and priority-in not supported due to WhereEvaluator OR logic limitations
 
 	// Date range flags
 	listCmd.Flags().String("created-after", "", "Find documents created after date (RFC3339 format: 2024-01-01T00:00:00Z)")
@@ -385,8 +385,8 @@ Examples:
 	// Bind flags
 	for _, flag := range []string{
 		"filter", "where", "where-args",
-		"filter-eq", "filter-ne", "filter-gt", "filter-lt", "filter-gte", "filter-lte", "filter-like", "filter-in",
-		"status", "priority", "status-in", "priority-in",
+		"filter-eq", "filter-ne", "filter-gt", "filter-lt", "filter-gte", "filter-lte", "filter-like",
+		"status", "priority",
 		"created-after", "created-before", "updated-after", "updated-before",
 		"null-fields", "not-null-fields",
 		"search", "title-contains", "body-contains", "search-case-sensitive",

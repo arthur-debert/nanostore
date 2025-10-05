@@ -263,13 +263,12 @@ func (cli *ViperCLI) executeListCommand(cmd *cobra.Command) error {
 	filterGte := cli.viperInst.GetStringSlice("filter-gte")
 	filterLte := cli.viperInst.GetStringSlice("filter-lte")
 	filterLike := cli.viperInst.GetStringSlice("filter-like")
-	filterIn := cli.viperInst.GetStringSlice("filter-in")
+	// filterIn not supported - removed to avoid confusion
 
 	// Convenience flags
 	status := cli.viperInst.GetString("status")
 	priority := cli.viperInst.GetString("priority")
-	statusIn := cli.viperInst.GetStringSlice("status-in")
-	priorityIn := cli.viperInst.GetStringSlice("priority-in")
+	// statusIn and priorityIn not supported - removed to avoid confusion
 
 	sort := cli.viperInst.GetString("sort")
 	limit := cli.viperInst.GetInt("limit")
@@ -296,8 +295,8 @@ func (cli *ViperCLI) executeListCommand(cmd *cobra.Command) error {
 		createdAfter, createdBefore, updatedAfter, updatedBefore,
 		nullFields, notNullFields,
 		searchText, titleContains, bodyContains, caseSensitive,
-		filterEq, filterNe, filterGt, filterLt, filterGte, filterLte, filterLike, filterIn,
-		status, priority, statusIn, priorityIn)
+		filterEq, filterNe, filterGt, filterLt, filterGte, filterLte, filterLike,
+		status, priority)
 	if err != nil {
 		return WrapError("build query filters", err,
 			"Check filter format: field=value",

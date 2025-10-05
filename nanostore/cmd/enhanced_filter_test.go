@@ -61,11 +61,8 @@ func TestEnhancedFilteringFlags(t *testing.T) {
 		filterGte     []string
 		filterLte     []string
 		filterLike    []string
-		filterIn      []string
 		status        string
 		priority      string
-		statusIn      []string
-		priorityIn    []string
 		expectedCount int
 		description   string
 	}{
@@ -87,12 +84,7 @@ func TestEnhancedFilteringFlags(t *testing.T) {
 			expectedCount: 3, // Should find tasks with "Task" in title
 			description:   "Filter by title pattern using filter-like",
 		},
-		{
-			name:          "InListFilter",
-			filterIn:      []string{"status=active,done"},
-			expectedCount: 0, // IN filters are not implemented yet (skipped)
-			description:   "Filter by status in list using filter-in (currently skipped)",
-		},
+		// Note: IN filters are not supported due to WhereEvaluator OR logic limitations
 		{
 			name:          "ConvenienceStatusFilter",
 			status:        "pending",
@@ -105,18 +97,7 @@ func TestEnhancedFilteringFlags(t *testing.T) {
 			expectedCount: 2, // Should find high priority tasks
 			description:   "Filter by priority using convenience flag",
 		},
-		{
-			name:          "ConvenienceStatusInFilter",
-			statusIn:      []string{"active", "done"},
-			expectedCount: 0, // statusIn filters are not implemented yet (skipped)
-			description:   "Filter by multiple status values using convenience flag (currently skipped)",
-		},
-		{
-			name:          "ConveniencePriorityInFilter",
-			priorityIn:    []string{"high", "medium"},
-			expectedCount: 0, // priorityIn filters are not implemented yet (skipped)
-			description:   "Filter by multiple priority values using convenience flag (currently skipped)",
-		},
+		// Note: statusIn and priorityIn filters are not supported due to WhereEvaluator OR logic limitations
 		{
 			name:          "CombinedFilters",
 			filterEq:      []string{"status=active"},
@@ -140,13 +121,13 @@ func TestEnhancedFilteringFlags(t *testing.T) {
 				nil, nil, // No NULL filters
 				"", "", "", false, // No text search
 				tt.filterEq, tt.filterNe, tt.filterGt, tt.filterLt,
-				tt.filterGte, tt.filterLte, tt.filterLike, tt.filterIn,
-				tt.status, tt.priority, tt.statusIn, tt.priorityIn)
+				tt.filterGte, tt.filterLte, tt.filterLike,
+				tt.status, tt.priority)
 			if err != nil {
 				t.Fatalf("Failed to build enhanced filter WHERE clause: %v", err)
 			}
 
-			// Check if we should expect a WHERE clause (excluding unimplemented IN filters)
+			// Check if we should expect a WHERE clause
 			shouldHaveWhere := len(tt.filterEq) > 0 || len(tt.filterNe) > 0 ||
 				len(tt.filterGt) > 0 || len(tt.filterLt) > 0 || len(tt.filterGte) > 0 ||
 				len(tt.filterLte) > 0 || len(tt.filterLike) > 0 || tt.status != "" || tt.priority != ""
@@ -155,9 +136,9 @@ func TestEnhancedFilteringFlags(t *testing.T) {
 				t.Fatalf("Expected non-empty WHERE clause for test %s", tt.name)
 			}
 
-			// Skip empty query tests (including tests that only use unimplemented IN filters)
+			// Skip empty query tests
 			if whereClause == "" {
-				t.Logf("Skipping test %s - no implemented filter criteria", tt.name)
+				t.Logf("Skipping test %s - no filter criteria", tt.name)
 				return
 			}
 
@@ -239,8 +220,8 @@ func TestComplexFilterCombinations(t *testing.T) {
 			yesterday.Format(time.RFC3339), "", "", "", // Date filters
 			nil, nil, // No NULL filters
 			"", "", "", false, // No text search
-			[]string{"status=active"}, nil, nil, nil, nil, nil, nil, nil, // Enhanced filters
-			"", "", nil, nil) // No convenience filters
+			[]string{"status=active"}, nil, nil, nil, nil, nil, nil, // Enhanced filters
+			"", "") // No convenience filters
 		if err != nil {
 			t.Fatalf("Failed to build combined filter: %v", err)
 		}
@@ -270,8 +251,8 @@ func TestComplexFilterCombinations(t *testing.T) {
 			"", "", "", "", // No date filters
 			nil, nil, // No NULL filters
 			"bug", "", "", false, // Text search for "bug"
-			nil, nil, nil, nil, nil, nil, nil, nil, // No enhanced filters
-			"", "high", nil, nil) // Convenience priority filter
+			nil, nil, nil, nil, nil, nil, nil, // No enhanced filters
+			"", "high") // Convenience priority filter
 		if err != nil {
 			t.Fatalf("Failed to build text + priority filter: %v", err)
 		}
