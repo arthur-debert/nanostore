@@ -299,84 +299,48 @@ func (cli *ViperCLI) addListCommand() {
 		Use:   "list",
 		Short: "List documents with optional filtering and sorting",
 		Long: `List documents with optional filtering, sorting, and pagination.
-Supports both simple filters and complex WHERE clauses with SQL-like syntax.
+Uses new domain-specific query syntax with support for complex logical expressions.
 
 Examples:
   # Basic listing
   nanostore --type Task list
   
-  # Simple filters
-  nanostore --type Task list --filter status=active --filter priority=high
+  # Simple equality filters
+  nanostore --type Task list --status=active
+  nanostore --type Task list --priority=high --assignee=alice
   
-  # WHERE clauses with placeholders
-  nanostore --type Task list --where "status = ?" --where-args active
-  nanostore --type Task list --where "status = ? AND priority = ?" --where-args active --where-args high
+  # Operators with double underscore
+  nanostore --type Task list --id__gt=100
+  nanostore --type Task list --created_at__gte="2024-01-01"
+  nanostore --type Task list --priority__ne=low
+  nanostore --type Task list --title__contains=urgent
+  nanostore --type Task list --description__startswith=Fix
   
-  # Date range queries
-  nanostore --type Task list --created-after "2024-01-01T00:00:00Z" --created-before "2024-12-31T23:59:59Z"
-  nanostore --type Task list --updated-after "2024-10-01T00:00:00Z"
+  # Logical operators (evaluated left to right)
+  nanostore --type Task list --status=active --or --status=pending
+  nanostore --type Task list --status=active --priority=high --or --assignee=alice
+  nanostore --type Task list --status=active --and --priority=high --or --assignee=alice
   
-  # NULL/NOT NULL checks
-  nanostore --type Task list --null-fields assignee,due_date
-  nanostore --type Task list --not-null-fields assignee --created-after "2024-01-01T00:00:00Z"
-  
-  # Text search in title and body
-  nanostore --type Task list --search "urgent"
-  nanostore --type Task list --title-contains "meeting" --body-contains "quarterly"
-  nanostore --type Task list --search "bug" --search-case-sensitive
-  
-  # Enhanced filtering with operators
-  nanostore --type Task list --filter-eq status=active --filter-ne priority=low
-  nanostore --type Task list --filter-gt created_at="2024-01-01" --filter-lt created_at="2024-12-31"
-  nanostore --type Task list --filter-gte priority=medium --filter-lte priority=high
-  nanostore --type Task list --filter-like title="%urgent%" --status active --priority high
-  
-  # Complex WHERE clauses with dates
-  nanostore --type Task list --where "created_at > ? AND status = ?" --where-args "2024-01-01T00:00:00Z" --where-args active
+  # Complex queries
+  nanostore --type Task list --status=active --priority__gte=medium --assignee=alice
+  nanostore --type Task list --created_at__gt="2024-01-01" --created_at__lt="2024-12-31" --status__ne=done
   
   # Sorting and pagination  
-  nanostore --type Task list --where "status != ?" --where-args done --sort created_at --limit 10`,
+  nanostore --type Task list --status=active --x-sort=created_at --x-limit=10 --x-offset=20
+  
+  # Control flags (prefixed with x-)
+  nanostore --type Task list --status=active --x-dry-run
+  nanostore --type Task list --status=active --x-verbose --x-output=json`,
 
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return cli.executeListCommand(cmd)
 		},
 	}
 
-	// Add list-specific flags
-	listCmd.Flags().StringSlice("filter", []string{}, "Dimension filters (key=value)")
-	listCmd.Flags().String("where", "", "WHERE clause with ? placeholders (e.g., \"status = ? AND priority = ?\")")
-	listCmd.Flags().StringSlice("where-args", []string{}, "Arguments for WHERE clause placeholders")
-
-	// Enhanced filtering flags with operators
-	listCmd.Flags().StringSlice("filter-eq", []string{}, "Equality filters (field=value)")
-	listCmd.Flags().StringSlice("filter-ne", []string{}, "Not equal filters (field=value)")
-	listCmd.Flags().StringSlice("filter-gt", []string{}, "Greater than filters (field=value)")
-	listCmd.Flags().StringSlice("filter-lt", []string{}, "Less than filters (field=value)")
-	listCmd.Flags().StringSlice("filter-gte", []string{}, "Greater than or equal filters (field=value)")
-	listCmd.Flags().StringSlice("filter-lte", []string{}, "Less than or equal filters (field=value)")
-	listCmd.Flags().StringSlice("filter-like", []string{}, "Pattern match filters (field=pattern)")
-	// Note: filter-in not supported due to WhereEvaluator OR logic limitations
-
-	// Convenience flags for common Task fields
-	listCmd.Flags().String("status", "", "Filter by status")
-	listCmd.Flags().String("priority", "", "Filter by priority")
-	// Note: status-in and priority-in not supported due to WhereEvaluator OR logic limitations
-
-	// Date range flags
-	listCmd.Flags().String("created-after", "", "Find documents created after date (RFC3339 format: 2024-01-01T00:00:00Z)")
-	listCmd.Flags().String("created-before", "", "Find documents created before date (RFC3339 format: 2024-01-01T00:00:00Z)")
-	listCmd.Flags().String("updated-after", "", "Find documents updated after date (RFC3339 format: 2024-01-01T00:00:00Z)")
-	listCmd.Flags().String("updated-before", "", "Find documents updated before date (RFC3339 format: 2024-01-01T00:00:00Z)")
-
-	// NULL handling flags
-	listCmd.Flags().StringSlice("null-fields", []string{}, "Find documents where specified fields are NULL")
-	listCmd.Flags().StringSlice("not-null-fields", []string{}, "Find documents where specified fields are NOT NULL")
-
-	// Text search flags
-	listCmd.Flags().String("search", "", "Search for text in both title and body fields")
-	listCmd.Flags().String("title-contains", "", "Find documents where title contains specified text")
-	listCmd.Flags().String("body-contains", "", "Find documents where body contains specified text")
-	listCmd.Flags().Bool("search-case-sensitive", false, "Make text searches case-sensitive (default: case-insensitive)")
+	// Legacy flags - temporarily kept for backwards compatibility
+	// TODO: Remove these once the new query syntax is fully functional
+	listCmd.Flags().String("where", "", "[DEPRECATED] Use new query syntax instead")
+	listCmd.Flags().StringSlice("where-args", []string{}, "[DEPRECATED] Use new query syntax instead")
 
 	listCmd.Flags().String("sort", "", "Sort field")
 	listCmd.Flags().Int("limit", 0, "Limit number of results")
