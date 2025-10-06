@@ -1,8 +1,10 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/spf13/cobra"
 )
@@ -98,15 +100,65 @@ func init() {
 			rootCmd.AddCommand(cobraCmd)
 		}
 	}
+
+	// Add the 'next' command for the POC
+	nextCmd := &cobra.Command{
+		Use:   "next",
+		Short: "POC for the new query syntax parser",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			query, ok := fromContext(cmd.Context())
+			if !ok {
+				// This should not happen if preParse is correct
+				return fmt.Errorf("query object not found in context")
+			}
+
+			fmt.Println("--- Next Command (POC) ---")
+			fmt.Printf("Parsed Query Object: %+v\n", query)
+			fmt.Println("--------------------------")
+			fmt.Println("Received positional args:", args)
+			fmt.Println("Flag --x-db:", cmd.Flag("x-db").Value)
+			fmt.Println("Flag --x-type:", cmd.Flag("x-type").Value)
+			return nil
+		},
+	}
+	// Add flags with the 'x-' prefix for the POC
+	nextCmd.Flags().String("x-db", "", "Database file path")
+	nextCmd.Flags().String("x-type", "", "Document type")
+	rootCmd.AddCommand(nextCmd)
+}
+
+// preParse separates CLI arguments into cobra flags, filter flags, and positional args.
+func preParse(args []string) (cobraArgs, filterArgs, positionalArgs []string) {
+	if len(args) < 2 || args[1] != "next" {
+		return args, nil, nil // Not the 'next' command, do nothing
+	}
+
+	cobraArgs = []string{args[0], args[1]} // Keep program name and command
+
+	knownFlags := map[string]bool{
+		"--db":     true,
+		"--type":   true,
+		"--format": true,
+	}
+
+	for i := 2; i < len(args); i++ {
+		arg := args[i]
+		if !strings.HasPrefix(arg, "--") {
+			positionalArgs = append(positionalArgs, arg)
+			continue
+		}
+
+		flag := strings.SplitN(arg, "=", 2)[0]
+		if knownFlags[flag] {
+			cobraArgs = append(cobraArgs, "--x-"+strings.TrimPrefix(arg, "--"))
+		} else {
+			filterArgs = append(filterArgs, arg)
+		}
+	}
+	return cobraArgs, filterArgs, positionalArgs
 }
 
 func main() {
-	// Check for demo mode
-	if len(os.Args) > 1 && os.Args[1] == "--demo-viper" {
-		runViperDemo()
-		return
-	}
-	
 	// Check for Viper CLI mode
 	if len(os.Args) > 1 && os.Args[1] == "--use-viper" {
 		// Remove the --use-viper flag and run Viper CLI
@@ -114,6 +166,18 @@ func main() {
 		mainViper()
 		return
 	}
+
+	cobraArgs, filterArgs, positionalArgs := preParse(os.Args)
+	query := parseFilters(filterArgs)
+
+	// Pass the query object via context
+	ctx := rootCmd.Context()
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	rootCmd.SetContext(withQuery(ctx, query))
+
+	os.Args = append(cobraArgs, positionalArgs...) // Pass only cobra args and positionals to Execute
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
