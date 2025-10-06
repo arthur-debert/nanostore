@@ -430,30 +430,82 @@ func (re *ReflectionExecutor) ExecuteDelete(typeName, dbPath, id string, cascade
 	}
 }
 
-// ExecuteList executes a List method
-func (re *ReflectionExecutor) ExecuteList(typeName, dbPath string, options types.ListOptions) (interface{}, error) {
-	switch typeName {
-	case "Task":
-		store, err := re.createTaskStore(dbPath)
-		if err != nil {
-			return nil, err
-		}
-		defer func() { _ = store.Close() }()
-
-		return store.List(options)
-
-	case "Note":
-		store, err := re.createNoteStore(dbPath)
-		if err != nil {
-			return nil, err
-		}
-		defer func() { _ = store.Close() }()
-
-		return store.List(options)
-
-	default:
-		return nil, NewTypeError("list", typeName, []string{"Task", "Note"})
+// buildWhereFromQuery translates a Query object into a SQL-like WHERE clause and arguments.
+func (re *ReflectionExecutor) buildWhereFromQuery(query *Query) (string, []interface{}) {
+	if query == nil || len(query.Groups) == 0 {
+		return "", nil
 	}
+
+	var finalClause strings.Builder
+	var finalArgs []interface{}
+
+	for i, group := range query.Groups {
+		if len(group.Conditions) == 0 {
+			continue
+		}
+
+		var groupClauses []string
+		var groupArgs []interface{}
+
+		for _, cond := range group.Conditions {
+			sqlOp := operatorMap[cond.Operator]
+			if sqlOp == "" {
+				sqlOp = "=" // Default to equality
+			}
+
+			value := cond.Value
+			// Add wildcards for LIKE operators
+			if sqlOp == "LIKE" {
+				switch cond.Operator {
+				case "contains":
+					value = "%" + value.(string) + "%"
+				case "startswith":
+					value = value.(string) + "%"
+				case "endswith":
+					value = "%" + value.(string)
+				}
+			}
+
+			groupClauses = append(groupClauses, fmt.Sprintf("%s %s ?", cond.Field, sqlOp))
+			groupArgs = append(groupArgs, value)
+		}
+
+		if len(groupClauses) > 0 {
+			// Add the group clause, wrapped in parentheses
+			if finalClause.Len() > 0 {
+				// Use the logical operator that connects this group to the previous one
+				if i-1 < len(query.Operators) {
+					finalClause.WriteString(fmt.Sprintf(" %s ", query.Operators[i-1]))
+				} else {
+					finalClause.WriteString(" AND ") // Default to AND if something is wrong
+				}
+			}
+			finalClause.WriteString("(" + strings.Join(groupClauses, " AND ") + ")")
+			finalArgs = append(finalArgs, groupArgs...)
+		}
+	}
+
+	return finalClause.String(), finalArgs
+}
+
+// A simple map to translate from our DSL operators to SQL-like operators
+var operatorMap = map[string]string{
+	"eq":         "=",
+	"ne":         "!=",
+	"gt":         ">",
+	"gte":        ">=",
+	"lt":         "<",
+	"lte":        "<=",
+	"contains":   "LIKE",
+	"startswith": "LIKE",
+	"endswith":   "LIKE",
+	// "in" would be more complex and is not handled here
+}
+
+// ExecuteList now uses the Query object from the context.
+func (re *ReflectionExecutor) ExecuteList(typeName, dbPath string, query *Query, sort string, limit, offset int) (interface{}, error) {
+	whereClause, whereArgs := re.buildWhereFromQuery(query)
+	return re.ExecuteQuery(typeName, dbPath, whereClause, whereArgs, sort, limit, offset)
 }
 
 // ExecuteQuery executes a WHERE clause query using the Query API

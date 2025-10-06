@@ -46,7 +46,7 @@ func TestDateRangeQueries(t *testing.T) {
 	}
 
 	// First, let's get the actual creation time from one of the documents to understand the timing
-	allDocs, err := executor.ExecuteList("Task", testDB, executor.parseListOptions([]string{}, "", 0, 0))
+	allDocs, err := executor.ExecuteQuery("Task", testDB, "", nil, "", 0, 0)
 	if err != nil {
 		t.Fatalf("Failed to get all documents: %v", err)
 	}

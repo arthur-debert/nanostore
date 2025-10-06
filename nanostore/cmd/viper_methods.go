@@ -235,125 +235,44 @@ func (cli *ViperCLI) executeListCommand(cmd *cobra.Command) error {
 
 	typeName := cli.viperInst.GetString("type")
 	dbPath := cli.viperInst.GetString("db")
-	filters := cli.viperInst.GetStringSlice("filter")
-	whereClause := cli.viperInst.GetString("where")
-	whereArgsStr := cli.viperInst.GetStringSlice("where-args")
-
-	// Date range flags
-	createdAfter := cli.viperInst.GetString("created-after")
-	createdBefore := cli.viperInst.GetString("created-before")
-	updatedAfter := cli.viperInst.GetString("updated-after")
-	updatedBefore := cli.viperInst.GetString("updated-before")
-
-	// NULL handling flags
-	nullFields := cli.viperInst.GetStringSlice("null-fields")
-	notNullFields := cli.viperInst.GetStringSlice("not-null-fields")
-
-	// Text search flags
-	searchText := cli.viperInst.GetString("search")
-	titleContains := cli.viperInst.GetString("title-contains")
-	bodyContains := cli.viperInst.GetString("body-contains")
-	caseSensitive := cli.viperInst.GetBool("search-case-sensitive")
-
-	// Enhanced filter flags
-	filterEq := cli.viperInst.GetStringSlice("filter-eq")
-	filterNe := cli.viperInst.GetStringSlice("filter-ne")
-	filterGt := cli.viperInst.GetStringSlice("filter-gt")
-	filterLt := cli.viperInst.GetStringSlice("filter-lt")
-	filterGte := cli.viperInst.GetStringSlice("filter-gte")
-	filterLte := cli.viperInst.GetStringSlice("filter-lte")
-	filterLike := cli.viperInst.GetStringSlice("filter-like")
-	// filterIn not supported - removed to avoid confusion
-
-	// Convenience flags
-	status := cli.viperInst.GetString("status")
-	priority := cli.viperInst.GetString("priority")
-	// statusIn and priorityIn not supported - removed to avoid confusion
-
 	sort := cli.viperInst.GetString("sort")
 	limit := cli.viperInst.GetInt("limit")
 	offset := cli.viperInst.GetInt("offset")
 
+	// Get the query from the context
+	query, ok := fromContext(cmd.Context())
+	if !ok {
+		// Fallback to an empty query if not found, though this shouldn't happen
+		query = &Query{}
+	}
+
 	if cli.viperInst.GetBool("dry-run") {
+		whereClause, _ := cli.reflectionExec.buildWhereFromQuery(query)
 		return cli.showDryRun("list", map[string]interface{}{
-			"type":       typeName,
-			"db":         dbPath,
-			"filters":    filters,
-			"where":      whereClause,
-			"where_args": whereArgsStr,
-			"sort":       sort,
-			"limit":      limit,
-			"offset":     offset,
+			"type":        typeName,
+			"db":          dbPath,
+			"where_caluse": whereClause,
+			"sort":        sort,
+			"limit":       limit,
+			"offset":      offset,
 		})
 	}
 
-	var documents interface{}
-	var err error
-
-	// Build comprehensive filter WHERE clauses
-	filterWhere, filterArgs, err := cli.reflectionExec.buildFilterWhere(
-		createdAfter, createdBefore, updatedAfter, updatedBefore,
-		nullFields, notNullFields,
-		searchText, titleContains, bodyContains, caseSensitive,
-		filterEq, filterNe, filterGt, filterLt, filterGte, filterLte, filterLike,
-		status, priority)
+	documents, err := cli.reflectionExec.ExecuteList(typeName, dbPath, query, sort, limit, offset)
 	if err != nil {
-		return WrapError("build query filters", err,
-			"Check filter format: field=value",
-			"Use RFC3339 dates: 2024-01-01T00:00:00Z",
-			"Verify field names match document schema",
-			CommonSuggestions.RunHelp)
+		return WrapError("list documents", err,
+			CommonSuggestions.CheckDB,
+			CommonSuggestions.CheckType,
+			"Verify filter values and operators")
 	}
 
-	// Check if we need to use complex querying (WHERE clauses, dates, NULL checks, or text search)
-	needsComplexQuery := whereClause != "" || filterWhere != ""
-
-	if needsComplexQuery {
-		// Convert string args to interface{} slice for explicit WHERE clause
-		explicitArgs := make([]interface{}, len(whereArgsStr))
-		for i, arg := range whereArgsStr {
-			explicitArgs[i] = arg
-		}
-
-		// Combine explicit WHERE clause with all filters
-		finalWhere, finalArgs := cli.reflectionExec.combineWhereClauses(
-			whereClause, explicitArgs, filterWhere, filterArgs)
-
-		// Execute complex query
-		documents, err = cli.reflectionExec.ExecuteQuery(typeName, dbPath, finalWhere, finalArgs, sort, limit, offset)
-		if err != nil {
-			return WrapError("execute complex query", err,
-				"Check WHERE clause syntax and parameters",
-				"Verify field names match document schema",
-				CommonSuggestions.CheckDB,
-				CommonSuggestions.TryDryRun)
-		}
-	} else {
-		// Use basic List for simple filtering (just --filter flags)
-		options := cli.reflectionExec.parseListOptions(filters, sort, limit, offset)
-
-		documents, err = cli.reflectionExec.ExecuteList(typeName, dbPath, options)
-		if err != nil {
-			return WrapError("list documents", err,
-				CommonSuggestions.CheckDB,
-				CommonSuggestions.CheckType,
-				"Verify filter values match document fields")
-		}
+	// For verbose output, we can print the generated WHERE clause
+	if cli.viperInst.GetBool("verbose") {
+		whereClause, _ := cli.reflectionExec.buildWhereFromQuery(query)
+		fmt.Printf("Executing WHERE clause: %s\n", whereClause)
 	}
 
-	result := map[string]interface{}{
-		"command":   "list",
-		"type":      typeName,
-		"database":  dbPath,
-		"filters":   filters,
-		"where":     whereClause,
-		"sort":      sort,
-		"limit":     limit,
-		"offset":    offset,
-		"documents": documents,
-	}
-
-	return cli.outputResult(result)
+	return cli.outputResult(documents)
 }
 
 // executeBulkUpdateByDimension executes bulk update by dimension

@@ -191,7 +191,6 @@ func (cg *CommandGenerator) GenerateCommands() []Command {
 			Method:      "List",
 			Description: "List documents with optional filtering and sorting",
 			Flags: []FlagSpec{
-				{Name: "filter", Type: reflect.TypeOf([]string{}), Description: "Dimension filters (key=value)", Default: []string{}},
 				{Name: "sort", Type: reflect.TypeOf(""), Description: "Sort field", Default: ""},
 				{Name: "limit", Type: reflect.TypeOf(0), Description: "Limit number of results", Default: 0},
 			},
