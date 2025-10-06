@@ -9,9 +9,10 @@ RESET='\033[0m'
 DB_FILE=$(mktemp /tmp/nanonotes-example.XXXXXX.db)
 NANO_DB="../../bin/nano-db"
 
-# Set environment variables for database and type
+# Set environment variables for database, type, and query logging
 export NANOSTORE_DB="$DB_FILE"
 export NANOSTORE_TYPE="Note"
+export NANOSTORE_LOG_QUERIES="true"
 
 if [ ! -f "$NANO_DB" ]; then
     echo "Error: nano-db binary not found at $NANO_DB"
@@ -43,14 +44,12 @@ run_query() {
 # Create notes
 run_query "Creating a personal note" \
     $NANO_DB create \
-    --x-log-queries \
     "Shopping List" \
     --body="Milk, Eggs, Bread, Coffee" \
     --category=personal
 
 run_query "Creating a work note" \
     $NANO_DB create \
-    --x-log-queries \
     "Important Meeting" \
     --body="Team sync at 2pm, Discuss Q4 goals" \
     --category=work \
@@ -58,7 +57,6 @@ run_query "Creating a work note" \
 
 run_query "Creating an idea note with tags" \
     $NANO_DB create \
-    --x-log-queries \
     "Project Ideas" \
     --body="1. Build a CLI tool\n2. Write documentation\n3. Create examples" \
     --category=idea \
@@ -66,7 +64,6 @@ run_query "Creating an idea note with tags" \
 
 run_query "Creating a reference note" \
     $NANO_DB create \
-    --x-log-queries \
     "Git Commands" \
     --body="Common git commands reference" \
     --category=reference \
@@ -75,76 +72,62 @@ run_query "Creating a reference note" \
 
 # List notes
 run_query "List all notes" \
-    $NANO_DB list \
-    --x-log-queries
+    $NANO_DB list
 
 run_query "List only work notes" \
     $NANO_DB list \
-    --x-log-queries \
     --category=work
 
 # Query notes
 run_query "Find idea and reference notes" \
     $NANO_DB list \
-    --x-log-queries \
     --category=idea --or --category=reference
 
 run_query "Find notes with 'work' tag" \
     $NANO_DB list \
-    --x-log-queries \
     --tags__contains=work
 
 run_query "Find notes containing 'Meeting' in title" \
     $NANO_DB list \
-    --x-log-queries \
     --title__contains=Meeting
 
 # Update notes
 run_query "Update the shopping list (ID 1)" \
     $NANO_DB update 1 \
-    --x-log-queries \
     --body="Milk, Eggs, Bread, Coffee, Butter, Cheese" \
     --tags="shopping,urgent" \
     --content="Updated shopping list with more items"
 
 run_query "Change git commands note to personal category (ID 4)" \
     $NANO_DB update 4 \
-    --x-log-queries \
     --category=personal
 
 # Get note details
 run_query "Get details of note ID 1" \
-    $NANO_DB get 1 \
-    --x-log-queries
+    $NANO_DB get 1
 
 # Delete notes
 run_query "Delete the project ideas note (ID 3)" \
-    $NANO_DB delete 3 \
-    --x-log-queries
+    $NANO_DB delete 3
 
 run_query "Try to get the deleted note (should fail)" \
-    $NANO_DB get 3 \
-    --x-log-queries || true
+    $NANO_DB get 3 || true
 
 run_query "List remaining notes" \
-    $NANO_DB list \
-    --x-log-queries
+    $NANO_DB list
 
 # Complex queries
 run_query "Find work notes with specific tags" \
     $NANO_DB list \
-    --x-log-queries \
     --category=work --tags__contains=development
 
 run_query "Find notes that are personal OR have urgent tag" \
     $NANO_DB list \
-    --x-log-queries \
     --category=personal --or --tags__contains=urgent
 
 # Stats
 run_query "Get store statistics" \
-    $NANO_DB stats \
-    --x-log-queries
+    $NANO_DB stats
 
 # Database dump
 echo -e "${DIM}=== Database Contents ===${RESET}"
