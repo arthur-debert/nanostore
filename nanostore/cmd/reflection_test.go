@@ -94,8 +94,17 @@ func TestReflectionExecutorIntegration(t *testing.T) {
 	}
 
 	// Test List
-	listOptions := executor.parseListOptions([]string{"status=done"}, "created_at", 10, 0)
-	listResult, err := executor.ExecuteList("Task", testDB, listOptions)
+	query := &Query{
+		Groups: []FilterGroup{
+			{
+				Conditions: []FilterCondition{
+					{Field: "status", Operator: "eq", Value: "done"},
+				},
+			},
+		},
+	}
+
+	listResult, err := executor.ExecuteList("Task", testDB, query, "created_at", 10, 0)
 	if err != nil {
 		t.Fatalf("Failed to list tasks: %v", err)
 	}

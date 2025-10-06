@@ -23,18 +23,18 @@ func NewMethodExecutor(registry *EnhancedTypeRegistry) *MethodExecutor {
 
 // ExecuteCommand executes a command using reflection to call the appropriate Store method
 func (me *MethodExecutor) ExecuteCommand(cmd *Command, cobraCmd *cobra.Command, args []string) error {
-	// Get global flags
-	typeName, _ := cobraCmd.Flags().GetString("type")
-	dbPath, _ := cobraCmd.Flags().GetString("db")
-	format, _ := cobraCmd.Flags().GetString("format")
-	dryRun, _ := cobraCmd.Flags().GetBool("dry-run")
+	// Use global flag variables (set by root.go)
+	typeName := x_typeName
+	dbPath := x_dbPath
+	format := x_format
+	dryRun := x_dryRun
 
 	if typeName == "" {
-		return fmt.Errorf("--type flag is required")
+		return fmt.Errorf("--x-type flag is required")
 	}
 
 	if dbPath == "" {
-		return fmt.Errorf("--db flag is required")
+		return fmt.Errorf("--x-db flag is required")
 	}
 
 	// Get type definition
@@ -44,32 +44,63 @@ func (me *MethodExecutor) ExecuteCommand(cmd *Command, cobraCmd *cobra.Command, 
 	}
 
 	if dryRun {
-		return me.showDryRun(cmd, typeName, dbPath, args, cobraCmd)
+		return me.showDryRunWithQuery(cmd, typeName, dbPath, args, cobraCmd)
 	}
 
-	// For now, return a helpful message about what would be executed
-	// TODO: Implement actual store creation and method invocation
+	// Use ReflectionExecutor for actual command execution
+	reflectionExec := NewReflectionExecutor(me.registry)
 
-	formatter := NewOutputFormatter(format)
+	// Get the query from context
+	query, _ := fromContext(cobraCmd.Context())
 
-	// Simulate command execution based on the command type
-	result, err := me.simulateCommandExecution(cmd, typeDef, args, cobraCmd)
-	if err != nil {
-		return err
+	switch cmd.Name {
+	case "list":
+		sort, _ := cobraCmd.Flags().GetString("sort")
+		limit, _ := cobraCmd.Flags().GetInt("limit")
+
+		result, err := reflectionExec.ExecuteList(typeName, dbPath, query, sort, limit, 0)
+		if err != nil {
+			return fmt.Errorf("failed to execute list: %w", err)
+		}
+
+		return me.outputResult(result, format)
+
+	case "create":
+		if len(args) == 0 {
+			return fmt.Errorf("create command requires a title argument")
+		}
+		title := args[0]
+
+		// Convert query conditions to data map for create
+		data := me.queryToDataMap(query)
+
+		result, err := reflectionExec.ExecuteCreate(typeName, dbPath, title, data)
+		if err != nil {
+			return fmt.Errorf("failed to execute create: %w", err)
+		}
+
+		return me.outputResult(result, format)
+
+	default:
+		// For unimplemented commands, simulate for now
+		formatter := NewOutputFormatter(format)
+		result, err := me.simulateCommandExecution(cmd, typeDef, args, cobraCmd)
+		if err != nil {
+			return err
+		}
+
+		output, err := formatter.Format(result)
+		if err != nil {
+			return fmt.Errorf("failed to format output: %w", err)
+		}
+
+		fmt.Println(output)
+		return nil
 	}
-
-	// Format and output the result
-	output, err := formatter.Format(result)
-	if err != nil {
-		return fmt.Errorf("failed to format output: %w", err)
-	}
-
-	fmt.Println(output)
-	return nil
 }
 
-// showDryRun displays what would be executed without actually doing it
-func (me *MethodExecutor) showDryRun(cmd *Command, typeName, dbPath string, args []string, cobraCmd *cobra.Command) error {
+// showDryRunWithQuery displays what would be executed including query information from context
+func (me *MethodExecutor) showDryRunWithQuery(cmd *Command, typeName, dbPath string, args []string, cobraCmd *cobra.Command) error {
 	fmt.Printf("DRY RUN: Would execute command '%s'\n", cmd.Name)
 	fmt.Printf("  Type: %s\n", typeName)
 	fmt.Printf("  Database: %s\n", dbPath)
@@ -79,15 +110,65 @@ func (me *MethodExecutor) showDryRun(cmd *Command, typeName, dbPath string, args
 		fmt.Printf("  Arguments: %v\n", args)
 	}
 
+	// Show the parsed query from context
+	if query, ok := fromContext(cobraCmd.Context()); ok && query != nil {
+		fmt.Printf("  Parsed Query:\n")
+		if len(query.Groups) > 0 {
+			for i, group := range query.Groups {
+				if i > 0 && i-1 < len(query.Operators) {
+					fmt.Printf("    %s\n", query.Operators[i-1])
+				}
+				fmt.Printf("    Group %d:\n", i+1)
+				for _, condition := range group.Conditions {
+					fmt.Printf("      %s %s %v\n", condition.Field, condition.Operator, condition.Value)
+				}
+			}
+		} else {
+			fmt.Printf("    No filter conditions\n")
+		}
+	} else {
+		fmt.Printf("  Query: No query found in context\n")
+	}
+
 	// Show flags that would be used
-	fmt.Printf("  Flags:\n")
+	fmt.Printf("  Global Flags:\n")
 	cobraCmd.Flags().VisitAll(func(flag *pflag.Flag) {
-		if flag.Changed {
+		if flag.Changed && strings.HasPrefix(flag.Name, "x-") {
 			fmt.Printf("    --%s: %s\n", flag.Name, flag.Value.String())
 		}
 	})
 
 	return nil
+}
+
+// outputResult formats and outputs a result
+func (me *MethodExecutor) outputResult(result interface{}, format string) error {
+	formatter := NewOutputFormatter(format)
+	output, err := formatter.Format(result)
+	if err != nil {
+		return fmt.Errorf("failed to format output: %w", err)
+	}
+	fmt.Print(output)
+	return nil
+}
+
+// queryToDataMap converts query conditions to a data map for create/update operations
+func (me *MethodExecutor) queryToDataMap(query *Query) map[string]interface{} {
+	data := make(map[string]interface{})
+	if query == nil {
+		return data
+	}
+
+	// Convert filter conditions to data fields
+	for _, group := range query.Groups {
+		for _, condition := range group.Conditions {
+			if condition.Operator == "eq" {
+				data[condition.Field] = condition.Value
+			}
+		}
+	}
+
+	return data
 }
 
 // simulateCommandExecution simulates command execution and returns mock results

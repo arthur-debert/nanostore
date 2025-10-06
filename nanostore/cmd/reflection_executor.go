@@ -9,7 +9,6 @@ import (
 
 	"github.com/arthur-debert/nanostore/nanostore"
 	"github.com/arthur-debert/nanostore/nanostore/api"
-	"github.com/arthur-debert/nanostore/types"
 )
 
 // ReflectionExecutor handles actual Store method invocation using reflection
@@ -430,30 +429,89 @@ func (re *ReflectionExecutor) ExecuteDelete(typeName, dbPath, id string, cascade
 	}
 }
 
-// ExecuteList executes a List method
-func (re *ReflectionExecutor) ExecuteList(typeName, dbPath string, options types.ListOptions) (interface{}, error) {
-	switch typeName {
-	case "Task":
-		store, err := re.createTaskStore(dbPath)
-		if err != nil {
-			return nil, err
-		}
-		defer func() { _ = store.Close() }()
-
-		return store.List(options)
-
-	case "Note":
-		store, err := re.createNoteStore(dbPath)
-		if err != nil {
-			return nil, err
-		}
-		defer func() { _ = store.Close() }()
-
-		return store.List(options)
-
-	default:
-		return nil, NewTypeError("list", typeName, []string{"Task", "Note"})
+// BuildWhereFromQuery translates a Query object into a SQL-like WHERE clause and arguments.
+func (re *ReflectionExecutor) BuildWhereFromQuery(query *Query) (string, []interface{}) {
+	if query == nil || len(query.Groups) == 0 {
+		return "", nil
 	}
+
+	var finalClause strings.Builder
+	var finalArgs []interface{}
+
+	for i, group := range query.Groups {
+		if len(group.Conditions) == 0 {
+			continue
+		}
+
+		var groupClauses []string
+		var groupArgs []interface{}
+
+		for _, cond := range group.Conditions {
+			sqlOp := operatorMap[cond.Operator]
+			if sqlOp == "" {
+				sqlOp = "=" // Default to equality
+			}
+
+			value := cond.Value
+			// Add wildcards for LIKE operators
+			if sqlOp == "LIKE" {
+				switch cond.Operator {
+				case "contains":
+					value = "%" + value.(string) + "%"
+				case "startswith":
+					value = value.(string) + "%"
+				case "endswith":
+					value = "%" + value.(string)
+				}
+			}
+
+			groupClauses = append(groupClauses, fmt.Sprintf("%s %s ?", cond.Field, sqlOp))
+			groupArgs = append(groupArgs, value)
+		}
+
+		if len(groupClauses) > 0 {
+			// Add the group clause, wrapped in parentheses only if there are multiple groups or multiple conditions in the group
+			if finalClause.Len() > 0 {
+				// Use the logical operator that connects this group to the previous one
+				if i-1 < len(query.Operators) {
+					finalClause.WriteString(fmt.Sprintf(" %s ", query.Operators[i-1]))
+				} else {
+					finalClause.WriteString(" AND ") // Default to AND if something is wrong
+				}
+			}
+
+			groupClause := strings.Join(groupClauses, " AND ")
+			// Only wrap in parentheses if there are multiple groups or multiple conditions in this group
+			if len(query.Groups) > 1 || len(groupClauses) > 1 {
+				finalClause.WriteString("(" + groupClause + ")")
+			} else {
+				finalClause.WriteString(groupClause)
+			}
+			finalArgs = append(finalArgs, groupArgs...)
+		}
+	}
+
+	return finalClause.String(), finalArgs
+}
+
+// A simple map to translate from our DSL operators to SQL-like operators
+var operatorMap = map[string]string{
+	"eq":         "=",
+	"ne":         "!=",
+	"gt":         ">",
+	"gte":        ">=",
+	"lt":         "<",
+	"lte":        "<=",
+	"contains":   "LIKE",
+	"startswith": "LIKE",
+	"endswith":   "LIKE",
+	// "in" would be more complex and is not handled here
+}
+
+// ExecuteList now uses the Query object from the context.
+func (re *ReflectionExecutor) ExecuteList(typeName, dbPath string, query *Query, sort string, limit, offset int) (interface{}, error) {
+	whereClause, whereArgs := re.BuildWhereFromQuery(query)
+	return re.ExecuteQuery(typeName, dbPath, whereClause, whereArgs, sort, limit, offset)
 }
 
 // ExecuteQuery executes a WHERE clause query using the Query API
@@ -589,221 +647,4 @@ func (re *ReflectionExecutor) toPascalCase(s string) string {
 		}
 	}
 	return strings.Join(parts, "")
-}
-
-// parseListOptions converts CLI parameters to types.ListOptions
-func (re *ReflectionExecutor) parseListOptions(filters []string, sort string, limit, offset int) types.ListOptions {
-	options := types.ListOptions{
-		Filters: make(map[string]interface{}),
-	}
-
-	// Set limit and offset as pointers
-	if limit > 0 {
-		options.Limit = &limit
-	}
-	if offset > 0 {
-		options.Offset = &offset
-	}
-
-	if sort != "" {
-		options.OrderBy = []types.OrderClause{
-			{Column: sort, Descending: false},
-		}
-	}
-
-	// Parse filters (format: "key=value")
-	for _, filter := range filters {
-		parts := strings.SplitN(filter, "=", 2)
-		if len(parts) == 2 {
-			options.Filters[parts[0]] = parts[1]
-		}
-	}
-
-	return options
-}
-
-// buildFilterWhere builds WHERE clauses from all filter types
-func (re *ReflectionExecutor) buildFilterWhere(
-	createdAfter, createdBefore, updatedAfter, updatedBefore string,
-	nullFields, notNullFields []string,
-	searchText, titleContains, bodyContains string, caseSensitive bool,
-	filterEq, filterNe, filterGt, filterLt, filterGte, filterLte, filterLike []string,
-	status, priority string) (string, []interface{}, error) {
-	var clauses []string
-	var args []interface{}
-
-	// Handle date range filters
-	if createdAfter != "" {
-		t, err := time.Parse(time.RFC3339, createdAfter)
-		if err != nil {
-			return "", nil, NewValidationError("parse date", "created-after", createdAfter,
-				"Use RFC3339 format: 2024-01-01T00:00:00Z",
-				"Check date syntax and timezone")
-		}
-		clauses = append(clauses, "created_at > ?")
-		args = append(args, t)
-	}
-
-	if createdBefore != "" {
-		t, err := time.Parse(time.RFC3339, createdBefore)
-		if err != nil {
-			return "", nil, NewValidationError("parse date", "created-before", createdBefore,
-				"Use RFC3339 format: 2024-01-01T00:00:00Z",
-				"Check date syntax and timezone")
-		}
-		clauses = append(clauses, "created_at < ?")
-		args = append(args, t)
-	}
-
-	if updatedAfter != "" {
-		t, err := time.Parse(time.RFC3339, updatedAfter)
-		if err != nil {
-			return "", nil, NewValidationError("parse date", "updated-after", updatedAfter,
-				"Use RFC3339 format: 2024-01-01T00:00:00Z",
-				"Check date syntax and timezone")
-		}
-		clauses = append(clauses, "updated_at > ?")
-		args = append(args, t)
-	}
-
-	if updatedBefore != "" {
-		t, err := time.Parse(time.RFC3339, updatedBefore)
-		if err != nil {
-			return "", nil, NewValidationError("parse date", "updated-before", updatedBefore,
-				"Use RFC3339 format: 2024-01-01T00:00:00Z",
-				"Check date syntax and timezone")
-		}
-		clauses = append(clauses, "updated_at < ?")
-		args = append(args, t)
-	}
-
-	// Handle NULL field filters using simple parameter-based approach
-	// Instead of complex IS NULL syntax, use a special marker value
-	for _, field := range nullFields {
-		// Use a simple equality check with special NULL marker
-		fieldName := field
-		if !strings.Contains(field, ".") {
-			fieldName = fmt.Sprintf("_data.%s", field)
-		}
-		clauses = append(clauses, fmt.Sprintf("%s = ?", fieldName))
-		args = append(args, "__NULL_CHECK__")
-	}
-
-	// Handle NOT NULL field filters
-	for _, field := range notNullFields {
-		// Use a simple inequality check with special NULL marker
-		fieldName := field
-		if !strings.Contains(field, ".") {
-			fieldName = fmt.Sprintf("_data.%s", field)
-		}
-		clauses = append(clauses, fmt.Sprintf("%s != ?", fieldName))
-		args = append(args, "__NULL_CHECK__")
-	}
-
-	// Handle text search filters using LIKE operator
-	if searchText != "" {
-		// Create pattern with wildcards
-		pattern := "%" + searchText + "%"
-		// For case-insensitive search, convert to lowercase (WhereEvaluator will handle case)
-		if !caseSensitive {
-			pattern = strings.ToLower(pattern)
-		}
-		// Use special search marker for title OR body matching
-		clauses = append(clauses, "__SEARCH_TITLE_OR_BODY__ LIKE ?")
-		args = append(args, pattern)
-	}
-
-	if titleContains != "" {
-		pattern := "%" + titleContains + "%"
-		if !caseSensitive {
-			pattern = strings.ToLower(pattern)
-		}
-		clauses = append(clauses, "title LIKE ?")
-		args = append(args, pattern)
-	}
-
-	if bodyContains != "" {
-		pattern := "%" + bodyContains + "%"
-		if !caseSensitive {
-			pattern = strings.ToLower(pattern)
-		}
-		clauses = append(clauses, "body LIKE ?")
-		args = append(args, pattern)
-	}
-
-	// Handle enhanced filter flags with operators
-	filterMap := map[string][]string{
-		"=":    filterEq,
-		"!=":   filterNe,
-		">":    filterGt,
-		"<":    filterLt,
-		">=":   filterGte,
-		"<=":   filterLte,
-		"LIKE": filterLike,
-	}
-
-	for operator, filters := range filterMap {
-		for _, filter := range filters {
-			field, value, err := re.parseFieldValue(filter)
-			if err != nil {
-				return "", nil, NewFilterError("parse filter", filter, err.Error())
-			}
-			clauses = append(clauses, fmt.Sprintf("%s %s ?", field, operator))
-			args = append(args, value)
-		}
-	}
-
-	// Note: IN filters are not supported due to lack of OR logic in WhereEvaluator
-	// Users can achieve similar results with multiple WHERE clauses or equality filters
-
-	// Handle convenience flags
-	if status != "" {
-		clauses = append(clauses, "status = ?")
-		args = append(args, status)
-	}
-	if priority != "" {
-		clauses = append(clauses, "priority = ?")
-		args = append(args, priority)
-	}
-	// Note: statusIn and priorityIn convenience flags are not supported due to lack of OR logic in WhereEvaluator
-	// Users can achieve similar results with multiple WHERE clauses or separate commands
-
-	if len(clauses) == 0 {
-		return "", nil, nil
-	}
-
-	whereClause := strings.Join(clauses, " AND ")
-	return whereClause, args, nil
-}
-
-// parseFieldValue parses "field=value" format into field and value components
-func (re *ReflectionExecutor) parseFieldValue(filter string) (string, string, error) {
-	parts := strings.SplitN(filter, "=", 2)
-	if len(parts) != 2 {
-		return "", "", NewValidationError("parse filter", "filter format", filter,
-			"Use format: field=value",
-			"Ensure there is exactly one '=' character")
-	}
-	return strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1]), nil
-}
-
-// combineWhereClauses combines explicit WHERE clause with date/NULL filters
-func (re *ReflectionExecutor) combineWhereClauses(explicitWhere string, explicitArgs []interface{}, dateNullWhere string, dateNullArgs []interface{}) (string, []interface{}) {
-	if explicitWhere == "" && dateNullWhere == "" {
-		return "", nil
-	}
-
-	if explicitWhere == "" {
-		return dateNullWhere, dateNullArgs
-	}
-
-	if dateNullWhere == "" {
-		return explicitWhere, explicitArgs
-	}
-
-	// Combine both WHERE clauses
-	combinedWhere := fmt.Sprintf("(%s) AND (%s)", explicitWhere, dateNullWhere)
-	combinedArgs := append(explicitArgs, dateNullArgs...)
-
-	return combinedWhere, combinedArgs
 }
