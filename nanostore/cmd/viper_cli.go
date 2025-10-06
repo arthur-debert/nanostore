@@ -303,34 +303,34 @@ Uses new domain-specific query syntax with support for complex logical expressio
 
 Examples:
   # Basic listing
-  nanostore --type Task list
+  nano-db --x-type Task list
   
   # Simple equality filters
-  nanostore --type Task list --status=active
-  nanostore --type Task list --priority=high --assignee=alice
+  nano-db --x-type Task list --status=active
+  nano-db --x-type Task list --priority=high --assignee=alice
   
   # Operators with double underscore
-  nanostore --type Task list --id__gt=100
-  nanostore --type Task list --created_at__gte="2024-01-01"
-  nanostore --type Task list --priority__ne=low
-  nanostore --type Task list --title__contains=urgent
-  nanostore --type Task list --description__startswith=Fix
+  nano-db --x-type Task list --id__gt=100
+  nano-db --x-type Task list --created_at__gte="2024-01-01"
+  nano-db --x-type Task list --priority__ne=low
+  nano-db --x-type Task list --title__contains=urgent
+  nano-db --x-type Task list --description__startswith=Fix
   
   # Logical operators (evaluated left to right)
-  nanostore --type Task list --status=active --or --status=pending
-  nanostore --type Task list --status=active --priority=high --or --assignee=alice
-  nanostore --type Task list --status=active --and --priority=high --or --assignee=alice
+  nano-db --x-type Task list --status=active --or --status=pending
+  nano-db --x-type Task list --status=active --priority=high --or --assignee=alice
+  nano-db --x-type Task list --status=active --and --priority=high --or --assignee=alice
   
   # Complex queries
-  nanostore --type Task list --status=active --priority__gte=medium --assignee=alice
-  nanostore --type Task list --created_at__gt="2024-01-01" --created_at__lt="2024-12-31" --status__ne=done
+  nano-db --x-type Task list --status=active --priority__gte=medium --assignee=alice
+  nano-db --x-type Task list --created_at__gt="2024-01-01" --created_at__lt="2024-12-31" --status__ne=done
   
   # Sorting and pagination  
-  nanostore --type Task list --status=active --x-sort=created_at --x-limit=10 --x-offset=20
+  nano-db --x-type Task list --status=active --x-sort=created_at --x-limit=10 --x-offset=20
   
   # Control flags (prefixed with x-)
-  nanostore --type Task list --status=active --x-dry-run
-  nanostore --type Task list --status=active --x-verbose --x-output=json`,
+  nano-db --x-type Task list --status=active --x-dry-run
+  nano-db --x-type Task list --status=active --x-verbose --x-output=json`,
 
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return cli.executeListCommand(cmd)

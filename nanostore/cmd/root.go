@@ -10,16 +10,16 @@ import (
 )
 
 var rootCmd = &cobra.Command{
-	Use:   "nanostore",
-	Short: "Nanostore CLI - Document and ID store management",
-	Long: `A modern, ergonomic CLI for NanoStore.
+	Use:   "nano-db",
+	Short: "Nano-DB CLI - Document and ID store management",
+	Long: `A modern, ergonomic CLI for Nano-DB.
 
 Examples:
   # List all active tasks
-  nanostore list --x-type=Task --status=active
+  nano-db list --x-type=Task --status=active
 
   # Get a specific document
-  nanostore get --x-type=Task 1`,
+  nano-db get --x-type=Task 1`,
 }
 
 // Global flag variables
@@ -80,7 +80,7 @@ func preParse(args []string) (cobraArgs, filterArgs, positionalArgs []string) {
 
 	cobraArgs = []string{args[0]} // Keep program name
 	var command string
-	
+
 	// Find the command
 	for i := 1; i < len(args); i++ {
 		if !strings.HasPrefix(args[i], "-") {
@@ -93,7 +93,6 @@ func preParse(args []string) (cobraArgs, filterArgs, positionalArgs []string) {
 		// If it's a root flag before the command
 		cobraArgs = append(cobraArgs, args[i])
 	}
-
 
 	// These commands do not support filter flags
 	nonFilterCommands := map[string]bool{
