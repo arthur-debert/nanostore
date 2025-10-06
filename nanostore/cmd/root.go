@@ -20,16 +20,25 @@ Examples:
 
   # Get a specific document
   nano-db get --x-type=Task 1`,
+	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+		// Initialize logging before any command runs
+		if err := initLogging(x_logLevel, x_logQueries); err != nil {
+			return fmt.Errorf("failed to initialize logging: %w", err)
+		}
+		return nil
+	},
 }
 
 // Global flag variables
 var (
-	x_typeName string
-	x_dbPath   string
-	x_format   string
-	x_noColor  bool
-	x_quiet    bool
-	x_dryRun   bool
+	x_typeName   string
+	x_dbPath     string
+	x_format     string
+	x_noColor    bool
+	x_quiet      bool
+	x_dryRun     bool
+	x_logLevel   string
+	x_logQueries bool
 )
 
 func init() {
@@ -40,6 +49,8 @@ func init() {
 	rootCmd.PersistentFlags().BoolVar(&x_noColor, "x-no-color", false, "Disable colors")
 	rootCmd.PersistentFlags().BoolVar(&x_quiet, "x-quiet", false, "Suppress headers")
 	rootCmd.PersistentFlags().BoolVar(&x_dryRun, "x-dry-run", false, "Show what would happen without executing")
+	rootCmd.PersistentFlags().StringVar(&x_logLevel, "x-log-level", "warn", "Log level (debug|info|warn|error)")
+	rootCmd.PersistentFlags().BoolVar(&x_logQueries, "x-log-queries", false, "Log SQL queries to stdout")
 
 	// Generate and add all API commands
 	generator := NewCommandGenerator()

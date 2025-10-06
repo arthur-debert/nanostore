@@ -235,6 +235,9 @@ func (re *ReflectionExecutor) convertResults(results []reflect.Value) (interface
 
 // ExecuteCreate executes a Create method with proper type conversion
 func (re *ReflectionExecutor) ExecuteCreate(typeName, dbPath, title string, data map[string]interface{}) (interface{}, error) {
+	// Log the create operation
+	logQuery("create", fmt.Sprintf("CREATE %s document with title: %s", typeName, title), []interface{}{data})
+
 	switch typeName {
 	case "Task":
 		store, err := re.createTaskStore(dbPath)
@@ -373,6 +376,9 @@ func (re *ReflectionExecutor) ExecuteGetMetadata(typeName, dbPath, id string) (i
 
 // ExecuteUpdate executes an Update method
 func (re *ReflectionExecutor) ExecuteUpdate(typeName, dbPath, id string, data map[string]interface{}) (interface{}, error) {
+	// Log the update operation
+	logQuery("update", fmt.Sprintf("UPDATE %s document with id: %s", typeName, id), []interface{}{data})
+
 	switch typeName {
 	case "Task":
 		store, err := re.createTaskStore(dbPath)
@@ -405,6 +411,9 @@ func (re *ReflectionExecutor) ExecuteUpdate(typeName, dbPath, id string, data ma
 
 // ExecuteDelete executes a Delete method
 func (re *ReflectionExecutor) ExecuteDelete(typeName, dbPath, id string, cascade bool) error {
+	// Log the delete operation
+	logQuery("delete", fmt.Sprintf("DELETE %s document with id: %s (cascade: %v)", typeName, id, cascade), nil)
+
 	switch typeName {
 	case "Task":
 		store, err := re.createTaskStore(dbPath)
@@ -511,6 +520,12 @@ var operatorMap = map[string]string{
 // ExecuteList now uses the Query object from the context.
 func (re *ReflectionExecutor) ExecuteList(typeName, dbPath string, query *Query, sort string, limit, offset int) (interface{}, error) {
 	whereClause, whereArgs := re.BuildWhereFromQuery(query)
+
+	// Log the generated query
+	if whereClause != "" {
+		logQuery("list", whereClause, whereArgs)
+	}
+
 	return re.ExecuteQuery(typeName, dbPath, whereClause, whereArgs, sort, limit, offset)
 }
 
