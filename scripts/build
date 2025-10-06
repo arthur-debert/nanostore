@@ -34,14 +34,14 @@ echo -e "  Commit:  ${BOLD}$COMMIT${NC}"
 echo -e "  Date:    ${BOLD}$BUILD_DATE${NC}"
 echo
 
-# Build nanostore CLI binary
-echo -e "${BLUE}Building nanostore CLI...${NC}"
+# Build nano-db CLI binary
+echo -e "${BLUE}Building nano-db CLI...${NC}"
 LDFLAGS="-X main.version=${VERSION} -X main.commit=${COMMIT} -X main.buildDate=${BUILD_DATE}"
-if go build -ldflags "${LDFLAGS}" -o "${BIN_DIR}/nanostore" ./cmd/migrate; then
-    echo -e "${GREEN}✓ nanostore CLI built successfully${NC}"
-    chmod +x "${BIN_DIR}/nanostore"
+if go build -ldflags "${LDFLAGS}" -o "${BIN_DIR}/nano-db" ./nanostore/cmd; then
+    echo -e "${GREEN}✓ nano-db CLI built successfully${NC}"
+    chmod +x "${BIN_DIR}/nano-db"
 else
-    echo -e "${RED}∅ nanostore CLI build failed${NC}"
+    echo -e "${RED}∅ nano-db CLI build failed${NC}"
     exit 1
 fi
 

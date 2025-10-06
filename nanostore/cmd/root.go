@@ -4,42 +4,54 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/spf13/cobra"
 )
 
 var rootCmd = &cobra.Command{
-	Use:   "nanostore",
-	Short: "Nanostore CLI - Document and ID store management",
-	Long: `A modern, ergonomic CLI for NanoStore.
+	Use:   "nano-db",
+	Short: "Nano-DB CLI - Document and ID store management",
+	Long: `A modern, ergonomic CLI for Nano-DB.
 
 Examples:
   # List all active tasks
-  nanostore list --x-type=Task --status=active
+  nano-db list --x-type=Task --status=active
 
   # Get a specific document
-  nanostore get --x-type=Task 1`,
+  nano-db get --x-type=Task 1`,
+	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+		// Initialize logging before any command runs
+		if err := initLogging(x_logLevel, x_logQueries); err != nil {
+			return fmt.Errorf("failed to initialize logging: %w", err)
+		}
+		return nil
+	},
 }
 
 // Global flag variables
 var (
-	x_typeName string
-	x_dbPath   string
-	x_format   string
-	x_noColor  bool
-	x_quiet    bool
-	x_dryRun   bool
+	x_typeName   string
+	x_dbPath     string
+	x_format     string
+	x_noColor    bool
+	x_quiet      bool
+	x_dryRun     bool
+	x_logLevel   string
+	x_logQueries bool
 )
 
 func init() {
 	// Universal flags for all commands, now prefixed with 'x-'
-	rootCmd.PersistentFlags().StringVar(&x_typeName, "x-type", "", "Type definition (required)")
-	rootCmd.PersistentFlags().StringVar(&x_dbPath, "x-db", "", "Database file path (required)")
-	rootCmd.PersistentFlags().StringVar(&x_format, "x-format", "table", "Output format: table|json|yaml|csv")
-	rootCmd.PersistentFlags().BoolVar(&x_noColor, "x-no-color", false, "Disable colors")
-	rootCmd.PersistentFlags().BoolVar(&x_quiet, "x-quiet", false, "Suppress headers")
-	rootCmd.PersistentFlags().BoolVar(&x_dryRun, "x-dry-run", false, "Show what would happen without executing")
+	rootCmd.PersistentFlags().StringVar(&x_typeName, "x-type", os.Getenv("NANOSTORE_TYPE"), "Type definition (required)")
+	rootCmd.PersistentFlags().StringVar(&x_dbPath, "x-db", os.Getenv("NANOSTORE_DB"), "Database file path (required)")
+	rootCmd.PersistentFlags().StringVar(&x_format, "x-format", getEnvOrDefault("NANOSTORE_FORMAT", "table"), "Output format: table|json|yaml|csv")
+	rootCmd.PersistentFlags().BoolVar(&x_noColor, "x-no-color", getEnvBool("NANOSTORE_NO_COLOR"), "Disable colors")
+	rootCmd.PersistentFlags().BoolVar(&x_quiet, "x-quiet", getEnvBool("NANOSTORE_QUIET"), "Suppress headers")
+	rootCmd.PersistentFlags().BoolVar(&x_dryRun, "x-dry-run", getEnvBool("NANOSTORE_DRY_RUN"), "Show what would happen without executing")
+	rootCmd.PersistentFlags().StringVar(&x_logLevel, "x-log-level", getEnvOrDefault("NANOSTORE_LOG_LEVEL", "warn"), "Log level (debug|info|warn|error)")
+	rootCmd.PersistentFlags().BoolVar(&x_logQueries, "x-log-queries", getEnvBool("NANOSTORE_LOG_QUERIES"), "Log SQL queries to stdout")
 
 	// Generate and add all API commands
 	generator := NewCommandGenerator()
@@ -80,7 +92,7 @@ func preParse(args []string) (cobraArgs, filterArgs, positionalArgs []string) {
 
 	cobraArgs = []string{args[0]} // Keep program name
 	var command string
-	
+
 	// Find the command
 	for i := 1; i < len(args); i++ {
 		if !strings.HasPrefix(args[i], "-") {
@@ -93,7 +105,6 @@ func preParse(args []string) (cobraArgs, filterArgs, positionalArgs []string) {
 		// If it's a root flag before the command
 		cobraArgs = append(cobraArgs, args[i])
 	}
-
 
 	// These commands do not support filter flags
 	nonFilterCommands := map[string]bool{
@@ -123,14 +134,27 @@ func preParse(args []string) (cobraArgs, filterArgs, positionalArgs []string) {
 	return
 }
 
-func main() {
-	// Check for Viper CLI mode (keeping for compatibility if needed)
-	if len(os.Args) > 1 && os.Args[1] == "--use-viper" {
-		os.Args = append(os.Args[:1], os.Args[2:]...)
-		mainViper()
-		return
+// Helper functions for environment variables
+func getEnvOrDefault(key, defaultValue string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
 	}
+	return defaultValue
+}
 
+func getEnvBool(key string) bool {
+	value := os.Getenv(key)
+	if value == "" {
+		return false
+	}
+	b, err := strconv.ParseBool(value)
+	if err != nil {
+		return false
+	}
+	return b
+}
+
+func main() {
 	cobraArgs, filterArgs, positionalArgs := preParse(os.Args)
 	query := parseFilters(filterArgs)
 
