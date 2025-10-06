@@ -117,7 +117,7 @@ func NewStoreError(operation string, underlying error, suggestions ...string) *C
 func NewTypeError(operation, typeName string, availableTypes []string) *CLIError {
 	suggestions := []string{
 		"Use --type flag to specify a valid type",
-		"Run 'nanostore types' to see available types",
+		"Run 'nano-db types' to see available types",
 	}
 
 	if len(availableTypes) > 0 {
@@ -134,9 +134,9 @@ func NewTypeError(operation, typeName string, availableTypes []string) *CLIError
 // NewFilterError creates an error for filtering issues
 func NewFilterError(operation, filter, issue string) *CLIError {
 	suggestions := []string{
-		"Use format: field=value for basic filters",
-		"Use format: field=value for --filter-eq flags",
-		"Use RFC3339 format for dates: 2024-01-01T00:00:00Z",
+		"Use format: --field=value or --field__operator=value",
+		"Available operators: eq, ne, gt, lt, gte, lte, contains, startswith, endswith",
+		"Use --or to combine conditions with OR logic",
 		"Check field names match your document schema",
 	}
 
