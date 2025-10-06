@@ -103,6 +103,7 @@ func TestReflectionExecutorIntegration(t *testing.T) {
 			},
 		},
 	}
+
 	listResult, err := executor.ExecuteList("Task", testDB, query, "created_at", 10, 0)
 	if err != nil {
 		t.Fatalf("Failed to list tasks: %v", err)

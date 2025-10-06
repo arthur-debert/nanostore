@@ -154,3 +154,96 @@ func TestParseFilters(t *testing.T) {
 		})
 	}
 }
+
+func TestBuildWhereFromQuery(t *testing.T) {
+	registry := NewEnhancedTypeRegistry()
+	executor := NewReflectionExecutor(registry)
+
+	testCases := []struct {
+		name           string
+		query          *Query
+		expectedClause string
+		expectedArgs   []interface{}
+	}{
+		{
+			name: "Single condition",
+			query: &Query{
+				Groups: []FilterGroup{
+					{
+						Conditions: []FilterCondition{
+							{Field: "status", Operator: "eq", Value: "active"},
+						},
+					},
+				},
+			},
+			expectedClause: "status = ?",
+			expectedArgs:   []interface{}{"active"},
+		},
+		{
+			name: "Multiple conditions in single group",
+			query: &Query{
+				Groups: []FilterGroup{
+					{
+						Conditions: []FilterCondition{
+							{Field: "status", Operator: "eq", Value: "active"},
+							{Field: "priority", Operator: "gte", Value: "5"},
+						},
+					},
+				},
+			},
+			expectedClause: "(status = ? AND priority >= ?)",
+			expectedArgs:   []interface{}{"active", "5"},
+		},
+		{
+			name: "Multiple groups with OR",
+			query: &Query{
+				Groups: []FilterGroup{
+					{
+						Conditions: []FilterCondition{
+							{Field: "status", Operator: "eq", Value: "active"},
+						},
+					},
+					{
+						Conditions: []FilterCondition{
+							{Field: "status", Operator: "eq", Value: "pending"},
+						},
+					},
+				},
+				Operators: []LogicalOperator{OpOr},
+			},
+			expectedClause: "(status = ?) OR (status = ?)",
+			expectedArgs:   []interface{}{"active", "pending"},
+		},
+		{
+			name: "Contains operator",
+			query: &Query{
+				Groups: []FilterGroup{
+					{
+						Conditions: []FilterCondition{
+							{Field: "title", Operator: "contains", Value: "test"},
+						},
+					},
+				},
+			},
+			expectedClause: "title LIKE ?",
+			expectedArgs:   []interface{}{"%test%"},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			clause, args := executor.BuildWhereFromQuery(tc.query)
+			if clause != tc.expectedClause {
+				t.Errorf("Expected clause '%s', got '%s'", tc.expectedClause, clause)
+			}
+			if len(args) != len(tc.expectedArgs) {
+				t.Errorf("Expected %d args, got %d", len(tc.expectedArgs), len(args))
+			}
+			for i, expectedArg := range tc.expectedArgs {
+				if i < len(args) && args[i] != expectedArg {
+					t.Errorf("Expected arg[%d] '%v', got '%v'", i, expectedArg, args[i])
+				}
+			}
+		})
+	}
+}

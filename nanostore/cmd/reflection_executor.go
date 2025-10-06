@@ -9,7 +9,6 @@ import (
 
 	"github.com/arthur-debert/nanostore/nanostore"
 	"github.com/arthur-debert/nanostore/nanostore/api"
-	"github.com/arthur-debert/nanostore/types"
 )
 
 // ReflectionExecutor handles actual Store method invocation using reflection
@@ -430,8 +429,8 @@ func (re *ReflectionExecutor) ExecuteDelete(typeName, dbPath, id string, cascade
 	}
 }
 
-// buildWhereFromQuery translates a Query object into a SQL-like WHERE clause and arguments.
-func (re *ReflectionExecutor) buildWhereFromQuery(query *Query) (string, []interface{}) {
+// BuildWhereFromQuery translates a Query object into a SQL-like WHERE clause and arguments.
+func (re *ReflectionExecutor) BuildWhereFromQuery(query *Query) (string, []interface{}) {
 	if query == nil || len(query.Groups) == 0 {
 		return "", nil
 	}
@@ -471,7 +470,7 @@ func (re *ReflectionExecutor) buildWhereFromQuery(query *Query) (string, []inter
 		}
 
 		if len(groupClauses) > 0 {
-			// Add the group clause, wrapped in parentheses
+			// Add the group clause, wrapped in parentheses only if there are multiple groups or multiple conditions in the group
 			if finalClause.Len() > 0 {
 				// Use the logical operator that connects this group to the previous one
 				if i-1 < len(query.Operators) {
@@ -480,7 +479,14 @@ func (re *ReflectionExecutor) buildWhereFromQuery(query *Query) (string, []inter
 					finalClause.WriteString(" AND ") // Default to AND if something is wrong
 				}
 			}
-			finalClause.WriteString("(" + strings.Join(groupClauses, " AND ") + ")")
+
+			groupClause := strings.Join(groupClauses, " AND ")
+			// Only wrap in parentheses if there are multiple groups or multiple conditions in this group
+			if len(query.Groups) > 1 || len(groupClauses) > 1 {
+				finalClause.WriteString("(" + groupClause + ")")
+			} else {
+				finalClause.WriteString(groupClause)
+			}
 			finalArgs = append(finalArgs, groupArgs...)
 		}
 	}
@@ -504,7 +510,7 @@ var operatorMap = map[string]string{
 
 // ExecuteList now uses the Query object from the context.
 func (re *ReflectionExecutor) ExecuteList(typeName, dbPath string, query *Query, sort string, limit, offset int) (interface{}, error) {
-	whereClause, whereArgs := re.buildWhereFromQuery(query)
+	whereClause, whereArgs := re.BuildWhereFromQuery(query)
 	return re.ExecuteQuery(typeName, dbPath, whereClause, whereArgs, sort, limit, offset)
 }
 
@@ -641,37 +647,6 @@ func (re *ReflectionExecutor) toPascalCase(s string) string {
 		}
 	}
 	return strings.Join(parts, "")
-}
-
-// parseListOptions converts CLI parameters to types.ListOptions
-func (re *ReflectionExecutor) parseListOptions(filters []string, sort string, limit, offset int) types.ListOptions {
-	options := types.ListOptions{
-		Filters: make(map[string]interface{}),
-	}
-
-	// Set limit and offset as pointers
-	if limit > 0 {
-		options.Limit = &limit
-	}
-	if offset > 0 {
-		options.Offset = &offset
-	}
-
-	if sort != "" {
-		options.OrderBy = []types.OrderClause{
-			{Column: sort, Descending: false},
-		}
-	}
-
-	// Parse filters (format: "key=value")
-	for _, filter := range filters {
-		parts := strings.SplitN(filter, "=", 2)
-		if len(parts) == 2 {
-			options.Filters[parts[0]] = parts[1]
-		}
-	}
-
-	return options
 }
 
 // buildFilterWhere builds WHERE clauses from all filter types

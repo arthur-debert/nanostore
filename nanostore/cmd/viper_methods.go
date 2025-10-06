@@ -247,14 +247,14 @@ func (cli *ViperCLI) executeListCommand(cmd *cobra.Command) error {
 	}
 
 	if cli.viperInst.GetBool("dry-run") {
-		whereClause, _ := cli.reflectionExec.buildWhereFromQuery(query)
+		whereClause, _ := cli.reflectionExec.BuildWhereFromQuery(query)
 		return cli.showDryRun("list", map[string]interface{}{
-			"type":        typeName,
-			"db":          dbPath,
+			"type":         typeName,
+			"db":           dbPath,
 			"where_caluse": whereClause,
-			"sort":        sort,
-			"limit":       limit,
-			"offset":      offset,
+			"sort":         sort,
+			"limit":        limit,
+			"offset":       offset,
 		})
 	}
 
@@ -268,7 +268,7 @@ func (cli *ViperCLI) executeListCommand(cmd *cobra.Command) error {
 
 	// For verbose output, we can print the generated WHERE clause
 	if cli.viperInst.GetBool("verbose") {
-		whereClause, _ := cli.reflectionExec.buildWhereFromQuery(query)
+		whereClause, _ := cli.reflectionExec.BuildWhereFromQuery(query)
 		fmt.Printf("Executing WHERE clause: %s\n", whereClause)
 	}
 
