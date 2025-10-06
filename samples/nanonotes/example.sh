@@ -7,6 +7,7 @@ BLUE='\033[0;34m'
 YELLOW='\033[1;33m'
 RED='\033[0;31m'
 BOLD='\033[1m'
+DIM='\033[2m'
 NC='\033[0m' # No Color
 
 # Create a temporary database file
@@ -36,12 +37,14 @@ echo
 run_command() {
     local description="$1"
     shift
+    # Build command string, replacing the full path with just "nano-db"
+    local cmd_display=$(echo "$@" | sed "s|$NANO_DB|nano-db|g" | sed "s|$DB_FILE|notes.db|g")
+    
     echo -e "${YELLOW}${BOLD}$description${NC}"
-    echo -e "${BLUE}Command:${NC} $@"
-    echo -e "${GREEN}Output:${NC}"
+    echo -e "${DIM}$cmd_display${NC}"
+    echo -e "${DIM}"
     "$@"
-    echo
-    echo "---"
+    echo -e "${NC}"
     echo
 }
 
@@ -175,5 +178,8 @@ run_command "Get store statistics" \
     $NANO_DB --x-type Note --x-db="$DB_FILE" stats \
     --x-log-queries
 
-echo -e "${GREEN}${BOLD}=== Example Complete ===${NC}"
-echo -e "Database file was: $DB_FILE (will be deleted on exit)"
+echo -e "${GREEN}${BOLD}=== Database Contents ===${NC}"
+echo
+echo -e "${DIM}"
+$NANO_DB --x-type Note --x-db="$DB_FILE" list --x-format=json | jq '.'
+echo -e "${NC}"
