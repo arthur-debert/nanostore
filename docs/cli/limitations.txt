@@ -2,9 +2,9 @@ CLI Bulk Operations Limitations
 
 1. Overview
 
-    The CLI bulk operations provide a command-line interface to the nanostore
-    bulk API methods. This document focuses specifically on limitations that
-    are unique to the CLI implementation, not on general API limitations.
+    This document describes what the CLI bulk operations cannot do compared to
+    direct API usage. If you're an experienced API user, this tells you what
+    CLI limitations to expect.
 
 2. CLI-Specific Syntax Limitations
 
@@ -102,13 +102,13 @@ CLI Bulk Operations Limitations
 
     The API can validate parameters directly without CLI constraints.
 
-5.2 Improved Error Messages
+5.2 Reduced Error Context
 
-    The CLI now provides better error messages for common issues:
+    CLI error messages may lack context available to direct API users:
 
-    - Clear guidance when --update operator is missing
-    - Helpful examples when update data is empty
-    - User-friendly error messages with usage examples
+    - Cannot provide detailed parameter validation errors
+    - Limited ability to show which specific CLI flags caused issues
+    - Cannot provide API-specific error context
 
 6. CLI Testing and Debugging Limitations
 
@@ -130,44 +130,16 @@ CLI Bulk Operations Limitations
     - Cannot use API-specific features not exposed in CLI
     - Cannot validate operations using alternative parameter formats
 
-7. Future CLI Improvements
+7. Workarounds
 
-7.1 Potential CLI Enhancements
-
-    Future CLI versions could address remaining limitations:
-
-    - Direct API method invocation with --api-mode flag
-    - Support for raw SQL WHERE clauses with --raw-sql flag
-    - Enhanced parameter passing for complex scenarios
-    - Support for more operators in dimension-based operations
-
-7.2 Alternative CLI Approaches
-
-    For scenarios where CLI limitations are restrictive:
+    When CLI limitations are restrictive:
 
     - Use scripting to call the API directly
-    - Implement custom CLI extensions
     - Use the API programmatically for complex operations
     - Combine CLI operations with API calls
 
-Recent Improvements
-
-    The CLI bulk operations have been significantly improved:
-
-    - --update operator: Clear separation between filter criteria and update data
-    - Validation: Prevents empty update data and provides helpful error messages
-    - Performance: Optimized dimension filtering for delete operations
-    - Consistency: Works exactly like existing --and/--or operators
-    - Intuitive usage: Natural mental model of "find X, then update to Y"
-    - Complex scenarios: Supports sophisticated filtering with multiple updates
-
 Conclusion
 
-    The CLI bulk operations provide a convenient interface to the nanostore
-    bulk API. The recent improvements have addressed the most significant
-    usability issues while maintaining consistency with the existing query system.
-
-    The remaining limitations are primarily related to the CLI's constraint of
-    using the query parsing system rather than direct API parameter passing.
-    Users who need the full flexibility of the bulk API should consider
-    using the API directly or extending the CLI with custom functionality.
+    The CLI bulk operations are constrained by the query parsing system rather
+    than direct API parameter passing. If you need full API flexibility, use
+    the API directly.
