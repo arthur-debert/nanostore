@@ -95,6 +95,32 @@ func (me *MethodExecutor) ExecuteCommand(cmd *Command, cobraCmd *cobra.Command, 
 
 		return me.outputResult(result, format)
 
+	case "update-where":
+		// Get WHERE clause from arguments
+		if len(args) == 0 {
+			return fmt.Errorf("update-where command requires a WHERE clause argument")
+		}
+		whereClause := args[0]
+
+		// Get WHERE clause arguments from flags
+		whereArgs, _ := cobraCmd.Flags().GetStringSlice("args")
+
+		// Convert WHERE args to []interface{}
+		interfaceArgs := make([]interface{}, len(whereArgs))
+		for i, arg := range whereArgs {
+			interfaceArgs[i] = arg
+		}
+
+		// Use query conditions as update data
+		updateData := me.queryToDataMap(query)
+
+		result, err := reflectionExec.ExecuteUpdateWhere(typeName, dbPath, whereClause, updateData, interfaceArgs)
+		if err != nil {
+			return fmt.Errorf("failed to execute update-where: %w", err)
+		}
+
+		return me.outputResult(result, format)
+
 	default:
 		// For unimplemented commands, simulate for now
 		formatter := NewOutputFormatter(format)

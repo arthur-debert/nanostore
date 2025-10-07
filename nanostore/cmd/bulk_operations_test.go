@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"reflect"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -60,6 +61,143 @@ func TestUpdateByDimensionCLIParsing(t *testing.T) {
 			t.Errorf("Data conversion mismatch (-want +got):\n%s", diff)
 		}
 	})
+}
+
+// TestUpdateWhereCLIParsing tests the CLI parsing for update-where command
+func TestUpdateWhereCLIParsing(t *testing.T) {
+	registry := NewEnhancedTypeRegistry()
+	executor := NewMethodExecutor(registry)
+
+	// Test the query parsing for update data
+	t.Run("query parsing for update data", func(t *testing.T) {
+		// Simulate what would be parsed as filter args (non-filter flags)
+		filterArgs := []string{"--status=completed", "--assignee=john"}
+		query := parseFilters(filterArgs)
+
+		expectedQuery := &Query{
+			Groups: []FilterGroup{
+				{
+					Conditions: []FilterCondition{
+						{Field: "status", Operator: "eq", Value: "completed"},
+						{Field: "assignee", Operator: "eq", Value: "john"},
+					},
+				},
+			},
+			Operators: []LogicalOperator{},
+		}
+
+		if diff := cmp.Diff(expectedQuery, query); diff != "" {
+			t.Errorf("Query parsing mismatch (-want +got):\n%s", diff)
+		}
+
+		// Test queryToDataMap conversion
+		expectedData := map[string]interface{}{
+			"status":   "completed",
+			"assignee": "john",
+		}
+
+		actualData := executor.queryToDataMap(query)
+		if diff := cmp.Diff(expectedData, actualData); diff != "" {
+			t.Errorf("Data conversion mismatch (-want +got):\n%s", diff)
+		}
+	})
+}
+
+// TestUpdateWhereCommandStructure tests the command structure and flag handling
+func TestUpdateWhereCommandStructure(t *testing.T) {
+	generator := NewCommandGenerator()
+	commands := generator.GenerateCommands()
+
+	// Find the update-where command
+	var updateWhereCmd *Command
+	for _, cmd := range commands {
+		if cmd.Name == "update-where" {
+			updateWhereCmd = &cmd
+			break
+		}
+	}
+
+	if updateWhereCmd == nil {
+		t.Fatal("update-where command not found in generated commands")
+	}
+
+	// Verify command properties
+	if updateWhereCmd.Method != "UpdateWhere" {
+		t.Errorf("Expected method 'UpdateWhere', got '%s'", updateWhereCmd.Method)
+	}
+
+	if updateWhereCmd.Category != CategoryBulk {
+		t.Errorf("Expected category 'CategoryBulk', got '%s'", updateWhereCmd.Category.String())
+	}
+
+	// Verify it has the required WHERE argument
+	if len(updateWhereCmd.Args) == 0 {
+		t.Error("Expected update-where command to have at least one required argument")
+	}
+
+	// Convert to Cobra command and test
+	cobraCmd := updateWhereCmd.ToCobraCommand(generator)
+
+	expectedUse := "update-where <where>"
+	if cobraCmd.Use != expectedUse {
+		t.Errorf("Expected command use '%s', got '%s'", expectedUse, cobraCmd.Use)
+	}
+
+	// Test that common flags are added for data manipulation commands
+	expectedFlags := []string{"status", "priority", "category", "parent-id", "description", "assignee", "tags", "content"}
+	for _, flagName := range expectedFlags {
+		if cobraCmd.Flags().Lookup(flagName) == nil {
+			t.Errorf("Expected flag '%s' to be present in update-where command", flagName)
+		}
+	}
+
+	// Test that --args flag is present
+	if cobraCmd.Flags().Lookup("args") == nil {
+		t.Error("Expected --args flag to be present in update-where command")
+	}
+}
+
+// TestUpdateWhereDryRun tests the dry run functionality
+func TestUpdateWhereDryRun(t *testing.T) {
+	registry := NewEnhancedTypeRegistry()
+	executor := NewMethodExecutor(registry)
+
+	// Create a mock command
+	cmd := &Command{
+		Name:        "update-where",
+		Method:      "UpdateWhere",
+		Description: "Update documents matching WHERE clause",
+		Category:    CategoryBulk,
+		Args: []ArgSpec{
+			{Name: "where", Type: reflect.TypeOf(""), Description: "SQL WHERE clause", Required: true},
+		},
+	}
+
+	// Create a Cobra command with dry run flag
+	cobraCmd := &cobra.Command{
+		Use: "update-where",
+	}
+	cobraCmd.Flags().Bool("x-dry-run", true, "Dry run flag")
+
+	// Create a context with a query
+	query := &Query{
+		Groups: []FilterGroup{
+			{
+				Conditions: []FilterCondition{
+					{Field: "status", Operator: "eq", Value: "pending"},
+				},
+			},
+		},
+	}
+	ctx := context.Background()
+	ctx = withQuery(ctx, query)
+	cobraCmd.SetContext(ctx)
+
+	// Test dry run output with WHERE clause argument
+	err := executor.showDryRunWithQuery(cmd, "Task", "test.db", []string{"status = ?"}, cobraCmd)
+	if err != nil {
+		t.Errorf("Dry run failed: %v", err)
+	}
 }
 
 // TestParseFilterFlags tests the parseFilterFlags helper function

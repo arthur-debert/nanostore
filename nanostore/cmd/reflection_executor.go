@@ -419,6 +419,17 @@ func (re *ReflectionExecutor) ExecuteUpdateByDimension(typeName, dbPath string, 
 	return re.ExecuteMethod(typeName, "UpdateByDimension", args)
 }
 
+// ExecuteUpdateWhere executes UpdateWhere on the store
+func (re *ReflectionExecutor) ExecuteUpdateWhere(typeName, dbPath string, whereClause string, data map[string]interface{}, whereArgs []interface{}) (interface{}, error) {
+	// Log the update operation
+	logQuery("update-where", fmt.Sprintf("UPDATE %s documents with WHERE: %s", typeName, whereClause), []interface{}{data, whereArgs})
+
+	// Use generic ExecuteMethod to call UpdateWhere
+	args := []interface{}{dbPath, whereClause, data}
+	args = append(args, whereArgs...)
+	return re.ExecuteMethod(typeName, "UpdateWhere", args)
+}
+
 // ExecuteDelete executes a Delete method
 func (re *ReflectionExecutor) ExecuteDelete(typeName, dbPath, id string, cascade bool) error {
 	// Log the delete operation
