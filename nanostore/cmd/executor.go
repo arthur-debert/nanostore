@@ -139,6 +139,18 @@ func (me *MethodExecutor) ExecuteCommand(cmd *Command, cobraCmd *cobra.Command, 
 
 		return me.outputResult(result, format)
 
+	case "delete-by-dimension":
+		// Get filter flags for dimension matching
+		filterFlags, _ := cobraCmd.Flags().GetStringSlice("filter")
+		filters := me.parseFilterFlags(filterFlags)
+
+		result, err := reflectionExec.ExecuteDeleteByDimension(typeName, dbPath, filters)
+		if err != nil {
+			return fmt.Errorf("failed to execute delete-by-dimension: %w", err)
+		}
+
+		return me.outputResult(result, format)
+
 	default:
 		// For unimplemented commands, simulate for now
 		formatter := NewOutputFormatter(format)

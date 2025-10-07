@@ -440,6 +440,16 @@ func (re *ReflectionExecutor) ExecuteUpdateByUUIDs(typeName, dbPath string, uuid
 	return re.ExecuteMethod(typeName, "UpdateByUUIDs", args)
 }
 
+// ExecuteDeleteByDimension executes DeleteByDimension on the store
+func (re *ReflectionExecutor) ExecuteDeleteByDimension(typeName, dbPath string, filters map[string]interface{}) (interface{}, error) {
+	// Log the delete operation
+	logQuery("delete-by-dimension", fmt.Sprintf("DELETE %s documents with filters: %v", typeName, filters), nil)
+
+	// Use generic ExecuteMethod to call DeleteByDimension
+	args := []interface{}{dbPath, filters}
+	return re.ExecuteMethod(typeName, "DeleteByDimension", args)
+}
+
 // ExecuteDelete executes a Delete method
 func (re *ReflectionExecutor) ExecuteDelete(typeName, dbPath, id string, cascade bool) error {
 	// Log the delete operation

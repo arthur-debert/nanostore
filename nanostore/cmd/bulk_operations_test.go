@@ -344,6 +344,106 @@ func TestUpdateByUUIDsDryRun(t *testing.T) {
 	}
 }
 
+// TestDeleteByDimensionCLIParsing tests the CLI parsing for delete-by-dimension command
+func TestDeleteByDimensionCLIParsing(t *testing.T) {
+	registry := NewEnhancedTypeRegistry()
+	executor := NewMethodExecutor(registry)
+
+	// Test the parseFilterFlags function directly
+	t.Run("parseFilterFlags", func(t *testing.T) {
+		filterFlags := []string{"status=archived", "priority=low"}
+		expectedFilters := map[string]interface{}{
+			"status":   "archived",
+			"priority": "low",
+		}
+
+		actualFilters := executor.parseFilterFlags(filterFlags)
+		if diff := cmp.Diff(expectedFilters, actualFilters); diff != "" {
+			t.Errorf("Filter parsing mismatch (-want +got):\n%s", diff)
+		}
+	})
+}
+
+// TestDeleteByDimensionCommandStructure tests the command structure and flag handling
+func TestDeleteByDimensionCommandStructure(t *testing.T) {
+	generator := NewCommandGenerator()
+	commands := generator.GenerateCommands()
+
+	// Find the delete-by-dimension command
+	var deleteByDimCmd *Command
+	for _, cmd := range commands {
+		if cmd.Name == "delete-by-dimension" {
+			deleteByDimCmd = &cmd
+			break
+		}
+	}
+
+	if deleteByDimCmd == nil {
+		t.Fatal("delete-by-dimension command not found in generated commands")
+	}
+
+	// Verify command properties
+	if deleteByDimCmd.Method != "DeleteByDimension" {
+		t.Errorf("Expected method 'DeleteByDimension', got '%s'", deleteByDimCmd.Method)
+	}
+
+	if deleteByDimCmd.Category != CategoryBulk {
+		t.Errorf("Expected category 'CategoryBulk', got '%s'", deleteByDimCmd.Category.String())
+	}
+
+	// Convert to Cobra command and test
+	cobraCmd := deleteByDimCmd.ToCobraCommand(generator)
+
+	if cobraCmd.Use != "delete-by-dimension" {
+		t.Errorf("Expected command use 'delete-by-dimension', got '%s'", cobraCmd.Use)
+	}
+
+	// Test that --filter flag is present
+	if cobraCmd.Flags().Lookup("filter") == nil {
+		t.Error("Expected --filter flag to be present in delete-by-dimension command")
+	}
+}
+
+// TestDeleteByDimensionDryRun tests the dry run functionality
+func TestDeleteByDimensionDryRun(t *testing.T) {
+	registry := NewEnhancedTypeRegistry()
+	executor := NewMethodExecutor(registry)
+
+	// Create a mock command
+	cmd := &Command{
+		Name:        "delete-by-dimension",
+		Method:      "DeleteByDimension",
+		Description: "Delete documents matching dimension filters",
+		Category:    CategoryBulk,
+	}
+
+	// Create a Cobra command with dry run flag
+	cobraCmd := &cobra.Command{
+		Use: "delete-by-dimension",
+	}
+	cobraCmd.Flags().Bool("x-dry-run", true, "Dry run flag")
+
+	// Create a context with a query
+	query := &Query{
+		Groups: []FilterGroup{
+			{
+				Conditions: []FilterCondition{
+					{Field: "status", Operator: "eq", Value: "archived"},
+				},
+			},
+		},
+	}
+	ctx := context.Background()
+	ctx = withQuery(ctx, query)
+	cobraCmd.SetContext(ctx)
+
+	// Test dry run output
+	err := executor.showDryRunWithQuery(cmd, "Task", "test.db", []string{}, cobraCmd)
+	if err != nil {
+		t.Errorf("Dry run failed: %v", err)
+	}
+}
+
 // TestParseFilterFlags tests the parseFilterFlags helper function
 func TestParseFilterFlags(t *testing.T) {
 	registry := NewEnhancedTypeRegistry()
