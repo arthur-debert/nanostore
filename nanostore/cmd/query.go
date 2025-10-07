@@ -2,12 +2,13 @@ package main
 
 import "strings"
 
-// LogicalOperator defines the operator connecting filter groups (e.g., AND, OR).
+// LogicalOperator defines the operator connecting filter groups (e.g., AND, OR, UPDATE).
 type LogicalOperator string
 
 const (
-	OpAnd LogicalOperator = "AND"
-	OpOr  LogicalOperator = "OR"
+	OpAnd    LogicalOperator = "AND"
+	OpOr     LogicalOperator = "OR"
+	OpUpdate LogicalOperator = "UPDATE"
 )
 
 // FilterCondition represents a single filter condition, like 'status = "active"'.
@@ -56,6 +57,12 @@ func parseFilters(filterArgs []string) *Query {
 		if cleanArg == "or" {
 			query.Groups = append(query.Groups, currentGroup)
 			query.Operators = append(query.Operators, OpOr)
+			currentGroup = FilterGroup{Conditions: []FilterCondition{}} // Start a new group
+			continue
+		}
+		if cleanArg == "update" {
+			query.Groups = append(query.Groups, currentGroup)
+			query.Operators = append(query.Operators, OpUpdate)
 			currentGroup = FilterGroup{Conditions: []FilterCondition{}} // Start a new group
 			continue
 		}

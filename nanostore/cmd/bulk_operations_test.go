@@ -927,3 +927,70 @@ func TestDeleteByUUIDsDryRun(t *testing.T) {
 		t.Errorf("Dry run failed: %v", err)
 	}
 }
+
+// TestUpdateOperatorParsing tests the new --update operator parsing
+func TestUpdateOperatorParsing(t *testing.T) {
+	registry := NewEnhancedTypeRegistry()
+	executor := NewMethodExecutor(registry)
+
+	t.Run("simple update operator", func(t *testing.T) {
+		// Test simple case: --status=pending --update --status=completed
+		filterArgs := []string{"--status=pending", "--update", "--status=completed"}
+		query := parseFilters(filterArgs)
+
+		// Should have 2 groups
+		if len(query.Groups) != 2 {
+			t.Errorf("Expected 2 groups, got %d", len(query.Groups))
+		}
+
+		// Should have 1 operator (UPDATE)
+		if len(query.Operators) != 1 {
+			t.Errorf("Expected 1 operator, got %d", len(query.Operators))
+		}
+
+		if query.Operators[0] != OpUpdate {
+			t.Errorf("Expected UPDATE operator, got %s", query.Operators[0])
+		}
+
+		// First group should have status=pending
+		firstGroup := query.Groups[0]
+		if len(firstGroup.Conditions) != 1 {
+			t.Errorf("Expected 1 condition in first group, got %d", len(firstGroup.Conditions))
+		}
+		if firstGroup.Conditions[0].Field != "status" || firstGroup.Conditions[0].Value != "pending" {
+			t.Errorf("Expected status=pending in first group, got %s=%s",
+				firstGroup.Conditions[0].Field, firstGroup.Conditions[0].Value)
+		}
+
+		// Second group should have status=completed
+		secondGroup := query.Groups[1]
+		if len(secondGroup.Conditions) != 1 {
+			t.Errorf("Expected 1 condition in second group, got %d", len(secondGroup.Conditions))
+		}
+		if secondGroup.Conditions[0].Field != "status" || secondGroup.Conditions[0].Value != "completed" {
+			t.Errorf("Expected status=completed in second group, got %s=%s",
+				secondGroup.Conditions[0].Field, secondGroup.Conditions[0].Value)
+		}
+	})
+
+	t.Run("validateUpdateOperator", func(t *testing.T) {
+		// Test validation function
+		filterArgs := []string{"--status=pending", "--update", "--status=completed"}
+		query := parseFilters(filterArgs)
+
+		// Should not error with --update operator
+		err := executor.validateUpdateOperator(query, "test-command")
+		if err != nil {
+			t.Errorf("Expected no error with --update operator, got: %v", err)
+		}
+
+		// Should error without --update operator
+		filterArgsNoUpdate := []string{"--status=pending", "--status=completed"}
+		queryNoUpdate := parseFilters(filterArgsNoUpdate)
+
+		err = executor.validateUpdateOperator(queryNoUpdate, "test-command")
+		if err == nil {
+			t.Error("Expected error without --update operator, got none")
+		}
+	})
+}

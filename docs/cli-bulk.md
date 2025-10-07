@@ -37,21 +37,54 @@ Add bulk operation methods that use existing reflection infrastructure.
 ### CLI Usage Examples
 
 ```bash
-# Update by dimension - same filter syntax as list/create
-nano-db update-by-dimension --status=pending --priority=high --status=completed --assignee=john
+# Update by dimension - use --update to separate filter criteria from update data
+nano-db update-by-dimension --status=pending --priority=high --update --status=completed --assignee=john
 
 # Update by WHERE clause - same operators as existing queries  
-nano-db update-where --status=pending --and --priority__gte=3 --assignee=john
+nano-db update-where --status=pending --and --priority__gte=3 --update --assignee=john --status=completed
 
-# Delete by dimension - same filter syntax
+# Delete by dimension - same filter syntax (no update data needed)
 nano-db delete-by-dimension --status=archived --priority=low
 
-# Delete by WHERE clause - same operators
+# Delete by WHERE clause - same operators (no update data needed)
 nano-db delete-where --created_at__lt=2023-01-01 --or --status=archived
 
-# UUID operations (only these need explicit arguments)
-nano-db update-by-uuids "uuid1,uuid2,uuid3" --status=completed
+# UUID operations - use --update to separate UUIDs from update data
+nano-db update-by-uuids "uuid1,uuid2,uuid3" --update --status=completed --assignee=alice
 nano-db delete-by-uuids "uuid1,uuid2,uuid3"
+```
+
+### New --update Operator Design
+
+**BREAKING CHANGE**: All bulk update operations now require the `--update` operator to separate filter criteria from update data.
+
+**Why this change:**
+- Solves ambiguity when same field appears in both filter and update data
+- Maintains consistency with existing `--and`/`--or` operators
+- Provides intuitive mental model: "find X, then update to Y"
+
+**How it works:**
+- Everything before `--update`: filter criteria (what to find)
+- Everything after `--update`: update data (what to change)
+- Works exactly like `--and`/`--or` for grouping conditions
+
+**Examples:**
+```bash
+# Simple case
+nano-db update-by-dimension --status=pending --update --status=completed
+
+# Complex filtering with multiple updates
+nano-db update-by-dimension \
+  --priority=high \
+  --and \
+  --status=pending \
+  --update \
+  --status=completed \
+  --assignee=alice \
+  --tags=urgent
+
+# Works with all operators
+nano-db update-by-dimension --created_at__lt=2023-01-01 --update --status=archived
 ```
 
 ## Implementation Plan
