@@ -28,7 +28,10 @@ func main() {
 	printStep(stepNum, `$ too add "Groceries"`, `
     // Behind the scenes: nanostore.Create()
     id, err := store.Create("Groceries", &TodoItem{})
-    // id = "1", gets default status="pending", priority="medium", activity="active"`)
+    // id = "1", gets default status="pending", priority="medium", activity="active"
+    
+    // CLI equivalent:
+    // nano-db create todos --title="Groceries" --description="Weekly grocery shopping" --assigned_to=alice`)
 
 	groceriesID, err := app.CreateTodo("Groceries", &TodoItem{
 		Description: "Weekly grocery shopping",
@@ -48,7 +51,10 @@ func main() {
     id, err := store.Create("Milk", &TodoItem{
         ParentID: "1", // References parent todo
     })
-    // id = "1.1" - automatically inherits parent's ID space`)
+    // id = "1.1" - automatically inherits parent's ID space
+    
+    // CLI equivalent:
+    // nano-db create todos --title="Milk" --parent_id="1" --assigned_to=alice --tags=dairy`)
 
 	milkID, err := app.CreateTodo("Milk", &TodoItem{
 		ParentID:   groceriesID,
@@ -69,7 +75,10 @@ func main() {
     id, err := store.Create("Bread", &TodoItem{
         ParentID: "1",
     })
-    // id = "1.2" - next sequential ID under parent "1"`)
+    // id = "1.2" - next sequential ID under parent "1"
+    
+    // CLI equivalent:
+    // nano-db create todos --title="Bread" --parent_id="1" --assigned_to=alice --tags=bakery`)
 
 	breadID, err := app.CreateTodo("Bread", &TodoItem{
 		ParentID:   groceriesID,
@@ -89,7 +98,10 @@ func main() {
     id, err := store.Create("Eggs", &TodoItem{
         ParentID: "1",
     })
-    // id = "1.3"`)
+    // id = "1.3"
+    
+    // CLI equivalent:
+    // nano-db create todos --title="Eggs" --parent_id="1" --assigned_to=alice --tags="dairy,protein"`)
 
 	eggsID, err := app.CreateTodo("Eggs", &TodoItem{
 		ParentID:   groceriesID,
@@ -107,7 +119,10 @@ func main() {
 	// Step 5: Create second root todo with high priority
 	printStep(stepNum, `$ too add "Pack for Trip"`, `
     id, err := store.Create("Pack for Trip", &TodoItem{})
-    // id = "2" - next sequential root-level ID`)
+    // id = "2" - next sequential root-level ID
+    
+    // CLI equivalent:
+    // nano-db create todos --title="Pack for Trip" --priority=high --description="Prepare for weekend trip" --assigned_to=bob --tags="travel,urgent"`)
 
 	tripID, err := app.CreateTodo("Pack for Trip", &TodoItem{
 		Priority:    "high",
@@ -128,7 +143,10 @@ func main() {
     id, err := store.Create("Clothes", &TodoItem{
         ParentID: "2",
     })
-    // id = "2.1"`)
+    // id = "2.1"
+    
+    // CLI equivalent:
+    // nano-db create todos --title="Clothes" --parent_id="2"`)
 
 	clothesID, err := app.CreateTodo("Clothes", &TodoItem{
 		ParentID: tripID,
@@ -146,7 +164,10 @@ func main() {
     id, err := store.Create("Camera Gear", &TodoItem{
         ParentID: "2",
     })
-    // id = "2.2"`)
+    // id = "2.2"
+    
+    // CLI equivalent:
+    // nano-db create todos --title="Camera Gear" --parent_id="2" --priority=high`)
 
 	cameraID, err := app.CreateTodo("Camera Gear", &TodoItem{
 		ParentID: tripID,
@@ -166,7 +187,10 @@ func main() {
         ParentID: "2",
         Priority: "high",
     })
-    // id = "2.3"`)
+    // id = "2.3"
+    
+    // CLI equivalent:
+    // nano-db create todos --title="Passport" --parent_id="2" --priority=high`)
 
 	passportID, err := app.CreateTodo("Passport", &TodoItem{
 		ParentID: tripID,
@@ -186,7 +210,10 @@ func main() {
     _, err := store.Update("1.2", &TodoItem{
         Status: "done",
     })
-    // ID automatically changes from "1.2" to "d1.2" due to prefix`)
+    // ID automatically changes from "1.2" to "d1.2" due to prefix
+    
+    // CLI equivalent:
+    // nano-db update todos "1.2" --status=done`)
 
 	breadTodo, err := app.GetTodo(breadID)
 	if err != nil {
@@ -207,7 +234,10 @@ func main() {
     // Behind the scenes: status update
     _, err := store.Update("h2.3", &TodoItem{
         Status: "active",
-    })`)
+    })
+    
+    // CLI equivalent:
+    // nano-db update todos "h2.3" --status=active`)
 
 	passportTodo, err := app.GetTodo(passportID)
 	if err != nil {
@@ -229,7 +259,10 @@ func main() {
     todos, err := store.Query().
         Priority("high").
         Activity("active").
-        Find()`)
+        Find()
+    
+    // CLI equivalent:
+    // nano-db list todos --priority=high --activity=active`)
 
 	highPriorityTodos, err := app.GetHighPriorityTodos()
 	if err != nil {
@@ -250,7 +283,10 @@ func main() {
     todos, err := store.Query().
         Search("Pack"). // Searches title and body fields
         Activity("active").
-        Find()`)
+        Find()
+    
+    // CLI equivalent:
+    // nano-db list todos --search="Pack" --activity=active`)
 
 	searchResults, err := app.SearchTodos("Pack")
 	if err != nil {
@@ -270,7 +306,10 @@ func main() {
     todos, err := store.Query().
         ParentIDNotExists(). // No parent = root level
         Activity("active").
-        Find()`)
+        Find()
+    
+    // CLI equivalent:
+    // nano-db list todos --parent_id__null --activity=active`)
 
 	rootTodos, err := app.GetRootTodos()
 	if err != nil {
@@ -290,7 +329,13 @@ func main() {
     totalCount, _ := store.Query().Activity("active").Count()
     pendingCount, _ := store.Query().Status("pending").Activity("active").Count()
     doneCount, _ := store.Query().Status("done").Count()
-    highPriorityCount, _ := store.Query().Priority("high").Activity("active").Count()`)
+    highPriorityCount, _ := store.Query().Priority("high").Activity("active").Count()
+    
+    // CLI equivalent (multiple commands):
+    // nano-db list todos --activity=active --count
+    // nano-db list todos --status=pending --activity=active --count
+    // nano-db list todos --status=done --count
+    // nano-db list todos --priority=high --activity=active --count`)
 
 	stats, err := app.GetStatistics()
 	if err != nil {

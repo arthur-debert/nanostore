@@ -203,9 +203,8 @@ func (cg *CommandGenerator) GenerateCommands() []Command {
 			Name:        "update-by-dimension",
 			Method:      "UpdateByDimension",
 			Description: "Update documents matching dimension filters",
-			Flags: []FlagSpec{
-				{Name: "filter", Type: reflect.TypeOf([]string{}), Description: "Dimension filters (key=value)", Default: []string{}},
-				// Dynamic flags for update fields
+			Flags:       []FlagSpec{
+				// Dynamic flags for filter and update fields
 			},
 			Returns:  ReturnSpec{Type: reflect.TypeOf(0), Description: "Number of documents updated"},
 			Category: CategoryBulk,
@@ -214,12 +213,8 @@ func (cg *CommandGenerator) GenerateCommands() []Command {
 			Name:        "update-where",
 			Method:      "UpdateWhere",
 			Description: "Update documents matching WHERE clause",
-			Args: []ArgSpec{
-				{Name: "where", Type: reflect.TypeOf(""), Description: "SQL WHERE clause", Required: true},
-			},
-			Flags: []FlagSpec{
-				{Name: "args", Type: reflect.TypeOf([]string{}), Description: "WHERE clause arguments", Default: []string{}},
-				// Dynamic flags for update fields
+			Flags:       []FlagSpec{
+				// Dynamic flags for filter and update fields
 			},
 			Returns:  ReturnSpec{Type: reflect.TypeOf(0), Description: "Number of documents updated"},
 			Category: CategoryBulk,
@@ -241,8 +236,8 @@ func (cg *CommandGenerator) GenerateCommands() []Command {
 			Name:        "delete-by-dimension",
 			Method:      "DeleteByDimension",
 			Description: "Delete documents matching dimension filters",
-			Flags: []FlagSpec{
-				{Name: "filter", Type: reflect.TypeOf([]string{}), Description: "Dimension filters (key=value)", Default: []string{}},
+			Flags:       []FlagSpec{
+				// Dynamic flags for filter fields
 			},
 			Returns:  ReturnSpec{Type: reflect.TypeOf(0), Description: "Number of documents deleted"},
 			Category: CategoryBulk,
@@ -251,11 +246,8 @@ func (cg *CommandGenerator) GenerateCommands() []Command {
 			Name:        "delete-where",
 			Method:      "DeleteWhere",
 			Description: "Delete documents matching WHERE clause",
-			Args: []ArgSpec{
-				{Name: "where", Type: reflect.TypeOf(""), Description: "SQL WHERE clause", Required: true},
-			},
-			Flags: []FlagSpec{
-				{Name: "args", Type: reflect.TypeOf([]string{}), Description: "WHERE clause arguments", Default: []string{}},
+			Flags:       []FlagSpec{
+				// Dynamic flags for filter fields
 			},
 			Returns:  ReturnSpec{Type: reflect.TypeOf(0), Description: "Number of documents deleted"},
 			Category: CategoryBulk,

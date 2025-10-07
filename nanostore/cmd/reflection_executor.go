@@ -409,6 +409,68 @@ func (re *ReflectionExecutor) ExecuteUpdate(typeName, dbPath, id string, data ma
 	}
 }
 
+// ExecuteUpdateByDimension executes UpdateByDimension on the store
+func (re *ReflectionExecutor) ExecuteUpdateByDimension(typeName, dbPath string, filters map[string]interface{}, data map[string]interface{}) (interface{}, error) {
+	// Log the update operation
+	logQuery("update-by-dimension", fmt.Sprintf("UPDATE %s documents with filters: %v", typeName, filters), []interface{}{data})
+
+	// Use generic ExecuteMethod to call UpdateByDimension
+	args := []interface{}{dbPath, filters, data}
+	return re.ExecuteMethod(typeName, "UpdateByDimension", args)
+}
+
+// ExecuteUpdateWhere executes UpdateWhere on the store
+func (re *ReflectionExecutor) ExecuteUpdateWhere(typeName, dbPath string, whereClause string, data map[string]interface{}, whereArgs []interface{}) (interface{}, error) {
+	// Log the update operation
+	logQuery("update-where", fmt.Sprintf("UPDATE %s documents with WHERE: %s", typeName, whereClause), []interface{}{data, whereArgs})
+
+	// Use generic ExecuteMethod to call UpdateWhere
+	args := []interface{}{dbPath, whereClause, data}
+	args = append(args, whereArgs...)
+	return re.ExecuteMethod(typeName, "UpdateWhere", args)
+}
+
+// ExecuteUpdateByUUIDs executes UpdateByUUIDs on the store
+func (re *ReflectionExecutor) ExecuteUpdateByUUIDs(typeName, dbPath string, uuids []string, data map[string]interface{}) (interface{}, error) {
+	// Log the update operation
+	logQuery("update-by-uuids", fmt.Sprintf("UPDATE %s documents with UUIDs: %v", typeName, uuids), []interface{}{data})
+
+	// Use generic ExecuteMethod to call UpdateByUUIDs
+	args := []interface{}{dbPath, uuids, data}
+	return re.ExecuteMethod(typeName, "UpdateByUUIDs", args)
+}
+
+// ExecuteDeleteByDimension executes DeleteByDimension on the store
+func (re *ReflectionExecutor) ExecuteDeleteByDimension(typeName, dbPath string, filters map[string]interface{}) (interface{}, error) {
+	// Log the delete operation
+	logQuery("delete-by-dimension", fmt.Sprintf("DELETE %s documents with filters: %v", typeName, filters), nil)
+
+	// Use generic ExecuteMethod to call DeleteByDimension
+	args := []interface{}{dbPath, filters}
+	return re.ExecuteMethod(typeName, "DeleteByDimension", args)
+}
+
+// ExecuteDeleteWhere executes DeleteWhere on the store
+func (re *ReflectionExecutor) ExecuteDeleteWhere(typeName, dbPath string, whereClause string, whereArgs []interface{}) (interface{}, error) {
+	// Log the delete operation
+	logQuery("delete-where", fmt.Sprintf("DELETE %s documents with WHERE: %s", typeName, whereClause), []interface{}{whereArgs})
+
+	// Use generic ExecuteMethod to call DeleteWhere
+	args := []interface{}{dbPath, whereClause}
+	args = append(args, whereArgs...)
+	return re.ExecuteMethod(typeName, "DeleteWhere", args)
+}
+
+// ExecuteDeleteByUUIDs executes DeleteByUUIDs on the store
+func (re *ReflectionExecutor) ExecuteDeleteByUUIDs(typeName, dbPath string, uuids []string) (interface{}, error) {
+	// Log the delete operation
+	logQuery("delete-by-uuids", fmt.Sprintf("DELETE %s documents with UUIDs: %v", typeName, uuids), nil)
+
+	// Use generic ExecuteMethod to call DeleteByUUIDs
+	args := []interface{}{dbPath, uuids}
+	return re.ExecuteMethod(typeName, "DeleteByUUIDs", args)
+}
+
 // ExecuteDelete executes a Delete method
 func (re *ReflectionExecutor) ExecuteDelete(typeName, dbPath, id string, cascade bool) error {
 	// Log the delete operation

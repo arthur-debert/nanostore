@@ -1,0 +1,22 @@
+CLI Bulk Operations: What You Lose vs API
+
+If you're comfortable with the nanostore API and wondering what you'll lose
+by using the CLI bulk operations, here's the honest breakdown:
+
+What you lose:
+
+- Can't bypass the query parsing system (no complex objects, raw SQL, or arbitrary filter maps)
+- Limited dry-run information
+
+Bottom Line:
+
+If you need to pass complex objects, use raw SQL, or bypass the query system,
+stick with the API.
+
+Examples:
+
+API: store.UpdateWhere("priority >= ?", []interface{}{3}, map[string]interface{}{"status": "completed"})
+
+CLI: nano-db update-where --sql --priority__gte=3 --data --status=completed
+
+The CLI syntax is more verbose but structured.
