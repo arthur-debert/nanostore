@@ -59,16 +59,19 @@ nano-db delete-by-uuids "uuid1,uuid2,uuid3"
 **BREAKING CHANGE**: All bulk update operations now require the `--update` operator to separate filter criteria from update data.
 
 **Why this change:**
+
 - Solves ambiguity when same field appears in both filter and update data
 - Maintains consistency with existing `--and`/`--or` operators
 - Provides intuitive mental model: "find X, then update to Y"
 
 **How it works:**
+
 - Everything before `--update`: filter criteria (what to find)
 - Everything after `--update`: update data (what to change)
 - Works exactly like `--and`/`--or` for grouping conditions
 
 **Examples:**
+
 ```bash
 # Simple case
 nano-db update-by-dimension --status=pending --update --status=completed

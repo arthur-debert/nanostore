@@ -304,6 +304,13 @@ func (me *MethodExecutor) validateUpdateOperator(query *Query, commandName strin
 			"Example: nano-db %s --status=pending --update --status=completed", commandName, commandName)
 	}
 
+	// Check that update data is not empty
+	updateData := me.queryToDataMap(query)
+	if len(updateData) == 0 {
+		return fmt.Errorf("%s requires fields to update after the --update operator.\n"+
+			"Example: nano-db %s --status=pending --update --status=completed --assignee=alice", commandName, commandName)
+	}
+
 	return nil
 }
 

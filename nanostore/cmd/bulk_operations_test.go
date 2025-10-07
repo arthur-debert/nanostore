@@ -978,7 +978,7 @@ func TestUpdateOperatorParsing(t *testing.T) {
 		filterArgs := []string{"--status=pending", "--update", "--status=completed"}
 		query := parseFilters(filterArgs)
 
-		// Should not error with --update operator
+		// Should not error with --update operator and update data
 		err := executor.validateUpdateOperator(query, "test-command")
 		if err != nil {
 			t.Errorf("Expected no error with --update operator, got: %v", err)
@@ -991,6 +991,18 @@ func TestUpdateOperatorParsing(t *testing.T) {
 		err = executor.validateUpdateOperator(queryNoUpdate, "test-command")
 		if err == nil {
 			t.Error("Expected error without --update operator, got none")
+		}
+
+		// Should error with --update operator but no update data
+		filterArgsEmptyUpdate := []string{"--status=pending", "--update"}
+		queryEmptyUpdate := parseFilters(filterArgsEmptyUpdate)
+
+		err = executor.validateUpdateOperator(queryEmptyUpdate, "test-command")
+		if err == nil {
+			t.Error("Expected error with empty update data, got none")
+		}
+		if !strings.Contains(err.Error(), "requires fields to update after the --update operator") {
+			t.Errorf("Expected error about empty update data, got: %v", err)
 		}
 	})
 }
