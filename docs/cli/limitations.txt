@@ -1,0 +1,179 @@
+CLI Bulk Operations Limitations
+
+1. Overview
+
+    The bulk operations in the nanostore CLI provide efficient ways to update
+    and delete multiple documents at once. However, there are several important
+    limitations that users should be aware of when using these operations.
+
+2. Dimension Filtering Limitations
+
+2.1 Equality-Only Filtering for Dimension Operations
+
+    The update-by-dimension and delete-by-dimension commands only support
+    equality-based filtering. This means:
+
+    - Only "eq" operators are processed for dimension filtering
+    - Other operators (gt, lt, gte, lte, contains, etc.) are ignored
+    - This is because the nanostore API's dimension filtering only supports
+      equality matching
+
+    Workaround:
+    Use update-where or delete-where commands for complex filtering with
+    multiple operators. These commands generate SQL WHERE clauses that
+    support all comparison operators.
+
+2.2 Mixed Filter and Update Data
+
+    The update-by-dimension command uses the same query flags for both
+    filtering criteria and update data. This creates a limitation:
+
+    - Cannot distinguish between filter criteria and update data in the same
+      command when using the same field
+    - Example: --status=pending --status=completed is ambiguous
+    - The same field cannot be used for both matching and updating
+
+    Workaround:
+    Use separate commands or use update-where for complex scenarios where
+    the same field needs different values for filtering and updating.
+
+3. CLI Syntax Limitations
+
+3.1 No Raw SQL Support
+
+    The CLI does not support raw SQL WHERE clauses directly. All filtering
+    must go through the query parsing system:
+
+    - No direct SQL injection of WHERE clauses
+    - All conditions must use the --field=value or --field__operator=value syntax
+    - Logical operators (AND, OR) must use --and and --or flags
+
+3.2 Limited Argument Support
+
+    The bulk operations have limited support for command arguments:
+
+    - Only update-by-uuids and delete-by-uuids accept arguments (UUID lists)
+    - update-where and delete-where no longer accept WHERE clause arguments
+    - All filtering must be done through query flags
+
+4. Performance Limitations
+
+4.1 In-Memory Operations
+
+    All bulk operations load the entire dataset into memory:
+
+    - Memory usage scales linearly with document count
+    - Large datasets may cause memory pressure
+    - Operations are atomic but require full dataset serialization
+
+4.2 No Batch Size Control
+
+    Bulk operations process all matching documents in a single transaction:
+
+    - No pagination or batch size limits
+    - Cannot split large operations into smaller chunks
+    - Risk of timeout or memory issues with very large datasets
+
+5. Error Handling Limitations
+
+5.1 All-or-Nothing Semantics
+
+    Bulk operations use atomic transactions:
+
+    - If any document fails, the entire operation is rolled back
+    - No partial success scenarios
+    - Difficult to identify which specific documents caused failures
+
+5.2 Limited Error Reporting
+
+    Error messages may not provide detailed information about:
+
+    - Which specific documents failed
+    - What caused individual document failures
+    - How many documents were processed before failure
+
+6. Type Safety Limitations
+
+6.1 Runtime Type Validation
+
+    Bulk operations perform type validation at runtime:
+
+    - No compile-time validation of field types
+    - Invalid field values may cause runtime errors
+    - Dimension value validation occurs during execution
+
+6.2 Limited Type Coercion
+
+    The CLI has limited type coercion capabilities:
+
+    - String values are used for all field updates
+    - No automatic conversion between types
+    - Complex types (arrays, objects) must be properly formatted
+
+7. Concurrency Limitations
+
+7.1 File Locking
+
+    Bulk operations use the same file locking mechanism as other operations:
+
+    - Exclusive locks during write operations
+    - Potential for lock contention with multiple processes
+    - No support for concurrent bulk operations
+
+7.2 No Transaction Isolation
+
+    Bulk operations do not provide transaction isolation:
+
+    - Other operations may see partial results during execution
+    - No snapshot isolation for bulk operations
+    - Concurrent reads may see inconsistent state
+
+8. Testing and Debugging Limitations
+
+8.1 Limited Dry-Run Information
+
+    The --x-dry-run flag shows basic operation information but:
+
+    - Does not show which specific documents would be affected
+    - Does not validate field values or types
+    - Does not show the complete WHERE clause for where operations
+
+8.2 No Operation Logging
+
+    Bulk operations do not provide detailed operation logs:
+
+    - No audit trail of which documents were modified
+    - No before/after values logging
+    - Limited debugging information for failed operations
+
+9. Future Considerations
+
+9.1 Potential Improvements
+
+    Future versions may address these limitations:
+
+    - Support for batch size limits
+    - Better error reporting with specific document information
+    - Enhanced dry-run capabilities with detailed previews
+    - Support for concurrent bulk operations
+    - Partial success scenarios with detailed failure reporting
+
+9.2 Alternative Approaches
+
+    For scenarios where bulk operations are insufficient:
+
+    - Use individual update/delete commands with scripting
+    - Implement custom bulk operations using the API directly
+    - Use database-level operations for very large datasets
+    - Consider data migration tools for complex transformations
+
+Conclusion
+
+    The bulk operations provide significant value for common use cases but
+    have important limitations that users should understand. These limitations
+    are primarily due to the underlying architecture choices that prioritize
+    simplicity and consistency over advanced features.
+
+    Users should carefully consider these limitations when designing workflows
+    that rely heavily on bulk operations, especially for large datasets or
+    complex filtering scenarios.
