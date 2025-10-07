@@ -253,14 +253,21 @@ func (me *MethodExecutor) queryToDataMap(query *Query) map[string]interface{} {
 	return data
 }
 
-// queryToDimensionFilters converts query conditions to dimension filters map
+// queryToDimensionFilters converts query conditions to dimension filters map.
+//
+// IMPORTANT: This function only processes conditions with the "eq" operator.
+// Other operators (gt, lt, contains, etc.) are ignored because dimension
+// filtering in the nanostore API only supports equality matching.
+//
+// For complex filtering with multiple operators, use update-where/delete-where
+// commands which generate SQL WHERE clauses via BuildWhereFromQuery().
 func (me *MethodExecutor) queryToDimensionFilters(query *Query) map[string]interface{} {
 	filters := make(map[string]interface{})
 	if query == nil {
 		return filters
 	}
 
-	// Convert filter conditions to dimension filters (same logic as queryToDataMap)
+	// Convert filter conditions to dimension filters (only "eq" operators)
 	for _, group := range query.Groups {
 		for _, condition := range group.Conditions {
 			if condition.Operator == "eq" {
