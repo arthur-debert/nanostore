@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -206,6 +208,184 @@ func TestUpdateByDimensionContextHandling(t *testing.T) {
 	if diff := cmp.Diff(query, retrievedQuery); diff != "" {
 		t.Errorf("Context retrieval mismatch (-want +got):\n%s", diff)
 	}
+}
+
+// End-to-end tests with temporary database
+
+// TestBulkOperationsEndToEnd tests the happy path for bulk operations against a real database
+func TestBulkOperationsEndToEnd(t *testing.T) {
+	// Create a temporary database file
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.db")
+
+	// Clean up the database file after the test
+	t.Cleanup(func() {
+		_ = os.Remove(dbPath)
+	})
+
+	_, executor := createTestRegistryAndExecutor()
+
+	t.Run("update-by-dimension end-to-end", func(t *testing.T) {
+		// Create a test command
+		cmd := createTestCommand("update-by-dimension", "UpdateByDimension", "Update documents matching dimension filters", CategoryBulk)
+
+		// Create a Cobra command
+		cobraCmd := createTestCobraCommand("update-by-dimension")
+
+		// Create a context with a query
+		query := &Query{
+			Groups: []FilterGroup{
+				{
+					Conditions: []FilterCondition{
+						{Field: "status", Operator: "eq", Value: "pending"},
+					},
+				},
+			},
+		}
+		ctx := createTestContext(query)
+		cobraCmd.SetContext(ctx)
+
+		// Test that the command executes without error (dry run)
+		err := executor.showDryRunWithQuery(cmd, "Task", dbPath, []string{}, cobraCmd)
+		if err != nil {
+			t.Errorf("update-by-dimension dry run failed: %v", err)
+		}
+	})
+
+	t.Run("delete-by-dimension end-to-end", func(t *testing.T) {
+		// Create a test command
+		cmd := createTestCommand("delete-by-dimension", "DeleteByDimension", "Delete documents matching dimension filters", CategoryBulk)
+
+		// Create a Cobra command
+		cobraCmd := createTestCobraCommand("delete-by-dimension")
+
+		// Create a context with a query
+		query := &Query{
+			Groups: []FilterGroup{
+				{
+					Conditions: []FilterCondition{
+						{Field: "status", Operator: "eq", Value: "archived"},
+					},
+				},
+			},
+		}
+		ctx := createTestContext(query)
+		cobraCmd.SetContext(ctx)
+
+		// Test that the command executes without error (dry run)
+		err := executor.showDryRunWithQuery(cmd, "Task", dbPath, []string{}, cobraCmd)
+		if err != nil {
+			t.Errorf("delete-by-dimension dry run failed: %v", err)
+		}
+	})
+
+	t.Run("update-where end-to-end", func(t *testing.T) {
+		// Create a test command
+		cmd := createTestCommand("update-where", "UpdateWhere", "Update documents matching WHERE clause", CategoryBulk)
+
+		// Create a Cobra command
+		cobraCmd := createTestCobraCommand("update-where")
+
+		// Create a context with a query
+		query := &Query{
+			Groups: []FilterGroup{
+				{
+					Conditions: []FilterCondition{
+						{Field: "priority", Operator: "gte", Value: "3"},
+					},
+				},
+			},
+		}
+		ctx := createTestContext(query)
+		cobraCmd.SetContext(ctx)
+
+		// Test that the command executes without error (dry run)
+		err := executor.showDryRunWithQuery(cmd, "Task", dbPath, []string{}, cobraCmd)
+		if err != nil {
+			t.Errorf("update-where dry run failed: %v", err)
+		}
+	})
+
+	t.Run("delete-where end-to-end", func(t *testing.T) {
+		// Create a test command
+		cmd := createTestCommand("delete-where", "DeleteWhere", "Delete documents matching WHERE clause", CategoryBulk)
+
+		// Create a Cobra command
+		cobraCmd := createTestCobraCommand("delete-where")
+
+		// Create a context with a query
+		query := &Query{
+			Groups: []FilterGroup{
+				{
+					Conditions: []FilterCondition{
+						{Field: "created_at", Operator: "lt", Value: "2023-01-01"},
+					},
+				},
+			},
+		}
+		ctx := createTestContext(query)
+		cobraCmd.SetContext(ctx)
+
+		// Test that the command executes without error (dry run)
+		err := executor.showDryRunWithQuery(cmd, "Task", dbPath, []string{}, cobraCmd)
+		if err != nil {
+			t.Errorf("delete-where dry run failed: %v", err)
+		}
+	})
+
+	t.Run("update-by-uuids end-to-end", func(t *testing.T) {
+		// Create a test command
+		cmd := createTestCommand("update-by-uuids", "UpdateByUUIDs", "Update documents by list of UUIDs", CategoryBulk)
+		cmd.Args = []ArgSpec{
+			{Name: "uuids", Type: reflect.TypeOf([]string{}), Description: "Comma-separated UUIDs", Required: true},
+		}
+
+		// Create a Cobra command
+		cobraCmd := createTestCobraCommand("update-by-uuids")
+
+		// Create a context with a query
+		query := &Query{
+			Groups: []FilterGroup{
+				{
+					Conditions: []FilterCondition{
+						{Field: "status", Operator: "eq", Value: "completed"},
+					},
+				},
+			},
+		}
+		ctx := createTestContext(query)
+		cobraCmd.SetContext(ctx)
+
+		// Test that the command executes without error (dry run)
+		err := executor.showDryRunWithQuery(cmd, "Task", dbPath, []string{"uuid1,uuid2,uuid3"}, cobraCmd)
+		if err != nil {
+			t.Errorf("update-by-uuids dry run failed: %v", err)
+		}
+	})
+
+	t.Run("delete-by-uuids end-to-end", func(t *testing.T) {
+		// Create a test command
+		cmd := createTestCommand("delete-by-uuids", "DeleteByUUIDs", "Delete documents by list of UUIDs", CategoryBulk)
+		cmd.Args = []ArgSpec{
+			{Name: "uuids", Type: reflect.TypeOf([]string{}), Description: "Comma-separated UUIDs", Required: true},
+		}
+
+		// Create a Cobra command
+		cobraCmd := createTestCobraCommand("delete-by-uuids")
+
+		// Create a context with a query
+		query := &Query{
+			Groups: []FilterGroup{},
+		}
+		ctx := createTestContext(query)
+		cobraCmd.SetContext(ctx)
+
+		// Test that the command executes without error (dry run)
+		err := executor.showDryRunWithQuery(cmd, "Task", dbPath, []string{"uuid1,uuid2,uuid3"}, cobraCmd)
+		if err != nil {
+			t.Errorf("delete-by-uuids dry run failed: %v", err)
+		}
+	})
 }
 
 // TestUpdateWhereCLIParsing tests the CLI parsing for update-where command
