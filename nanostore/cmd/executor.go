@@ -121,6 +121,24 @@ func (me *MethodExecutor) ExecuteCommand(cmd *Command, cobraCmd *cobra.Command, 
 
 		return me.outputResult(result, format)
 
+	case "update-by-uuids":
+		// Get UUID list from arguments
+		if len(args) == 0 {
+			return fmt.Errorf("update-by-uuids command requires a UUID list argument")
+		}
+		uuidsStr := args[0]
+		uuids := strings.Split(uuidsStr, ",")
+
+		// Use query conditions as update data
+		updateData := me.queryToDataMap(query)
+
+		result, err := reflectionExec.ExecuteUpdateByUUIDs(typeName, dbPath, uuids, updateData)
+		if err != nil {
+			return fmt.Errorf("failed to execute update-by-uuids: %w", err)
+		}
+
+		return me.outputResult(result, format)
+
 	default:
 		// For unimplemented commands, simulate for now
 		formatter := NewOutputFormatter(format)

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -195,6 +196,149 @@ func TestUpdateWhereDryRun(t *testing.T) {
 
 	// Test dry run output with WHERE clause argument
 	err := executor.showDryRunWithQuery(cmd, "Task", "test.db", []string{"status = ?"}, cobraCmd)
+	if err != nil {
+		t.Errorf("Dry run failed: %v", err)
+	}
+}
+
+// TestUpdateByUUIDsCLIParsing tests the CLI parsing for update-by-uuids command
+func TestUpdateByUUIDsCLIParsing(t *testing.T) {
+	registry := NewEnhancedTypeRegistry()
+	executor := NewMethodExecutor(registry)
+
+	// Test the query parsing for update data
+	t.Run("query parsing for update data", func(t *testing.T) {
+		// Simulate what would be parsed as filter args (non-filter flags)
+		filterArgs := []string{"--status=completed", "--assignee=john"}
+		query := parseFilters(filterArgs)
+
+		expectedQuery := &Query{
+			Groups: []FilterGroup{
+				{
+					Conditions: []FilterCondition{
+						{Field: "status", Operator: "eq", Value: "completed"},
+						{Field: "assignee", Operator: "eq", Value: "john"},
+					},
+				},
+			},
+			Operators: []LogicalOperator{},
+		}
+
+		if diff := cmp.Diff(expectedQuery, query); diff != "" {
+			t.Errorf("Query parsing mismatch (-want +got):\n%s", diff)
+		}
+
+		// Test queryToDataMap conversion
+		expectedData := map[string]interface{}{
+			"status":   "completed",
+			"assignee": "john",
+		}
+
+		actualData := executor.queryToDataMap(query)
+		if diff := cmp.Diff(expectedData, actualData); diff != "" {
+			t.Errorf("Data conversion mismatch (-want +got):\n%s", diff)
+		}
+	})
+
+	// Test UUID parsing
+	t.Run("UUID list parsing", func(t *testing.T) {
+		uuidStr := "uuid1,uuid2,uuid3"
+		expectedUUIDs := []string{"uuid1", "uuid2", "uuid3"}
+
+		actualUUIDs := strings.Split(uuidStr, ",")
+		if diff := cmp.Diff(expectedUUIDs, actualUUIDs); diff != "" {
+			t.Errorf("UUID parsing mismatch (-want +got):\n%s", diff)
+		}
+	})
+}
+
+// TestUpdateByUUIDsCommandStructure tests the command structure and flag handling
+func TestUpdateByUUIDsCommandStructure(t *testing.T) {
+	generator := NewCommandGenerator()
+	commands := generator.GenerateCommands()
+
+	// Find the update-by-uuids command
+	var updateByUUIDsCmd *Command
+	for _, cmd := range commands {
+		if cmd.Name == "update-by-uuids" {
+			updateByUUIDsCmd = &cmd
+			break
+		}
+	}
+
+	if updateByUUIDsCmd == nil {
+		t.Fatal("update-by-uuids command not found in generated commands")
+	}
+
+	// Verify command properties
+	if updateByUUIDsCmd.Method != "UpdateByUUIDs" {
+		t.Errorf("Expected method 'UpdateByUUIDs', got '%s'", updateByUUIDsCmd.Method)
+	}
+
+	if updateByUUIDsCmd.Category != CategoryBulk {
+		t.Errorf("Expected category 'CategoryBulk', got '%s'", updateByUUIDsCmd.Category.String())
+	}
+
+	// Verify it has the required UUIDs argument
+	if len(updateByUUIDsCmd.Args) == 0 {
+		t.Error("Expected update-by-uuids command to have at least one required argument")
+	}
+
+	// Convert to Cobra command and test
+	cobraCmd := updateByUUIDsCmd.ToCobraCommand(generator)
+
+	expectedUse := "update-by-uuids <uuids>"
+	if cobraCmd.Use != expectedUse {
+		t.Errorf("Expected command use '%s', got '%s'", expectedUse, cobraCmd.Use)
+	}
+
+	// Test that common flags are added for data manipulation commands
+	expectedFlags := []string{"status", "priority", "category", "parent-id", "description", "assignee", "tags", "content"}
+	for _, flagName := range expectedFlags {
+		if cobraCmd.Flags().Lookup(flagName) == nil {
+			t.Errorf("Expected flag '%s' to be present in update-by-uuids command", flagName)
+		}
+	}
+}
+
+// TestUpdateByUUIDsDryRun tests the dry run functionality
+func TestUpdateByUUIDsDryRun(t *testing.T) {
+	registry := NewEnhancedTypeRegistry()
+	executor := NewMethodExecutor(registry)
+
+	// Create a mock command
+	cmd := &Command{
+		Name:        "update-by-uuids",
+		Method:      "UpdateByUUIDs",
+		Description: "Update documents by list of UUIDs",
+		Category:    CategoryBulk,
+		Args: []ArgSpec{
+			{Name: "uuids", Type: reflect.TypeOf([]string{}), Description: "Comma-separated UUIDs", Required: true},
+		},
+	}
+
+	// Create a Cobra command with dry run flag
+	cobraCmd := &cobra.Command{
+		Use: "update-by-uuids",
+	}
+	cobraCmd.Flags().Bool("x-dry-run", true, "Dry run flag")
+
+	// Create a context with a query
+	query := &Query{
+		Groups: []FilterGroup{
+			{
+				Conditions: []FilterCondition{
+					{Field: "status", Operator: "eq", Value: "pending"},
+				},
+			},
+		},
+	}
+	ctx := context.Background()
+	ctx = withQuery(ctx, query)
+	cobraCmd.SetContext(ctx)
+
+	// Test dry run output with UUIDs argument
+	err := executor.showDryRunWithQuery(cmd, "Task", "test.db", []string{"uuid1,uuid2,uuid3"}, cobraCmd)
 	if err != nil {
 		t.Errorf("Dry run failed: %v", err)
 	}

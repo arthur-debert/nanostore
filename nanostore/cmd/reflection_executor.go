@@ -430,6 +430,16 @@ func (re *ReflectionExecutor) ExecuteUpdateWhere(typeName, dbPath string, whereC
 	return re.ExecuteMethod(typeName, "UpdateWhere", args)
 }
 
+// ExecuteUpdateByUUIDs executes UpdateByUUIDs on the store
+func (re *ReflectionExecutor) ExecuteUpdateByUUIDs(typeName, dbPath string, uuids []string, data map[string]interface{}) (interface{}, error) {
+	// Log the update operation
+	logQuery("update-by-uuids", fmt.Sprintf("UPDATE %s documents with UUIDs: %v", typeName, uuids), []interface{}{data})
+
+	// Use generic ExecuteMethod to call UpdateByUUIDs
+	args := []interface{}{dbPath, uuids, data}
+	return re.ExecuteMethod(typeName, "UpdateByUUIDs", args)
+}
+
 // ExecuteDelete executes a Delete method
 func (re *ReflectionExecutor) ExecuteDelete(typeName, dbPath, id string, cascade bool) error {
 	// Log the delete operation
