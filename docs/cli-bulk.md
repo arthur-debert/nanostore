@@ -1,31 +1,37 @@
 # CLI Bulk Operations Implementation Plan
 
 ## Overview
+
 Implement bulk operations for the nanostore CLI by leveraging the existing query infrastructure. Bulk operations should work exactly like existing commands - they're just different API methods that consume the same parsed query system.
 
 ## Implementation Strategy
 
 ### Core Insight
+
 Bulk operations use the **exact same query syntax** as existing commands (`list`, `create`, `update`). No special parsing needed - just different API method calls.
 
 ### Key Components
 
 #### 1. Extend MethodExecutor.ExecuteCommand()
+
 Add bulk operation cases that use existing query system:
+
 - `update-by-dimension`
-- `update-where` 
+- `update-where`
 - `delete-by-dimension`
 - `delete-where`
 - `update-by-uuids`
 - `delete-by-uuids`
 
 #### 2. Add One Helper Function
+
 ```go
 // queryToDimensionFilters converts query conditions to dimension filters map
 func (me *MethodExecutor) queryToDimensionFilters(query *Query) map[string]interface{}
 ```
 
 #### 3. Extend ReflectionExecutor
+
 Add bulk operation methods that use existing reflection infrastructure.
 
 ### CLI Usage Examples
@@ -51,18 +57,21 @@ nano-db delete-by-uuids "uuid1,uuid2,uuid3"
 ## Implementation Plan
 
 ### Phase 1: Single Method Implementation
+
 1. Start with `update-by-dimension` as the simplest case
 2. Implement end-to-end: code + tests + verification
 3. Commit and push with key learnings
 4. Document patterns for other methods
 
 ### Phase 2: Iterative Implementation
+
 5. Implement each remaining method individually
 6. Code + tests + verification for each
 7. Commit and push after each method
 8. Use established patterns from Phase 1
 
 ### Phase 3: Final Integration
+
 9. Write comprehensive PR
 10. Final testing and documentation
 
@@ -71,6 +80,7 @@ nano-db delete-by-uuids "uuid1,uuid2,uuid3"
 **NO integration tests or shelling out**
 
 **Unit testing approach:**
+
 - Craft full CLI command strings with options
 - Feed to Cobra parser
 - Mock the point where query would run
@@ -78,12 +88,14 @@ nano-db delete-by-uuids "uuid1,uuid2,uuid3"
 - Test CLI string → query conversion, NOT query results
 
 **Test what we control:**
+
 - Query parsing accuracy
 - Parameter conversion
 - Method invocation
 - Error handling
 
 **Don't test:**
+
 - Actual database operations
 - Query execution results
 - Integration with external systems
