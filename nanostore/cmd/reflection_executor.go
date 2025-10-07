@@ -409,6 +409,16 @@ func (re *ReflectionExecutor) ExecuteUpdate(typeName, dbPath, id string, data ma
 	}
 }
 
+// ExecuteUpdateByDimension executes UpdateByDimension on the store
+func (re *ReflectionExecutor) ExecuteUpdateByDimension(typeName, dbPath string, filters map[string]interface{}, data map[string]interface{}) (interface{}, error) {
+	// Log the update operation
+	logQuery("update-by-dimension", fmt.Sprintf("UPDATE %s documents with filters: %v", typeName, filters), []interface{}{data})
+
+	// Use generic ExecuteMethod to call UpdateByDimension
+	args := []interface{}{dbPath, filters, data}
+	return re.ExecuteMethod(typeName, "UpdateByDimension", args)
+}
+
 // ExecuteDelete executes a Delete method
 func (re *ReflectionExecutor) ExecuteDelete(typeName, dbPath, id string, cascade bool) error {
 	// Log the delete operation

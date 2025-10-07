@@ -81,6 +81,20 @@ func (me *MethodExecutor) ExecuteCommand(cmd *Command, cobraCmd *cobra.Command, 
 
 		return me.outputResult(result, format)
 
+	case "update-by-dimension":
+		// Get filter flags for dimension matching
+		filterFlags, _ := cobraCmd.Flags().GetStringSlice("filter")
+		filters := me.parseFilterFlags(filterFlags)
+		// Use query conditions as update data
+		updateData := me.queryToDataMap(query)
+
+		result, err := reflectionExec.ExecuteUpdateByDimension(typeName, dbPath, filters, updateData)
+		if err != nil {
+			return fmt.Errorf("failed to execute update-by-dimension: %w", err)
+		}
+
+		return me.outputResult(result, format)
+
 	default:
 		// For unimplemented commands, simulate for now
 		formatter := NewOutputFormatter(format)
@@ -169,6 +183,36 @@ func (me *MethodExecutor) queryToDataMap(query *Query) map[string]interface{} {
 	}
 
 	return data
+}
+
+// queryToDimensionFilters converts query conditions to dimension filters map
+func (me *MethodExecutor) queryToDimensionFilters(query *Query) map[string]interface{} {
+	filters := make(map[string]interface{})
+	if query == nil {
+		return filters
+	}
+
+	// Convert filter conditions to dimension filters (same logic as queryToDataMap)
+	for _, group := range query.Groups {
+		for _, condition := range group.Conditions {
+			if condition.Operator == "eq" {
+				filters[condition.Field] = condition.Value
+			}
+		}
+	}
+
+	return filters
+}
+
+// parseFilterFlags converts CLI filter flags to dimension filters map
+func (me *MethodExecutor) parseFilterFlags(filterFlags []string) map[string]interface{} {
+	filters := make(map[string]interface{})
+	for _, filter := range filterFlags {
+		if parts := strings.SplitN(filter, "=", 2); len(parts) == 2 {
+			filters[parts[0]] = parts[1]
+		}
+	}
+	return filters
 }
 
 // simulateCommandExecution simulates command execution and returns mock results

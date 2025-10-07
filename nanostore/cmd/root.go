@@ -118,12 +118,18 @@ func preParse(args []string) (cobraArgs, filterArgs, positionalArgs []string) {
 	}
 
 	// Separate remaining args into flags and positionals
-	for _, arg := range args {
+	for i, arg := range args {
 		if strings.HasPrefix(arg, "-") {
 			// It's a flag. Check if it's a command flag or a filter flag.
-			// For simplicity, we assume all flags starting with --x- are command flags.
-			if strings.HasPrefix(arg, "--x-") {
+			// Command flags: --x-*, --filter, --args, --sort, --limit, --cascade
+			if strings.HasPrefix(arg, "--x-") || arg == "--filter" || arg == "--args" || arg == "--sort" || arg == "--limit" || arg == "--cascade" {
 				cobraArgs = append(cobraArgs, arg)
+				// If this is --filter, also add the next argument if it exists and doesn't start with -
+				if arg == "--filter" && i+1 < len(args) && !strings.HasPrefix(args[i+1], "-") {
+					cobraArgs = append(cobraArgs, args[i+1])
+					// Skip the next argument in the main loop
+					continue
+				}
 			} else {
 				filterArgs = append(filterArgs, arg)
 			}
