@@ -1,146 +1,22 @@
-CLI Bulk Operations Limitations
+CLI Bulk Operations: What You Lose vs API
 
-1. Overview
+If you're comfortable with the nanostore API and wondering what you'll lose
+by using the CLI bulk operations, here's the honest breakdown:
 
-    This document describes what the CLI bulk operations cannot do compared to
-    direct API usage. If you're an experienced API user, this tells you what
-    CLI limitations to expect.
+What you lose:
 
-2. CLI-Specific Syntax Limitations
+- Can't bypass the query parsing system (no complex objects, raw SQL, or arbitrary filter maps)
+- Limited dry-run information
 
-2.1 No Direct API Method Access
+Bottom Line:
 
-    The CLI does not expose all bulk API methods directly:
+If you need to pass complex objects, use raw SQL, or bypass the query system,
+stick with the API.
 
-    - update-by-dimension: Uses queryToDimensionFilters() which only processes "eq" operators
-    - update-where: Uses BuildWhereFromQuery() instead of raw SQL WHERE clauses
-    - delete-by-dimension: Uses queryToDimensionFilters() which only processes "eq" operators
-    - delete-where: Uses BuildWhereFromQuery() instead of raw SQL WHERE clauses
+Examples:
 
-    The API supports more flexible parameter passing, while the CLI constrains
-    parameters through the query parsing system.
+API: store.UpdateWhere("priority >= ?", []interface{}{3}, map[string]interface{}{"status": "completed"})
 
-2.2 Limited Parameter Flexibility
+CLI: nano-db update-where --sql --priority__gte=3 --data --status=completed
 
-    CLI bulk operations cannot pass parameters in the same flexible way as the API:
-
-    - All filtering must go through the query parsing system (parseFilters)
-    - Cannot pass complex objects or arrays directly as parameters
-    - Cannot use raw SQL WHERE clauses (must use query syntax)
-    - Cannot pass arbitrary dimension filter maps
-
-    The API allows direct parameter passing while the CLI requires conversion
-    through the query system.
-
-2.3 --sql and --data Operator Requirements
-
-    All bulk update operations in the CLI require the --sql and --data operators to separate
-    WHERE criteria from update data:
-
-    - update-by-dimension and update-where require both --sql and --data
-    - update-by-uuids requires only --data (no WHERE criteria needed)
-    - Everything between --sql and --data: WHERE criteria (what to find)
-    - Everything after --data: update data (what to change)
-    - Example: --sql --status=pending --data --status=completed
-    - Empty update data is not allowed (validation prevents this)
-
-    The API accepts separate parameters for filters and update data, while the CLI
-    requires this explicit separation using the --sql and --data operators.
-
-3. CLI Command Structure Limitations
-
-3.1 No Direct Method Invocation
-
-    The CLI cannot directly invoke bulk API methods with arbitrary parameters:
-
-    - Cannot pass custom filter maps (must use query syntax)
-    - Cannot pass complex WHERE clauses (must use query operators)
-    - Cannot pass typed data objects (must use flag-based data)
-
-    The API allows direct method calls with any valid parameters.
-
-3.2 Limited Argument Support
-
-    CLI bulk operations have restricted argument handling:
-
-    - Only update-by-uuids and delete-by-uuids accept arguments (UUID lists)
-    - update-where and delete-where no longer accept WHERE clause arguments
-    - Cannot pass arbitrary arguments to bulk operations
-
-    The API accepts any valid arguments for each method.
-
-4. Query System Constraints
-
-4.1 Forced Query Parsing
-
-    All CLI bulk operations must go through the query parsing system:
-
-    - Cannot bypass parseFilters() for custom filtering
-    - Cannot use raw SQL conditions (must use --field__operator=value syntax)
-    - Cannot pass pre-built filter maps or WHERE clauses
-
-    The API allows direct parameter passing without query system constraints.
-
-4.2 Limited Operator Support in Dimension Operations
-
-    CLI dimension-based operations are constrained by queryToDimensionFilters():
-
-    - Only processes "eq" operators for dimension filtering
-    - Ignores other operators (gt, lt, contains, etc.) in dimension operations
-    - Forces use of update-where/delete-where for complex filtering
-
-    The API's dimension filtering may support more operators directly.
-
-5. CLI-Specific Error Handling
-
-5.1 Limited Parameter Validation
-
-    CLI parameter validation is constrained by the query system:
-
-    - Cannot validate complex parameter combinations before API calls
-    - Cannot pre-validate WHERE clause syntax
-    - Limited ability to provide API-specific error context
-
-    The API can validate parameters directly without CLI constraints.
-
-5.2 Reduced Error Context
-
-    CLI error messages may lack context available to direct API users:
-
-    - Cannot provide detailed parameter validation errors
-    - Limited ability to show which specific CLI flags caused issues
-    - Cannot provide API-specific error context
-
-6. CLI Testing and Debugging Limitations
-
-6.1 Limited Dry-Run Information
-
-    The CLI dry-run shows basic operation info but cannot show:
-
-    - Which specific documents would be affected (requires API execution)
-    - Detailed parameter validation results
-    - Complete WHERE clause generation details
-
-    Direct API usage allows more detailed operation preview.
-
-6.2 No Direct API Access for Testing
-
-    CLI users cannot easily test bulk operations with direct API calls:
-
-    - Cannot bypass CLI limitations for testing
-    - Cannot use API-specific features not exposed in CLI
-    - Cannot validate operations using alternative parameter formats
-
-7. Workarounds
-
-    When CLI limitations are restrictive:
-
-    - Use scripting to call the API directly
-    - Use the API programmatically for complex operations
-    - Combine CLI operations with API calls
-
-Conclusion
-
-    The CLI bulk operations are constrained by the query parsing system rather
-    than direct API parameter passing. If you need full API flexibility, use
-    the API directly.
+The CLI syntax is more verbose but structured.

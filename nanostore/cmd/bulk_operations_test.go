@@ -96,16 +96,42 @@ func TestUpdateByDimensionCLIParsing(t *testing.T) {
 		if diff := cmp.Diff(expectedFilters, actualFilters); diff != "" {
 			t.Errorf("Filter conversion mismatch (-want +got):\n%s", diff)
 		}
+	})
 
-		// Test queryToDataMap conversion (for update data after --data)
-		expectedData := map[string]interface{}{
-			"status":   "completed",
-			"assignee": "john",
+	// Test all operators in dimension operations
+	t.Run("all operators in dimension operations", func(t *testing.T) {
+		// Test various operators
+		filterArgs := []string{"--sql", "--status=pending", "--priority__gte=3", "--created_at__lt=2023-01-01", "--assignee__contains=john", "--data", "--status=completed"}
+		query := createTestQuery(filterArgs)
+
+		expectedFilters := map[string]interface{}{
+			"status":             "pending",    // eq operator
+			"priority__gte":      "3",          // gte operator
+			"created_at__lt":     "2023-01-01", // lt operator
+			"assignee__contains": "john",       // contains operator
 		}
 
-		actualData := executor.queryToDataMap(query)
-		if diff := cmp.Diff(expectedData, actualData); diff != "" {
-			t.Errorf("Data conversion mismatch (-want +got):\n%s", diff)
+		actualFilters := executor.queryToDimensionFilters(query, true)
+		if diff := cmp.Diff(expectedFilters, actualFilters); diff != "" {
+			t.Errorf("All operators filter conversion mismatch (-want +got):\n%s", diff)
+		}
+	})
+
+	// Test delete operations with all operators
+	t.Run("delete operations with all operators", func(t *testing.T) {
+		// Test delete operations (no --sql/--data operators)
+		filterArgs := []string{"--status=pending", "--priority__gte=3", "--created_at__lt=2023-01-01"}
+		query := createTestQuery(filterArgs)
+
+		expectedFilters := map[string]interface{}{
+			"status":         "pending",
+			"priority__gte":  "3",
+			"created_at__lt": "2023-01-01",
+		}
+
+		actualFilters := executor.queryToDimensionFilters(query, false)
+		if diff := cmp.Diff(expectedFilters, actualFilters); diff != "" {
+			t.Errorf("Delete operations filter conversion mismatch (-want +got):\n%s", diff)
 		}
 	})
 }

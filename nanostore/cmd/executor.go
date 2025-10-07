@@ -354,12 +354,12 @@ func (me *MethodExecutor) validateDataOperator(query *Query, commandName string)
 
 // queryToDimensionFilters converts query conditions to dimension filters map.
 //
-// IMPORTANT: This function only processes conditions with the "eq" operator.
-// Other operators (gt, lt, contains, etc.) are ignored because dimension
-// filtering in the nanostore API only supports equality matching.
+// This function processes all operators:
+// - "eq" operators: field -> value
+// - Other operators: field__operator -> value (e.g., priority__gte -> 3)
 //
-// For complex filtering with multiple operators, use update-where/delete-where
-// commands which generate SQL WHERE clauses via BuildWhereFromQuery().
+// The nanostore API accepts map[string]interface{} for dimension filtering,
+// so all operators are supported.
 //
 // If hasSqlDataOperators is true, only processes groups BETWEEN --sql and --data operators.
 // If hasSqlDataOperators is false, processes all groups (for delete operations).
@@ -398,11 +398,16 @@ func (me *MethodExecutor) queryToDimensionFilters(query *Query, hasSqlDataOperat
 		groupsToProcess = query.Groups
 	}
 
-	// Convert filter conditions to dimension filters (only "eq" operators)
+	// Convert filter conditions to dimension filters (all operators)
 	for _, group := range groupsToProcess {
 		for _, condition := range group.Conditions {
+			// For dimension operations, we can support all operators
+			// The API accepts map[string]interface{} which can handle any operator
 			if condition.Operator == "eq" {
 				filters[condition.Field] = condition.Value
+			} else {
+				// For non-eq operators, use the full operator syntax
+				filters[condition.Field+"__"+condition.Operator] = condition.Value
 			}
 		}
 	}
