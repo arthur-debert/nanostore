@@ -83,7 +83,7 @@ func TestUpdateByDimensionCLIParsing(t *testing.T) {
 			"priority": "high",
 		}
 
-		actualFilters := executor.queryToDimensionFilters(query)
+		actualFilters := executor.queryToDimensionFilters(query, true)
 		if diff := cmp.Diff(expectedFilters, actualFilters); diff != "" {
 			t.Errorf("Filter conversion mismatch (-want +got):\n%s", diff)
 		}
@@ -687,7 +687,7 @@ func TestDeleteByDimensionCLIParsing(t *testing.T) {
 			"priority": "low",
 		}
 
-		actualFilters := executor.queryToDimensionFilters(query)
+		actualFilters := executor.queryToDimensionFilters(query, false)
 		if diff := cmp.Diff(expectedFilters, actualFilters); diff != "" {
 			t.Errorf("Filter conversion mismatch (-want +got):\n%s", diff)
 		}

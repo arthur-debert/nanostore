@@ -87,7 +87,7 @@ func (me *MethodExecutor) ExecuteCommand(cmd *Command, cobraCmd *cobra.Command, 
 			return err
 		}
 		// Use query for filter criteria (before --update)
-		filters := me.queryToDimensionFilters(query)
+		filters := me.queryToDimensionFilters(query, true)
 		// Use query conditions as update data (after --update)
 		updateData := me.queryToDataMap(query)
 
@@ -138,7 +138,7 @@ func (me *MethodExecutor) ExecuteCommand(cmd *Command, cobraCmd *cobra.Command, 
 
 	case "delete-by-dimension":
 		// Use query for filter criteria (same as list command)
-		filters := me.queryToDimensionFilters(query)
+		filters := me.queryToDimensionFilters(query, false)
 
 		result, err := reflectionExec.ExecuteDeleteByDimension(typeName, dbPath, filters)
 		if err != nil {
@@ -323,27 +323,35 @@ func (me *MethodExecutor) validateUpdateOperator(query *Query, commandName strin
 // For complex filtering with multiple operators, use update-where/delete-where
 // commands which generate SQL WHERE clauses via BuildWhereFromQuery().
 //
-// This function only processes groups BEFORE the --update operator.
-// Groups after --update contain update data, not filter criteria.
-func (me *MethodExecutor) queryToDimensionFilters(query *Query) map[string]interface{} {
+// If hasUpdateOperator is true, only processes groups BEFORE the --update operator.
+// If hasUpdateOperator is false, processes all groups (for delete operations).
+func (me *MethodExecutor) queryToDimensionFilters(query *Query, hasUpdateOperator bool) map[string]interface{} {
 	filters := make(map[string]interface{})
 	if query == nil || len(query.Groups) == 0 {
 		return filters
 	}
 
-	// Find the --update operator to separate filter criteria from update data
-	updateIndex := -1
-	for i, op := range query.Operators {
-		if op == OpUpdate {
-			updateIndex = i
-			break
-		}
-	}
+	var groupsToProcess []FilterGroup
 
-	// Process only groups before --update (filter criteria)
-	groupsToProcess := query.Groups
-	if updateIndex >= 0 {
-		groupsToProcess = query.Groups[:updateIndex+1]
+	if hasUpdateOperator {
+		// Find the --update operator to separate filter criteria from update data
+		updateIndex := -1
+		for i, op := range query.Operators {
+			if op == OpUpdate {
+				updateIndex = i
+				break
+			}
+		}
+
+		// Process only groups before --update (filter criteria)
+		if updateIndex >= 0 {
+			groupsToProcess = query.Groups[:updateIndex+1]
+		} else {
+			groupsToProcess = query.Groups
+		}
+	} else {
+		// For delete operations, process all groups (no --update operator)
+		groupsToProcess = query.Groups
 	}
 
 	// Convert filter conditions to dimension filters (only "eq" operators)
