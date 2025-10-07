@@ -57,27 +57,36 @@ func TestUpdateByDimensionCLIParsing(t *testing.T) {
 
 	// Test the query parsing for both filter criteria and update data
 	t.Run("query parsing for filter and update data", func(t *testing.T) {
-		// Simulate what would be parsed as filter args
-		filterArgs := []string{"--status=pending", "--priority=high"}
+		// Simulate what would be parsed as filter args with --sql and --data
+		filterArgs := []string{"--sql", "--status=pending", "--priority=high", "--data", "--status=completed", "--assignee=john"}
 		query := createTestQuery(filterArgs)
 
 		expectedQuery := &Query{
 			Groups: []FilterGroup{
+				{
+					Conditions: []FilterCondition{}, // Empty group before --sql
+				},
 				{
 					Conditions: []FilterCondition{
 						{Field: "status", Operator: "eq", Value: "pending"},
 						{Field: "priority", Operator: "eq", Value: "high"},
 					},
 				},
+				{
+					Conditions: []FilterCondition{
+						{Field: "status", Operator: "eq", Value: "completed"},
+						{Field: "assignee", Operator: "eq", Value: "john"},
+					},
+				},
 			},
-			Operators: []LogicalOperator{},
+			Operators: []LogicalOperator{OpSQL, OpData},
 		}
 
 		if diff := cmp.Diff(expectedQuery, query); diff != "" {
 			t.Errorf("Query parsing mismatch (-want +got):\n%s", diff)
 		}
 
-		// Test queryToDimensionFilters conversion (for filter criteria)
+		// Test queryToDimensionFilters conversion (for filter criteria between --sql and --data)
 		expectedFilters := map[string]interface{}{
 			"status":   "pending",
 			"priority": "high",
@@ -88,10 +97,10 @@ func TestUpdateByDimensionCLIParsing(t *testing.T) {
 			t.Errorf("Filter conversion mismatch (-want +got):\n%s", diff)
 		}
 
-		// Test queryToDataMap conversion (for update data)
+		// Test queryToDataMap conversion (for update data after --data)
 		expectedData := map[string]interface{}{
-			"status":   "pending",
-			"priority": "high",
+			"status":   "completed",
+			"assignee": "john",
 		}
 
 		actualData := executor.queryToDataMap(query)
@@ -928,80 +937,139 @@ func TestDeleteByUUIDsDryRun(t *testing.T) {
 	}
 }
 
-// TestUpdateOperatorParsing tests the new --update operator parsing
-func TestUpdateOperatorParsing(t *testing.T) {
+// TestSqlDataOperatorParsing tests the new --sql and --data operator parsing
+func TestSqlDataOperatorParsing(t *testing.T) {
 	registry := NewEnhancedTypeRegistry()
 	executor := NewMethodExecutor(registry)
 
-	t.Run("simple update operator", func(t *testing.T) {
-		// Test simple case: --status=pending --update --status=completed
-		filterArgs := []string{"--status=pending", "--update", "--status=completed"}
+	t.Run("simple sql data operators", func(t *testing.T) {
+		// Test simple case: --sql --status=pending --data --status=completed
+		filterArgs := []string{"--sql", "--status=pending", "--data", "--status=completed"}
 		query := parseFilters(filterArgs)
 
-		// Should have 2 groups
-		if len(query.Groups) != 2 {
-			t.Errorf("Expected 2 groups, got %d", len(query.Groups))
+		// Should have 3 groups (empty, WHERE criteria, update data)
+		if len(query.Groups) != 3 {
+			t.Errorf("Expected 3 groups, got %d", len(query.Groups))
 		}
 
-		// Should have 1 operator (UPDATE)
-		if len(query.Operators) != 1 {
-			t.Errorf("Expected 1 operator, got %d", len(query.Operators))
+		// Should have 2 operators (SQL, DATA)
+		if len(query.Operators) != 2 {
+			t.Errorf("Expected 2 operators, got %d", len(query.Operators))
 		}
 
-		if query.Operators[0] != OpUpdate {
-			t.Errorf("Expected UPDATE operator, got %s", query.Operators[0])
+		if query.Operators[0] != OpSQL {
+			t.Errorf("Expected SQL operator, got %s", query.Operators[0])
+		}
+		if query.Operators[1] != OpData {
+			t.Errorf("Expected DATA operator, got %s", query.Operators[1])
 		}
 
-		// First group should have status=pending
+		// First group should be empty (before --sql)
 		firstGroup := query.Groups[0]
-		if len(firstGroup.Conditions) != 1 {
-			t.Errorf("Expected 1 condition in first group, got %d", len(firstGroup.Conditions))
-		}
-		if firstGroup.Conditions[0].Field != "status" || firstGroup.Conditions[0].Value != "pending" {
-			t.Errorf("Expected status=pending in first group, got %s=%s",
-				firstGroup.Conditions[0].Field, firstGroup.Conditions[0].Value)
+		if len(firstGroup.Conditions) != 0 {
+			t.Errorf("Expected 0 conditions in first group, got %d", len(firstGroup.Conditions))
 		}
 
-		// Second group should have status=completed
+		// Second group should have status=pending (WHERE criteria)
 		secondGroup := query.Groups[1]
 		if len(secondGroup.Conditions) != 1 {
 			t.Errorf("Expected 1 condition in second group, got %d", len(secondGroup.Conditions))
 		}
-		if secondGroup.Conditions[0].Field != "status" || secondGroup.Conditions[0].Value != "completed" {
-			t.Errorf("Expected status=completed in second group, got %s=%s",
+		if secondGroup.Conditions[0].Field != "status" || secondGroup.Conditions[0].Value != "pending" {
+			t.Errorf("Expected status=pending in second group, got %s=%s",
 				secondGroup.Conditions[0].Field, secondGroup.Conditions[0].Value)
+		}
+
+		// Third group should have status=completed (update data)
+		thirdGroup := query.Groups[2]
+		if len(thirdGroup.Conditions) != 1 {
+			t.Errorf("Expected 1 condition in third group, got %d", len(thirdGroup.Conditions))
+		}
+		if thirdGroup.Conditions[0].Field != "status" || thirdGroup.Conditions[0].Value != "completed" {
+			t.Errorf("Expected status=completed in third group, got %s=%s",
+				thirdGroup.Conditions[0].Field, thirdGroup.Conditions[0].Value)
 		}
 	})
 
-	t.Run("validateUpdateOperator", func(t *testing.T) {
+	t.Run("validateSqlDataOperators", func(t *testing.T) {
 		// Test validation function
-		filterArgs := []string{"--status=pending", "--update", "--status=completed"}
+		filterArgs := []string{"--sql", "--status=pending", "--data", "--status=completed"}
 		query := parseFilters(filterArgs)
 
-		// Should not error with --update operator and update data
-		err := executor.validateUpdateOperator(query, "test-command")
+		// Should not error with --sql and --data operators
+		err := executor.validateSqlDataOperators(query, "test-command")
 		if err != nil {
-			t.Errorf("Expected no error with --update operator, got: %v", err)
+			t.Errorf("Expected no error with --sql and --data operators, got: %v", err)
 		}
 
-		// Should error without --update operator
-		filterArgsNoUpdate := []string{"--status=pending", "--status=completed"}
-		queryNoUpdate := parseFilters(filterArgsNoUpdate)
+		// Should error without --sql operator
+		filterArgsNoSql := []string{"--status=pending", "--data", "--status=completed"}
+		queryNoSql := parseFilters(filterArgsNoSql)
 
-		err = executor.validateUpdateOperator(queryNoUpdate, "test-command")
+		err = executor.validateSqlDataOperators(queryNoSql, "test-command")
 		if err == nil {
-			t.Error("Expected error without --update operator, got none")
+			t.Error("Expected error without --sql operator, got none")
+		}
+		if !strings.Contains(err.Error(), "requires the --sql operator") {
+			t.Errorf("Expected error about missing --sql operator, got: %v", err)
 		}
 
-		// Should error with --update operator but no update data
-		filterArgsEmptyUpdate := []string{"--status=pending", "--update"}
-		queryEmptyUpdate := parseFilters(filterArgsEmptyUpdate)
+		// Should error without --data operator
+		filterArgsNoData := []string{"--sql", "--status=pending", "--status=completed"}
+		queryNoData := parseFilters(filterArgsNoData)
 
-		err = executor.validateUpdateOperator(queryEmptyUpdate, "test-command")
+		err = executor.validateSqlDataOperators(queryNoData, "test-command")
+		if err == nil {
+			t.Error("Expected error without --data operator, got none")
+		}
+		if !strings.Contains(err.Error(), "requires the --data operator") {
+			t.Errorf("Expected error about missing --data operator, got: %v", err)
+		}
+
+		// Should error with --data operator but no update data
+		filterArgsEmptyData := []string{"--sql", "--status=pending", "--data"}
+		queryEmptyData := parseFilters(filterArgsEmptyData)
+
+		err = executor.validateSqlDataOperators(queryEmptyData, "test-command")
 		if err == nil {
 			t.Error("Expected error with empty update data, got none")
 		}
-		if !strings.Contains(err.Error(), "requires fields to update after the --update operator") {
+		if !strings.Contains(err.Error(), "requires fields to update after the --data operator") {
+			t.Errorf("Expected error about empty update data, got: %v", err)
+		}
+	})
+
+	t.Run("validateDataOperator", func(t *testing.T) {
+		// Test validation function for commands that only need --data (like update-by-uuids)
+		filterArgs := []string{"--data", "--status=completed", "--assignee=alice"}
+		query := parseFilters(filterArgs)
+
+		err := executor.validateDataOperator(query, "test-command")
+		if err != nil {
+			t.Errorf("Expected no error with valid --data operator, got: %v", err)
+		}
+
+		// Test missing --data operator
+		filterArgsNoData := []string{"--status=completed"}
+		queryNoData := parseFilters(filterArgsNoData)
+
+		err = executor.validateDataOperator(queryNoData, "test-command")
+		if err == nil {
+			t.Error("Expected error with missing --data operator, got none")
+		}
+		if !strings.Contains(err.Error(), "requires the --data operator") {
+			t.Errorf("Expected error about missing --data operator, got: %v", err)
+		}
+
+		// Test empty update data
+		filterArgsEmptyData := []string{"--data"}
+		queryEmptyData := parseFilters(filterArgsEmptyData)
+
+		err = executor.validateDataOperator(queryEmptyData, "test-command")
+		if err == nil {
+			t.Error("Expected error with empty update data, got none")
+		}
+		if !strings.Contains(err.Error(), "requires fields to update after the --data operator") {
 			t.Errorf("Expected error about empty update data, got: %v", err)
 		}
 	})

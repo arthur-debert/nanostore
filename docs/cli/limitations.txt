@@ -32,19 +32,20 @@ CLI Bulk Operations Limitations
     The API allows direct parameter passing while the CLI requires conversion
     through the query system.
 
-2.3 --update Operator Requirement
+2.3 --sql and --data Operator Requirements
 
-    All bulk update operations in the CLI require the --update operator to separate
-    filter criteria from update data:
+    All bulk update operations in the CLI require the --sql and --data operators to separate
+    WHERE criteria from update data:
 
-    - update-by-dimension, update-where, and update-by-uuids require --update
-    - Everything before --update: filter criteria (what to find)
-    - Everything after --update: update data (what to change)
-    - Example: --status=pending --update --status=completed
+    - update-by-dimension and update-where require both --sql and --data
+    - update-by-uuids requires only --data (no WHERE criteria needed)
+    - Everything between --sql and --data: WHERE criteria (what to find)
+    - Everything after --data: update data (what to change)
+    - Example: --sql --status=pending --data --status=completed
     - Empty update data is not allowed (validation prevents this)
 
     The API accepts separate parameters for filters and update data, while the CLI
-    requires this explicit separation using the --update operator.
+    requires this explicit separation using the --sql and --data operators.
 
 3. CLI Command Structure Limitations
 

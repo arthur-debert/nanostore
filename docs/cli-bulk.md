@@ -37,57 +37,63 @@ Add bulk operation methods that use existing reflection infrastructure.
 ### CLI Usage Examples
 
 ```bash
-# Update by dimension - use --update to separate filter criteria from update data
-nano-db update-by-dimension --status=pending --priority=high --update --status=completed --assignee=john
+# Update by dimension - use --sql/--data for clearer separation
+nano-db update-by-dimension --sql --status=pending --priority=high --data --status=completed --assignee=john
 
 # Update by WHERE clause - same operators as existing queries  
-nano-db update-where --status=pending --and --priority__gte=3 --update --assignee=john --status=completed
+nano-db update-where --sql --status=pending --and --priority__gte=3 --data --assignee=john --status=completed
 
-# Delete by dimension - same filter syntax (no update data needed)
-nano-db delete-by-dimension --status=archived --priority=low
+# Delete by dimension - same filter syntax (no --data needed)
+nano-db delete-by-dimension --sql --status=archived --priority=low
 
-# Delete by WHERE clause - same operators (no update data needed)
-nano-db delete-where --created_at__lt=2023-01-01 --or --status=archived
+# Delete by WHERE clause - same operators (no --data needed)
+nano-db delete-where --sql --created_at__lt=2023-01-01 --or --status=archived
 
-# UUID operations - use --update to separate UUIDs from update data
-nano-db update-by-uuids "uuid1,uuid2,uuid3" --update --status=completed --assignee=alice
+# UUID operations - use --data to separate UUIDs from update data
+nano-db update-by-uuids "uuid1,uuid2,uuid3" --data --status=completed --assignee=alice
 nano-db delete-by-uuids "uuid1,uuid2,uuid3"
 ```
 
-### New --update Operator Design
+### New --sql/--data Operator Design
 
-**BREAKING CHANGE**: All bulk update operations now require the `--update` operator to separate filter criteria from update data.
+**BREAKING CHANGE**: All bulk update operations now use `--sql` and `--data` operators for clearer separation.
 
 **Why this change:**
 
-- Solves ambiguity when same field appears in both filter and update data
-- Maintains consistency with existing `--and`/`--or` operators
-- Provides intuitive mental model: "find X, then update to Y"
+- Eliminates confusion with `--update` operator
+- Makes intent crystal clear: `--sql` = WHERE criteria, `--data` = update data
+- Maintains consistency with existing query operators
+- More intuitive for API users
 
 **How it works:**
 
-- Everything before `--update`: filter criteria (what to find)
-- Everything after `--update`: update data (what to change)
-- Works exactly like `--and`/`--or` for grouping conditions
+- Everything between `--sql` and `--data`: WHERE criteria (what to find)
+- Everything after `--data`: update data (what to change)
+- Uses existing query operators (`__gte`, `__lt`, `__contains`, etc.)
+- Leverages existing `BuildWhereFromQuery()` infrastructure
 
 **Examples:**
 
 ```bash
 # Simple case
-nano-db update-by-dimension --status=pending --update --status=completed
+nano-db update-where --sql --status=pending --data --status=completed
 
 # Complex filtering with multiple updates
-nano-db update-by-dimension \
-  --priority=high \
+nano-db update-where \
+  --sql \
+  --priority__gte=3 \
   --and \
-  --status=pending \
-  --update \
-  --status=completed \
+  --created_at__lt=2023-01-01 \
+  --data \
+  --status=archived \
   --assignee=alice \
   --tags=urgent
 
 # Works with all operators
-nano-db update-by-dimension --created_at__lt=2023-01-01 --update --status=archived
+nano-db update-where --sql --priority__gte=3 --or --category=bug --data --status=in-progress
+
+# Multiple conditions
+nano-db update-where --sql --status=pending --and --priority=high --data --assignee=john --tags=assigned
 ```
 
 ## Implementation Plan

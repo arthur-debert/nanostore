@@ -82,13 +82,13 @@ func (me *MethodExecutor) ExecuteCommand(cmd *Command, cobraCmd *cobra.Command, 
 		return me.outputResult(result, format)
 
 	case "update-by-dimension":
-		// Validate that --update operator is present
-		if err := me.validateUpdateOperator(query, "update-by-dimension"); err != nil {
+		// Validate that --sql and --data operators are present
+		if err := me.validateSqlDataOperators(query, "update-by-dimension"); err != nil {
 			return err
 		}
-		// Use query for filter criteria (before --update)
+		// Use query for filter criteria (between --sql and --data)
 		filters := me.queryToDimensionFilters(query, true)
-		// Use query conditions as update data (after --update)
+		// Use query conditions as update data (after --data)
 		updateData := me.queryToDataMap(query)
 
 		result, err := reflectionExec.ExecuteUpdateByDimension(typeName, dbPath, filters, updateData)
@@ -99,13 +99,13 @@ func (me *MethodExecutor) ExecuteCommand(cmd *Command, cobraCmd *cobra.Command, 
 		return me.outputResult(result, format)
 
 	case "update-where":
-		// Validate that --update operator is present
-		if err := me.validateUpdateOperator(query, "update-where"); err != nil {
+		// Validate that --sql and --data operators are present
+		if err := me.validateSqlDataOperators(query, "update-where"); err != nil {
 			return err
 		}
-		// Use query for WHERE clause generation (before --update)
+		// Use query for WHERE clause generation (between --sql and --data)
 		whereClause, whereArgs := reflectionExec.BuildWhereFromQuery(query)
-		// Use query conditions as update data (after --update)
+		// Use query conditions as update data (after --data)
 		updateData := me.queryToDataMap(query)
 
 		result, err := reflectionExec.ExecuteUpdateWhere(typeName, dbPath, whereClause, updateData, whereArgs)
@@ -116,8 +116,8 @@ func (me *MethodExecutor) ExecuteCommand(cmd *Command, cobraCmd *cobra.Command, 
 		return me.outputResult(result, format)
 
 	case "update-by-uuids":
-		// Validate that --update operator is present
-		if err := me.validateUpdateOperator(query, "update-by-uuids"); err != nil {
+		// Validate that --data operator is present (UUIDs don't need --sql)
+		if err := me.validateDataOperator(query, "update-by-uuids"); err != nil {
 			return err
 		}
 		// Get UUID list from arguments
@@ -126,7 +126,7 @@ func (me *MethodExecutor) ExecuteCommand(cmd *Command, cobraCmd *cobra.Command, 
 		}
 		uuidsStr := args[0]
 		uuids := strings.Split(uuidsStr, ",")
-		// Use query conditions as update data (after --update)
+		// Use query conditions as update data (after --data)
 		updateData := me.queryToDataMap(query)
 
 		result, err := reflectionExec.ExecuteUpdateByUUIDs(typeName, dbPath, uuids, updateData)
@@ -137,7 +137,7 @@ func (me *MethodExecutor) ExecuteCommand(cmd *Command, cobraCmd *cobra.Command, 
 		return me.outputResult(result, format)
 
 	case "delete-by-dimension":
-		// Use query for filter criteria (same as list command)
+		// Use query for filter criteria (all groups for delete operations)
 		filters := me.queryToDimensionFilters(query, false)
 
 		result, err := reflectionExec.ExecuteDeleteByDimension(typeName, dbPath, filters)
@@ -148,7 +148,7 @@ func (me *MethodExecutor) ExecuteCommand(cmd *Command, cobraCmd *cobra.Command, 
 		return me.outputResult(result, format)
 
 	case "delete-where":
-		// Use query for WHERE clause generation (same as list command)
+		// Use query for WHERE clause generation (all groups for delete operations)
 		whereClause, whereArgs := reflectionExec.BuildWhereFromQuery(query)
 
 		result, err := reflectionExec.ExecuteDeleteWhere(typeName, dbPath, whereClause, whereArgs)
@@ -245,33 +245,33 @@ func (me *MethodExecutor) outputResult(result interface{}, format string) error 
 }
 
 // queryToDataMap converts query conditions to a data map for create/update operations.
-// For bulk update operations, this function only processes groups AFTER the --update operator.
-// For create operations, it processes all groups (no --update operator expected).
+// For bulk update operations, this function only processes groups AFTER the --data operator.
+// For create operations, it processes all groups (no --data operator expected).
 func (me *MethodExecutor) queryToDataMap(query *Query) map[string]interface{} {
 	data := make(map[string]interface{})
 	if query == nil {
 		return data
 	}
 
-	// Find the --update operator to separate filter criteria from update data
-	updateIndex := -1
+	// Find the --data operator to separate filter criteria from update data
+	dataIndex := -1
 	for i, op := range query.Operators {
-		if op == OpUpdate {
-			updateIndex = i
+		if op == OpData {
+			dataIndex = i
 			break
 		}
 	}
 
-	if updateIndex >= 0 {
-		// Process only groups after --update (update data)
-		for i := updateIndex + 1; i < len(query.Groups); i++ {
+	if dataIndex >= 0 {
+		// Process only groups after --data (update data)
+		for i := dataIndex + 1; i < len(query.Groups); i++ {
 			group := query.Groups[i]
 			for _, condition := range group.Conditions {
 				data[condition.Field] = condition.Value
 			}
 		}
 	} else {
-		// No --update operator found, process all groups (for create operations)
+		// No --data operator found, process all groups (for create operations)
 		for _, group := range query.Groups {
 			for _, condition := range group.Conditions {
 				if condition.Operator == "eq" {
@@ -284,31 +284,69 @@ func (me *MethodExecutor) queryToDataMap(query *Query) map[string]interface{} {
 	return data
 }
 
-// validateUpdateOperator ensures that bulk update operations have the --update operator
-func (me *MethodExecutor) validateUpdateOperator(query *Query, commandName string) error {
+// validateSqlDataOperators ensures that bulk update operations have the --sql and --data operators
+func (me *MethodExecutor) validateSqlDataOperators(query *Query, commandName string) error {
 	if query == nil {
-		return fmt.Errorf("%s requires the --update operator to separate filter criteria from update data", commandName)
+		return fmt.Errorf("%s requires the --sql and --data operators to separate filter criteria from update data", commandName)
 	}
 
-	// Check if --update operator is present
-	hasUpdate := false
+	// Check if --sql and --data operators are present
+	hasSql := false
+	hasData := false
 	for _, op := range query.Operators {
-		if op == OpUpdate {
-			hasUpdate = true
-			break
+		if op == OpSQL {
+			hasSql = true
+		}
+		if op == OpData {
+			hasData = true
 		}
 	}
 
-	if !hasUpdate {
-		return fmt.Errorf("%s requires the --update operator to separate filter criteria from update data.\n"+
-			"Example: nano-db %s --status=pending --update --status=completed", commandName, commandName)
+	if !hasSql {
+		return fmt.Errorf("%s requires the --sql operator to specify WHERE criteria.\n"+
+			"Example: nano-db %s --sql --status=pending --data --status=completed", commandName, commandName)
+	}
+
+	if !hasData {
+		return fmt.Errorf("%s requires the --data operator to specify update data.\n"+
+			"Example: nano-db %s --sql --status=pending --data --status=completed --assignee=alice", commandName, commandName)
 	}
 
 	// Check that update data is not empty
 	updateData := me.queryToDataMap(query)
 	if len(updateData) == 0 {
-		return fmt.Errorf("%s requires fields to update after the --update operator.\n"+
-			"Example: nano-db %s --status=pending --update --status=completed --assignee=alice", commandName, commandName)
+		return fmt.Errorf("%s requires fields to update after the --data operator.\n"+
+			"Example: nano-db %s --sql --status=pending --data --status=completed --assignee=alice", commandName, commandName)
+	}
+
+	return nil
+}
+
+// validateDataOperator ensures that bulk update operations have the --data operator
+func (me *MethodExecutor) validateDataOperator(query *Query, commandName string) error {
+	if query == nil {
+		return fmt.Errorf("%s requires the --data operator to specify update data", commandName)
+	}
+
+	// Check if --data operator is present
+	hasData := false
+	for _, op := range query.Operators {
+		if op == OpData {
+			hasData = true
+			break
+		}
+	}
+
+	if !hasData {
+		return fmt.Errorf("%s requires the --data operator to specify update data.\n"+
+			"Example: nano-db %s 'uuid1,uuid2' --data --status=completed --assignee=alice", commandName, commandName)
+	}
+
+	// Check that update data is not empty
+	updateData := me.queryToDataMap(query)
+	if len(updateData) == 0 {
+		return fmt.Errorf("%s requires fields to update after the --data operator.\n"+
+			"Example: nano-db %s 'uuid1,uuid2' --data --status=completed --assignee=alice", commandName, commandName)
 	}
 
 	return nil
@@ -323,9 +361,9 @@ func (me *MethodExecutor) validateUpdateOperator(query *Query, commandName strin
 // For complex filtering with multiple operators, use update-where/delete-where
 // commands which generate SQL WHERE clauses via BuildWhereFromQuery().
 //
-// If hasUpdateOperator is true, only processes groups BEFORE the --update operator.
-// If hasUpdateOperator is false, processes all groups (for delete operations).
-func (me *MethodExecutor) queryToDimensionFilters(query *Query, hasUpdateOperator bool) map[string]interface{} {
+// If hasSqlDataOperators is true, only processes groups BETWEEN --sql and --data operators.
+// If hasSqlDataOperators is false, processes all groups (for delete operations).
+func (me *MethodExecutor) queryToDimensionFilters(query *Query, hasSqlDataOperators bool) map[string]interface{} {
 	filters := make(map[string]interface{})
 	if query == nil || len(query.Groups) == 0 {
 		return filters
@@ -333,24 +371,30 @@ func (me *MethodExecutor) queryToDimensionFilters(query *Query, hasUpdateOperato
 
 	var groupsToProcess []FilterGroup
 
-	if hasUpdateOperator {
-		// Find the --update operator to separate filter criteria from update data
-		updateIndex := -1
+	if hasSqlDataOperators {
+		// Find the --sql and --data operators to get WHERE criteria
+		sqlIndex := -1
+		dataIndex := -1
 		for i, op := range query.Operators {
-			if op == OpUpdate {
-				updateIndex = i
+			if op == OpSQL {
+				sqlIndex = i
+			}
+			if op == OpData {
+				dataIndex = i
 				break
 			}
 		}
 
-		// Process only groups before --update (filter criteria)
-		if updateIndex >= 0 {
-			groupsToProcess = query.Groups[:updateIndex+1]
+		// Process only groups between --sql and --data (WHERE criteria)
+		if sqlIndex >= 0 && dataIndex >= 0 {
+			groupsToProcess = query.Groups[sqlIndex+1 : dataIndex+1]
+		} else if sqlIndex >= 0 {
+			groupsToProcess = query.Groups[sqlIndex+1:]
 		} else {
 			groupsToProcess = query.Groups
 		}
 	} else {
-		// For delete operations, process all groups (no --update operator)
+		// For delete operations, process all groups (no --sql/--data operators)
 		groupsToProcess = query.Groups
 	}
 
