@@ -444,6 +444,95 @@ func TestDeleteByDimensionDryRun(t *testing.T) {
 	}
 }
 
+// TestDeleteWhereCommandStructure tests the command structure and flag handling
+func TestDeleteWhereCommandStructure(t *testing.T) {
+	generator := NewCommandGenerator()
+	commands := generator.GenerateCommands()
+
+	// Find the delete-where command
+	var deleteWhereCmd *Command
+	for _, cmd := range commands {
+		if cmd.Name == "delete-where" {
+			deleteWhereCmd = &cmd
+			break
+		}
+	}
+
+	if deleteWhereCmd == nil {
+		t.Fatal("delete-where command not found in generated commands")
+	}
+
+	// Verify command properties
+	if deleteWhereCmd.Method != "DeleteWhere" {
+		t.Errorf("Expected method 'DeleteWhere', got '%s'", deleteWhereCmd.Method)
+	}
+
+	if deleteWhereCmd.Category != CategoryBulk {
+		t.Errorf("Expected category 'CategoryBulk', got '%s'", deleteWhereCmd.Category.String())
+	}
+
+	// Verify it has the required WHERE argument
+	if len(deleteWhereCmd.Args) == 0 {
+		t.Error("Expected delete-where command to have at least one required argument")
+	}
+
+	// Convert to Cobra command and test
+	cobraCmd := deleteWhereCmd.ToCobraCommand(generator)
+
+	expectedUse := "delete-where <where>"
+	if cobraCmd.Use != expectedUse {
+		t.Errorf("Expected command use '%s', got '%s'", expectedUse, cobraCmd.Use)
+	}
+
+	// Test that --args flag is present
+	if cobraCmd.Flags().Lookup("args") == nil {
+		t.Error("Expected --args flag to be present in delete-where command")
+	}
+}
+
+// TestDeleteWhereDryRun tests the dry run functionality
+func TestDeleteWhereDryRun(t *testing.T) {
+	registry := NewEnhancedTypeRegistry()
+	executor := NewMethodExecutor(registry)
+
+	// Create a mock command
+	cmd := &Command{
+		Name:        "delete-where",
+		Method:      "DeleteWhere",
+		Description: "Delete documents matching WHERE clause",
+		Category:    CategoryBulk,
+		Args: []ArgSpec{
+			{Name: "where", Type: reflect.TypeOf(""), Description: "SQL WHERE clause", Required: true},
+		},
+	}
+
+	// Create a Cobra command with dry run flag
+	cobraCmd := &cobra.Command{
+		Use: "delete-where",
+	}
+	cobraCmd.Flags().Bool("x-dry-run", true, "Dry run flag")
+
+	// Create a context with a query
+	query := &Query{
+		Groups: []FilterGroup{
+			{
+				Conditions: []FilterCondition{
+					{Field: "status", Operator: "eq", Value: "archived"},
+				},
+			},
+		},
+	}
+	ctx := context.Background()
+	ctx = withQuery(ctx, query)
+	cobraCmd.SetContext(ctx)
+
+	// Test dry run output with WHERE clause argument
+	err := executor.showDryRunWithQuery(cmd, "Task", "test.db", []string{"created_at < ?"}, cobraCmd)
+	if err != nil {
+		t.Errorf("Dry run failed: %v", err)
+	}
+}
+
 // TestParseFilterFlags tests the parseFilterFlags helper function
 func TestParseFilterFlags(t *testing.T) {
 	registry := NewEnhancedTypeRegistry()

@@ -151,6 +151,29 @@ func (me *MethodExecutor) ExecuteCommand(cmd *Command, cobraCmd *cobra.Command, 
 
 		return me.outputResult(result, format)
 
+	case "delete-where":
+		// Get WHERE clause from arguments
+		if len(args) == 0 {
+			return fmt.Errorf("delete-where command requires a WHERE clause argument")
+		}
+		whereClause := args[0]
+
+		// Get WHERE clause arguments from flags
+		whereArgs, _ := cobraCmd.Flags().GetStringSlice("args")
+
+		// Convert WHERE args to []interface{}
+		interfaceArgs := make([]interface{}, len(whereArgs))
+		for i, arg := range whereArgs {
+			interfaceArgs[i] = arg
+		}
+
+		result, err := reflectionExec.ExecuteDeleteWhere(typeName, dbPath, whereClause, interfaceArgs)
+		if err != nil {
+			return fmt.Errorf("failed to execute delete-where: %w", err)
+		}
+
+		return me.outputResult(result, format)
+
 	default:
 		// For unimplemented commands, simulate for now
 		formatter := NewOutputFormatter(format)

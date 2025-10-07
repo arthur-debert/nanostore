@@ -450,6 +450,17 @@ func (re *ReflectionExecutor) ExecuteDeleteByDimension(typeName, dbPath string, 
 	return re.ExecuteMethod(typeName, "DeleteByDimension", args)
 }
 
+// ExecuteDeleteWhere executes DeleteWhere on the store
+func (re *ReflectionExecutor) ExecuteDeleteWhere(typeName, dbPath string, whereClause string, whereArgs []interface{}) (interface{}, error) {
+	// Log the delete operation
+	logQuery("delete-where", fmt.Sprintf("DELETE %s documents with WHERE: %s", typeName, whereClause), []interface{}{whereArgs})
+
+	// Use generic ExecuteMethod to call DeleteWhere
+	args := []interface{}{dbPath, whereClause}
+	args = append(args, whereArgs...)
+	return re.ExecuteMethod(typeName, "DeleteWhere", args)
+}
+
 // ExecuteDelete executes a Delete method
 func (re *ReflectionExecutor) ExecuteDelete(typeName, dbPath, id string, cascade bool) error {
 	// Log the delete operation
