@@ -174,6 +174,21 @@ func (me *MethodExecutor) ExecuteCommand(cmd *Command, cobraCmd *cobra.Command, 
 
 		return me.outputResult(result, format)
 
+	case "delete-by-uuids":
+		// Get UUID list from arguments
+		if len(args) == 0 {
+			return fmt.Errorf("delete-by-uuids command requires a UUID list argument")
+		}
+		uuidsStr := args[0]
+		uuids := strings.Split(uuidsStr, ",")
+
+		result, err := reflectionExec.ExecuteDeleteByUUIDs(typeName, dbPath, uuids)
+		if err != nil {
+			return fmt.Errorf("failed to execute delete-by-uuids: %w", err)
+		}
+
+		return me.outputResult(result, format)
+
 	default:
 		// For unimplemented commands, simulate for now
 		formatter := NewOutputFormatter(format)

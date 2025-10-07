@@ -533,6 +533,90 @@ func TestDeleteWhereDryRun(t *testing.T) {
 	}
 }
 
+// TestDeleteByUUIDsCommandStructure tests the command structure and flag handling
+func TestDeleteByUUIDsCommandStructure(t *testing.T) {
+	generator := NewCommandGenerator()
+	commands := generator.GenerateCommands()
+
+	// Find the delete-by-uuids command
+	var deleteByUUIDsCmd *Command
+	for _, cmd := range commands {
+		if cmd.Name == "delete-by-uuids" {
+			deleteByUUIDsCmd = &cmd
+			break
+		}
+	}
+
+	if deleteByUUIDsCmd == nil {
+		t.Fatal("delete-by-uuids command not found in generated commands")
+	}
+
+	// Verify command properties
+	if deleteByUUIDsCmd.Method != "DeleteByUUIDs" {
+		t.Errorf("Expected method 'DeleteByUUIDs', got '%s'", deleteByUUIDsCmd.Method)
+	}
+
+	if deleteByUUIDsCmd.Category != CategoryBulk {
+		t.Errorf("Expected category 'CategoryBulk', got '%s'", deleteByUUIDsCmd.Category.String())
+	}
+
+	// Verify it has the required UUIDs argument
+	if len(deleteByUUIDsCmd.Args) == 0 {
+		t.Error("Expected delete-by-uuids command to have at least one required argument")
+	}
+
+	// Convert to Cobra command and test
+	cobraCmd := deleteByUUIDsCmd.ToCobraCommand(generator)
+
+	expectedUse := "delete-by-uuids <uuids>"
+	if cobraCmd.Use != expectedUse {
+		t.Errorf("Expected command use '%s', got '%s'", expectedUse, cobraCmd.Use)
+	}
+}
+
+// TestDeleteByUUIDsDryRun tests the dry run functionality
+func TestDeleteByUUIDsDryRun(t *testing.T) {
+	registry := NewEnhancedTypeRegistry()
+	executor := NewMethodExecutor(registry)
+
+	// Create a mock command
+	cmd := &Command{
+		Name:        "delete-by-uuids",
+		Method:      "DeleteByUUIDs",
+		Description: "Delete documents by list of UUIDs",
+		Category:    CategoryBulk,
+		Args: []ArgSpec{
+			{Name: "uuids", Type: reflect.TypeOf([]string{}), Description: "Comma-separated UUIDs", Required: true},
+		},
+	}
+
+	// Create a Cobra command with dry run flag
+	cobraCmd := &cobra.Command{
+		Use: "delete-by-uuids",
+	}
+	cobraCmd.Flags().Bool("x-dry-run", true, "Dry run flag")
+
+	// Create a context with a query
+	query := &Query{
+		Groups: []FilterGroup{
+			{
+				Conditions: []FilterCondition{
+					{Field: "status", Operator: "eq", Value: "archived"},
+				},
+			},
+		},
+	}
+	ctx := context.Background()
+	ctx = withQuery(ctx, query)
+	cobraCmd.SetContext(ctx)
+
+	// Test dry run output with UUIDs argument
+	err := executor.showDryRunWithQuery(cmd, "Task", "test.db", []string{"uuid1,uuid2,uuid3"}, cobraCmd)
+	if err != nil {
+		t.Errorf("Dry run failed: %v", err)
+	}
+}
+
 // TestParseFilterFlags tests the parseFilterFlags helper function
 func TestParseFilterFlags(t *testing.T) {
 	registry := NewEnhancedTypeRegistry()

@@ -461,6 +461,16 @@ func (re *ReflectionExecutor) ExecuteDeleteWhere(typeName, dbPath string, whereC
 	return re.ExecuteMethod(typeName, "DeleteWhere", args)
 }
 
+// ExecuteDeleteByUUIDs executes DeleteByUUIDs on the store
+func (re *ReflectionExecutor) ExecuteDeleteByUUIDs(typeName, dbPath string, uuids []string) (interface{}, error) {
+	// Log the delete operation
+	logQuery("delete-by-uuids", fmt.Sprintf("DELETE %s documents with UUIDs: %v", typeName, uuids), nil)
+
+	// Use generic ExecuteMethod to call DeleteByUUIDs
+	args := []interface{}{dbPath, uuids}
+	return re.ExecuteMethod(typeName, "DeleteByUUIDs", args)
+}
+
 // ExecuteDelete executes a Delete method
 func (re *ReflectionExecutor) ExecuteDelete(typeName, dbPath, id string, cascade bool) error {
 	// Log the delete operation
