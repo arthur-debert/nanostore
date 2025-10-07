@@ -82,9 +82,8 @@ func (me *MethodExecutor) ExecuteCommand(cmd *Command, cobraCmd *cobra.Command, 
 		return me.outputResult(result, format)
 
 	case "update-by-dimension":
-		// Get filter flags for dimension matching
-		filterFlags, _ := cobraCmd.Flags().GetStringSlice("filter")
-		filters := me.parseFilterFlags(filterFlags)
+		// Use query for filter criteria (same as list command)
+		filters := me.queryToDimensionFilters(query)
 		// Use query conditions as update data
 		updateData := me.queryToDataMap(query)
 
@@ -96,25 +95,13 @@ func (me *MethodExecutor) ExecuteCommand(cmd *Command, cobraCmd *cobra.Command, 
 		return me.outputResult(result, format)
 
 	case "update-where":
-		// Get WHERE clause from arguments
-		if len(args) == 0 {
-			return fmt.Errorf("update-where command requires a WHERE clause argument")
-		}
-		whereClause := args[0]
-
-		// Get WHERE clause arguments from flags
-		whereArgs, _ := cobraCmd.Flags().GetStringSlice("args")
-
-		// Convert WHERE args to []interface{}
-		interfaceArgs := make([]interface{}, len(whereArgs))
-		for i, arg := range whereArgs {
-			interfaceArgs[i] = arg
-		}
+		// Use query for WHERE clause generation (same as list command)
+		whereClause, whereArgs := reflectionExec.BuildWhereFromQuery(query)
 
 		// Use query conditions as update data
 		updateData := me.queryToDataMap(query)
 
-		result, err := reflectionExec.ExecuteUpdateWhere(typeName, dbPath, whereClause, updateData, interfaceArgs)
+		result, err := reflectionExec.ExecuteUpdateWhere(typeName, dbPath, whereClause, updateData, whereArgs)
 		if err != nil {
 			return fmt.Errorf("failed to execute update-where: %w", err)
 		}
@@ -140,9 +127,8 @@ func (me *MethodExecutor) ExecuteCommand(cmd *Command, cobraCmd *cobra.Command, 
 		return me.outputResult(result, format)
 
 	case "delete-by-dimension":
-		// Get filter flags for dimension matching
-		filterFlags, _ := cobraCmd.Flags().GetStringSlice("filter")
-		filters := me.parseFilterFlags(filterFlags)
+		// Use query for filter criteria (same as list command)
+		filters := me.queryToDimensionFilters(query)
 
 		result, err := reflectionExec.ExecuteDeleteByDimension(typeName, dbPath, filters)
 		if err != nil {
@@ -152,22 +138,10 @@ func (me *MethodExecutor) ExecuteCommand(cmd *Command, cobraCmd *cobra.Command, 
 		return me.outputResult(result, format)
 
 	case "delete-where":
-		// Get WHERE clause from arguments
-		if len(args) == 0 {
-			return fmt.Errorf("delete-where command requires a WHERE clause argument")
-		}
-		whereClause := args[0]
+		// Use query for WHERE clause generation (same as list command)
+		whereClause, whereArgs := reflectionExec.BuildWhereFromQuery(query)
 
-		// Get WHERE clause arguments from flags
-		whereArgs, _ := cobraCmd.Flags().GetStringSlice("args")
-
-		// Convert WHERE args to []interface{}
-		interfaceArgs := make([]interface{}, len(whereArgs))
-		for i, arg := range whereArgs {
-			interfaceArgs[i] = arg
-		}
-
-		result, err := reflectionExec.ExecuteDeleteWhere(typeName, dbPath, whereClause, interfaceArgs)
+		result, err := reflectionExec.ExecuteDeleteWhere(typeName, dbPath, whereClause, whereArgs)
 		if err != nil {
 			return fmt.Errorf("failed to execute delete-where: %w", err)
 		}
@@ -295,17 +269,6 @@ func (me *MethodExecutor) queryToDimensionFilters(query *Query) map[string]inter
 		}
 	}
 
-	return filters
-}
-
-// parseFilterFlags converts CLI filter flags to dimension filters map
-func (me *MethodExecutor) parseFilterFlags(filterFlags []string) map[string]interface{} {
-	filters := make(map[string]interface{})
-	for _, filter := range filterFlags {
-		if parts := strings.SplitN(filter, "=", 2); len(parts) == 2 {
-			filters[parts[0]] = parts[1]
-		}
-	}
 	return filters
 }
 
