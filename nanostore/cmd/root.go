@@ -23,7 +23,7 @@ Examples:
   nano-db get --x-type=Task 1`,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 		// Initialize logging before any command runs
-		if err := initLogging(x_logLevel, x_logQueries); err != nil {
+		if err := initLogging(x_logLevel, x_logQueries, x_logResults); err != nil {
 			return fmt.Errorf("failed to initialize logging: %w", err)
 		}
 		return nil
@@ -40,6 +40,7 @@ var (
 	x_dryRun     bool
 	x_logLevel   string
 	x_logQueries bool
+	x_logResults bool
 )
 
 func init() {
@@ -52,6 +53,7 @@ func init() {
 	rootCmd.PersistentFlags().BoolVar(&x_dryRun, "x-dry-run", getEnvBool("NANOSTORE_DRY_RUN"), "Show what would happen without executing")
 	rootCmd.PersistentFlags().StringVar(&x_logLevel, "x-log-level", getEnvOrDefault("NANOSTORE_LOG_LEVEL", "warn"), "Log level (debug|info|warn|error)")
 	rootCmd.PersistentFlags().BoolVar(&x_logQueries, "x-log-queries", getEnvBool("NANOSTORE_LOG_QUERIES"), "Log SQL queries to stdout")
+	rootCmd.PersistentFlags().BoolVar(&x_logResults, "x-log-results", getEnvBool("NANOSTORE_LOG_RESULTS"), "Log query results to stdout")
 
 	// Generate and add all API commands
 	generator := NewCommandGenerator()

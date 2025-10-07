@@ -14,6 +14,7 @@ var (
 	// Global loggers
 	mainLogger    *slog.Logger
 	queriesLogger *slog.Logger
+	resultsLogger *slog.Logger
 
 	// Log level mapping
 	logLevelMap = map[string]slog.Level{
@@ -25,7 +26,7 @@ var (
 )
 
 // initLogging initializes the logging system with file and optional stdout handlers
-func initLogging(logLevel string, logQueries bool) error {
+func initLogging(logLevel string, logQueries bool, logResults bool) error {
 	// Parse log level
 	level, ok := logLevelMap[strings.ToLower(logLevel)]
 	if !ok {
@@ -80,11 +81,38 @@ func initLogging(logLevel string, logQueries bool) error {
 
 	queriesLogger = slog.New(queriesHandler).With("logger", "queries")
 
+	// Create results logger (for logging operation results)
+	resultsLogPath := filepath.Join(logDir, "nano-db-results.log")
+	resultsLogFile, err := os.OpenFile(resultsLogPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	if err != nil {
+		return fmt.Errorf("failed to open results log file: %w", err)
+	}
+
+	// Base handler for results is always the file
+	var resultsHandler slog.Handler = slog.NewJSONHandler(resultsLogFile, &slog.HandlerOptions{
+		Level: slog.LevelInfo, // Always log results at INFO level
+	})
+
+	// If logResults is true, also log to stdout
+	if logResults {
+		// Create a multi-handler that logs to both file and stdout
+		stdoutHandler := slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+			Level: slog.LevelInfo,
+		})
+		resultsHandler = &multiHandler{
+			handlers: []slog.Handler{resultsHandler, stdoutHandler},
+		}
+	}
+
+	resultsLogger = slog.New(resultsHandler).With("logger", "results")
+
 	mainLogger.Debug("logging initialized",
 		"level", level.String(),
 		"log_file", logPath,
 		"queries_file", queriesLogPath,
-		"log_queries_stdout", logQueries)
+		"results_file", resultsLogPath,
+		"log_queries_stdout", logQueries,
+		"log_results_stdout", logResults)
 
 	return nil
 }
@@ -151,12 +179,23 @@ func (h *multiHandler) WithGroup(name string) slog.Handler {
 	return &multiHandler{handlers: newHandlers}
 }
 
-// logQuery logs a generated SQL query
-func logQuery(operation string, query string, args []interface{}) {
+// logSQLQuery logs an actual SQL query sent to the database
+func logSQLQuery(operation string, sql string, args []interface{}) {
 	if queriesLogger != nil {
-		queriesLogger.Info("query",
+		queriesLogger.Info("sql_query",
 			"operation", operation,
-			"sql", query,
+			"sql", sql,
+			"args", args,
+		)
+	}
+}
+
+// logOperation logs an operation result (what was previously logged by logQuery)
+func logOperation(operation string, description string, args []interface{}) {
+	if resultsLogger != nil {
+		resultsLogger.Info("operation",
+			"operation", operation,
+			"description", description,
 			"args", args,
 		)
 	}
