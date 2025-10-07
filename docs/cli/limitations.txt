@@ -2,178 +2,157 @@ CLI Bulk Operations Limitations
 
 1. Overview
 
-    The bulk operations in the nanostore CLI provide efficient ways to update
-    and delete multiple documents at once. However, there are several important
-    limitations that users should be aware of when using these operations.
+    The CLI bulk operations provide a command-line interface to the nanostore
+    bulk API methods. This document focuses specifically on limitations that
+    are unique to the CLI implementation, not on general API limitations.
 
-2. Dimension Filtering Limitations
+2. CLI-Specific Syntax Limitations
 
-2.1 Equality-Only Filtering for Dimension Operations
+2.1 No Direct API Method Access
 
-    The update-by-dimension and delete-by-dimension commands only support
-    equality-based filtering. This means:
+    The CLI does not expose all bulk API methods directly:
 
-    - Only "eq" operators are processed for dimension filtering
-    - Other operators (gt, lt, gte, lte, contains, etc.) are ignored
-    - This is because the nanostore API's dimension filtering only supports
-      equality matching
+    - update-by-dimension: Uses queryToDimensionFilters() which only processes "eq" operators
+    - update-where: Uses BuildWhereFromQuery() instead of raw SQL WHERE clauses
+    - delete-by-dimension: Uses queryToDimensionFilters() which only processes "eq" operators
+    - delete-where: Uses BuildWhereFromQuery() instead of raw SQL WHERE clauses
 
-    Workaround:
-    Use update-where or delete-where commands for complex filtering with
-    multiple operators. These commands generate SQL WHERE clauses that
-    support all comparison operators.
+    The API supports more flexible parameter passing, while the CLI constrains
+    parameters through the query parsing system.
 
-2.2 Mixed Filter and Update Data
+2.2 Limited Parameter Flexibility
 
-    The update-by-dimension command uses the same query flags for both
-    filtering criteria and update data. This creates a limitation:
+    CLI bulk operations cannot pass parameters in the same flexible way as the API:
 
-    - Cannot distinguish between filter criteria and update data in the same
-      command when using the same field
-    - Example: --status=pending --status=completed is ambiguous
-    - The same field cannot be used for both matching and updating
+    - All filtering must go through the query parsing system (parseFilters)
+    - Cannot pass complex objects or arrays directly as parameters
+    - Cannot use raw SQL WHERE clauses (must use query syntax)
+    - Cannot pass arbitrary dimension filter maps
 
-    Workaround:
-    Use separate commands or use update-where for complex scenarios where
-    the same field needs different values for filtering and updating.
+    The API allows direct parameter passing while the CLI requires conversion
+    through the query system.
 
-3. CLI Syntax Limitations
+2.3 Mixed Filter and Update Data
 
-3.1 No Raw SQL Support
+    The update-by-dimension CLI command has a limitation not present in the API:
 
-    The CLI does not support raw SQL WHERE clauses directly. All filtering
-    must go through the query parsing system:
+    - CLI uses the same query flags for both filtering criteria and update data
+    - Cannot distinguish between filter criteria and update data when using
+      the same field name
+    - Example: --status=pending --status=completed is ambiguous in CLI
 
-    - No direct SQL injection of WHERE clauses
-    - All conditions must use the --field=value or --field__operator=value syntax
-    - Logical operators (AND, OR) must use --and and --or flags
+    The API separates these concerns with distinct parameters (filters vs data).
+
+3. CLI Command Structure Limitations
+
+3.1 No Direct Method Invocation
+
+    The CLI cannot directly invoke bulk API methods with arbitrary parameters:
+
+    - Cannot pass custom filter maps (must use query syntax)
+    - Cannot pass complex WHERE clauses (must use query operators)
+    - Cannot pass typed data objects (must use flag-based data)
+
+    The API allows direct method calls with any valid parameters.
 
 3.2 Limited Argument Support
 
-    The bulk operations have limited support for command arguments:
+    CLI bulk operations have restricted argument handling:
 
     - Only update-by-uuids and delete-by-uuids accept arguments (UUID lists)
     - update-where and delete-where no longer accept WHERE clause arguments
-    - All filtering must be done through query flags
+    - Cannot pass arbitrary arguments to bulk operations
 
-4. Performance Limitations
+    The API accepts any valid arguments for each method.
 
-4.1 In-Memory Operations
+4. Query System Constraints
 
-    All bulk operations load the entire dataset into memory:
+4.1 Forced Query Parsing
 
-    - Memory usage scales linearly with document count
-    - Large datasets may cause memory pressure
-    - Operations are atomic but require full dataset serialization
+    All CLI bulk operations must go through the query parsing system:
 
-4.2 No Batch Size Control
+    - Cannot bypass parseFilters() for custom filtering
+    - Cannot use raw SQL conditions (must use --field__operator=value syntax)
+    - Cannot pass pre-built filter maps or WHERE clauses
 
-    Bulk operations process all matching documents in a single transaction:
+    The API allows direct parameter passing without query system constraints.
 
-    - No pagination or batch size limits
-    - Cannot split large operations into smaller chunks
-    - Risk of timeout or memory issues with very large datasets
+4.2 Limited Operator Support in Dimension Operations
 
-5. Error Handling Limitations
+    CLI dimension-based operations are constrained by queryToDimensionFilters():
 
-5.1 All-or-Nothing Semantics
+    - Only processes "eq" operators for dimension filtering
+    - Ignores other operators (gt, lt, contains, etc.) in dimension operations
+    - Forces use of update-where/delete-where for complex filtering
 
-    Bulk operations use atomic transactions:
+    The API's dimension filtering may support more operators directly.
 
-    - If any document fails, the entire operation is rolled back
-    - No partial success scenarios
-    - Difficult to identify which specific documents caused failures
+5. CLI-Specific Error Handling
 
-5.2 Limited Error Reporting
+5.1 Limited Parameter Validation
 
-    Error messages may not provide detailed information about:
+    CLI parameter validation is constrained by the query system:
 
-    - Which specific documents failed
-    - What caused individual document failures
-    - How many documents were processed before failure
+    - Cannot validate complex parameter combinations before API calls
+    - Limited ability to provide specific error messages for parameter issues
+    - Cannot pre-validate WHERE clause syntax
 
-6. Type Safety Limitations
+    The API can validate parameters directly without CLI constraints.
 
-6.1 Runtime Type Validation
+5.2 Reduced Error Context
 
-    Bulk operations perform type validation at runtime:
+    CLI error messages may lack context available to direct API users:
 
-    - No compile-time validation of field types
-    - Invalid field values may cause runtime errors
-    - Dimension value validation occurs during execution
+    - Cannot provide detailed parameter validation errors
+    - Limited ability to show which specific CLI flags caused issues
+    - Cannot provide API-specific error context
 
-6.2 Limited Type Coercion
+6. CLI Testing and Debugging Limitations
 
-    The CLI has limited type coercion capabilities:
+6.1 Limited Dry-Run Information
 
-    - String values are used for all field updates
-    - No automatic conversion between types
-    - Complex types (arrays, objects) must be properly formatted
+    The CLI dry-run shows basic operation info but cannot show:
 
-7. Concurrency Limitations
+    - Which specific documents would be affected (requires API execution)
+    - Detailed parameter validation results
+    - Complete WHERE clause generation details
 
-7.1 File Locking
+    Direct API usage allows more detailed operation preview.
 
-    Bulk operations use the same file locking mechanism as other operations:
+6.2 No Direct API Access for Testing
 
-    - Exclusive locks during write operations
-    - Potential for lock contention with multiple processes
-    - No support for concurrent bulk operations
+    CLI users cannot easily test bulk operations with direct API calls:
 
-7.2 No Transaction Isolation
+    - Cannot bypass CLI limitations for testing
+    - Cannot use API-specific features not exposed in CLI
+    - Cannot validate operations using alternative parameter formats
 
-    Bulk operations do not provide transaction isolation:
+7. Future CLI Improvements
 
-    - Other operations may see partial results during execution
-    - No snapshot isolation for bulk operations
-    - Concurrent reads may see inconsistent state
+7.1 Potential CLI Enhancements
 
-8. Testing and Debugging Limitations
+    Future CLI versions could address these limitations:
 
-8.1 Limited Dry-Run Information
+    - Direct API method invocation with --api-mode flag
+    - Support for raw SQL WHERE clauses with --raw-sql flag
+    - Enhanced parameter passing for complex scenarios
+    - Better separation of filter and update data in commands
 
-    The --x-dry-run flag shows basic operation information but:
+7.2 Alternative CLI Approaches
 
-    - Does not show which specific documents would be affected
-    - Does not validate field values or types
-    - Does not show the complete WHERE clause for where operations
+    For scenarios where CLI limitations are restrictive:
 
-8.2 No Operation Logging
-
-    Bulk operations do not provide detailed operation logs:
-
-    - No audit trail of which documents were modified
-    - No before/after values logging
-    - Limited debugging information for failed operations
-
-9. Future Considerations
-
-9.1 Potential Improvements
-
-    Future versions may address these limitations:
-
-    - Support for batch size limits
-    - Better error reporting with specific document information
-    - Enhanced dry-run capabilities with detailed previews
-    - Support for concurrent bulk operations
-    - Partial success scenarios with detailed failure reporting
-
-9.2 Alternative Approaches
-
-    For scenarios where bulk operations are insufficient:
-
-    - Use individual update/delete commands with scripting
-    - Implement custom bulk operations using the API directly
-    - Use database-level operations for very large datasets
-    - Consider data migration tools for complex transformations
+    - Use scripting to call the API directly
+    - Implement custom CLI extensions
+    - Use the API programmatically for complex operations
+    - Combine CLI operations with API calls
 
 Conclusion
 
-    The bulk operations provide significant value for common use cases but
-    have important limitations that users should understand. These limitations
-    are primarily due to the underlying architecture choices that prioritize
-    simplicity and consistency over advanced features.
+    The CLI bulk operations provide a convenient interface to the nanostore
+    bulk API but are constrained by the command-line interface paradigm.
+    These limitations are specific to the CLI implementation and do not
+    reflect limitations of the underlying API.
 
-    Users should carefully consider these limitations when designing workflows
-    that rely heavily on bulk operations, especially for large datasets or
-    complex filtering scenarios.
+    Users who need the full flexibility of the bulk API should consider
+    using the API directly or extending the CLI with custom functionality.
