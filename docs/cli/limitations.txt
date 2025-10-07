@@ -32,16 +32,18 @@ CLI Bulk Operations Limitations
     The API allows direct parameter passing while the CLI requires conversion
     through the query system.
 
-2.3 Mixed Filter and Update Data
+2.3 --update Operator Requirement
 
-    The update-by-dimension CLI command has a limitation not present in the API:
+    All bulk update operations in the CLI require the --update operator to separate
+    filter criteria from update data:
 
-    - CLI uses the same query flags for both filtering criteria and update data
-    - Cannot distinguish between filter criteria and update data when using
-      the same field name
-    - Example: --status=pending --status=completed is ambiguous in CLI
+    - update-by-dimension, update-where, and update-by-uuids require --update
+    - Everything before --update: filter criteria (what to find)
+    - Everything after --update: update data (what to change)
+    - Example: --status=pending --update --status=completed
 
-    The API separates these concerns with distinct parameters (filters vs data).
+    The API accepts separate parameters for filters and update data, while the CLI
+    requires this explicit separation using the --update operator.
 
 3. CLI Command Structure Limitations
 
@@ -147,12 +149,22 @@ CLI Bulk Operations Limitations
     - Use the API programmatically for complex operations
     - Combine CLI operations with API calls
 
+Recent Improvements
+
+    The CLI bulk operations have been significantly improved with the introduction
+    of the --update operator:
+
+    - Solves ambiguity: Clear separation between filter criteria and update data
+    - Maintains consistency: Works exactly like existing --and/--or operators
+    - Intuitive usage: Natural mental model of "find X, then update to Y"
+    - Enables complex scenarios: Supports sophisticated filtering with multiple updates
+
 Conclusion
 
     The CLI bulk operations provide a convenient interface to the nanostore
-    bulk API but are constrained by the command-line interface paradigm.
-    These limitations are specific to the CLI implementation and do not
-    reflect limitations of the underlying API.
+    bulk API. While there are still some limitations compared to direct API usage,
+    the recent --update operator improvements have addressed the most significant
+    usability issues.
 
     Users who need the full flexibility of the bulk API should consider
     using the API directly or extending the CLI with custom functionality.
