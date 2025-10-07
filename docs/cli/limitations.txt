@@ -41,6 +41,7 @@ CLI Bulk Operations Limitations
     - Everything before --update: filter criteria (what to find)
     - Everything after --update: update data (what to change)
     - Example: --status=pending --update --status=completed
+    - Empty update data is not allowed (validation prevents this)
 
     The API accepts separate parameters for filters and update data, while the CLI
     requires this explicit separation using the --update operator.
@@ -96,18 +97,18 @@ CLI Bulk Operations Limitations
     CLI parameter validation is constrained by the query system:
 
     - Cannot validate complex parameter combinations before API calls
-    - Limited ability to provide specific error messages for parameter issues
     - Cannot pre-validate WHERE clause syntax
+    - Limited ability to provide API-specific error context
 
     The API can validate parameters directly without CLI constraints.
 
-5.2 Reduced Error Context
+5.2 Improved Error Messages
 
-    CLI error messages may lack context available to direct API users:
+    The CLI now provides better error messages for common issues:
 
-    - Cannot provide detailed parameter validation errors
-    - Limited ability to show which specific CLI flags caused issues
-    - Cannot provide API-specific error context
+    - Clear guidance when --update operator is missing
+    - Helpful examples when update data is empty
+    - User-friendly error messages with usage examples
 
 6. CLI Testing and Debugging Limitations
 
@@ -133,12 +134,12 @@ CLI Bulk Operations Limitations
 
 7.1 Potential CLI Enhancements
 
-    Future CLI versions could address these limitations:
+    Future CLI versions could address remaining limitations:
 
     - Direct API method invocation with --api-mode flag
     - Support for raw SQL WHERE clauses with --raw-sql flag
     - Enhanced parameter passing for complex scenarios
-    - Better separation of filter and update data in commands
+    - Support for more operators in dimension-based operations
 
 7.2 Alternative CLI Approaches
 
@@ -151,20 +152,22 @@ CLI Bulk Operations Limitations
 
 Recent Improvements
 
-    The CLI bulk operations have been significantly improved with the introduction
-    of the --update operator:
+    The CLI bulk operations have been significantly improved:
 
-    - Solves ambiguity: Clear separation between filter criteria and update data
-    - Maintains consistency: Works exactly like existing --and/--or operators
+    - --update operator: Clear separation between filter criteria and update data
+    - Validation: Prevents empty update data and provides helpful error messages
+    - Performance: Optimized dimension filtering for delete operations
+    - Consistency: Works exactly like existing --and/--or operators
     - Intuitive usage: Natural mental model of "find X, then update to Y"
-    - Enables complex scenarios: Supports sophisticated filtering with multiple updates
+    - Complex scenarios: Supports sophisticated filtering with multiple updates
 
 Conclusion
 
     The CLI bulk operations provide a convenient interface to the nanostore
-    bulk API. While there are still some limitations compared to direct API usage,
-    the recent --update operator improvements have addressed the most significant
-    usability issues.
+    bulk API. The recent improvements have addressed the most significant
+    usability issues while maintaining consistency with the existing query system.
 
+    The remaining limitations are primarily related to the CLI's constraint of
+    using the query parsing system rather than direct API parameter passing.
     Users who need the full flexibility of the bulk API should consider
     using the API directly or extending the CLI with custom functionality.
