@@ -7,6 +7,8 @@ source "$(dirname "$0")/example_base.sh"
 echo "=== Example 1: Basic CRUD Operations and Queries ==="
 echo
 
+export NANOSTORE_LOG_RESULTS=true
+export NANOSTORE_LOG_QUERIES=true
 # Create notes
 run_query "Creating a personal note" \
     $NANO_DB create \

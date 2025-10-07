@@ -238,6 +238,9 @@ func (re *ReflectionExecutor) ExecuteCreate(typeName, dbPath, title string, data
 	// Log the create operation
 	logOperation("create", fmt.Sprintf("CREATE %s document with title: %s", typeName, title), []interface{}{data})
 
+	// Log the SQL query that would be generated (placeholder for now)
+	logSQLQuery("create", "INSERT INTO documents (title, ...) VALUES (?, ...)", []interface{}{title, data})
+
 	switch typeName {
 	case "Task":
 		store, err := re.createTaskStore(dbPath)
@@ -272,6 +275,12 @@ func (re *ReflectionExecutor) ExecuteCreate(typeName, dbPath, title string, data
 
 // ExecuteGet executes a Get method
 func (re *ReflectionExecutor) ExecuteGet(typeName, dbPath, id string) (interface{}, error) {
+	// Log the get operation
+	logOperation("get", fmt.Sprintf("GET %s document with id: %s", typeName, id), nil)
+
+	// Log the SQL query that would be generated (placeholder for now)
+	logSQLQuery("get", "SELECT * FROM documents WHERE id = ?", []interface{}{id})
+
 	switch typeName {
 	case "Task":
 		store, err := re.createTaskStore(dbPath)
@@ -378,6 +387,9 @@ func (re *ReflectionExecutor) ExecuteGetMetadata(typeName, dbPath, id string) (i
 func (re *ReflectionExecutor) ExecuteUpdate(typeName, dbPath, id string, data map[string]interface{}) (interface{}, error) {
 	// Log the update operation
 	logOperation("update", fmt.Sprintf("UPDATE %s document with id: %s", typeName, id), []interface{}{data})
+
+	// Log the SQL query that would be generated (placeholder for now)
+	logSQLQuery("update", "UPDATE documents SET ... WHERE id = ?", []interface{}{id, data})
 
 	switch typeName {
 	case "Task":
@@ -493,6 +505,9 @@ func (re *ReflectionExecutor) ExecuteDeleteByUUIDs(typeName, dbPath string, uuid
 func (re *ReflectionExecutor) ExecuteDelete(typeName, dbPath, id string, cascade bool) error {
 	// Log the delete operation
 	logOperation("delete", fmt.Sprintf("DELETE %s document with id: %s (cascade: %v)", typeName, id, cascade), nil)
+
+	// Log the SQL query that would be generated (placeholder for now)
+	logSQLQuery("delete", "DELETE FROM documents WHERE id = ?", []interface{}{id})
 
 	switch typeName {
 	case "Task":

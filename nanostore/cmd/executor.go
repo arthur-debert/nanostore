@@ -173,6 +173,67 @@ func (me *MethodExecutor) ExecuteCommand(cmd *Command, cobraCmd *cobra.Command, 
 
 		return me.outputResult(result, format)
 
+	case "get":
+		if len(args) == 0 {
+			return fmt.Errorf("get command requires an ID argument")
+		}
+		id := args[0]
+
+		result, err := reflectionExec.ExecuteGet(typeName, dbPath, id)
+		if err != nil {
+			return fmt.Errorf("failed to execute get: %w", err)
+		}
+
+		return me.outputResult(result, format)
+
+	case "update":
+		if len(args) == 0 {
+			return fmt.Errorf("update command requires an ID argument")
+		}
+		id := args[0]
+
+		// Convert query conditions to data map for update
+		updateData := me.queryToDataMap(query)
+
+		result, err := reflectionExec.ExecuteUpdate(typeName, dbPath, id, updateData)
+		if err != nil {
+			return fmt.Errorf("failed to execute update: %w", err)
+		}
+
+		return me.outputResult(result, format)
+
+	case "delete":
+		if len(args) == 0 {
+			return fmt.Errorf("delete command requires an ID argument")
+		}
+		id := args[0]
+		cascade, _ := cobraCmd.Flags().GetBool("cascade")
+
+		err := reflectionExec.ExecuteDelete(typeName, dbPath, id, cascade)
+		if err != nil {
+			return fmt.Errorf("failed to execute delete: %w", err)
+		}
+
+		// Delete operations return success message
+		result := map[string]interface{}{
+			"message":    "Document deleted successfully",
+			"deleted_id": id,
+			"cascade":    cascade,
+		}
+
+		return me.outputResult(result, format)
+
+	case "stats":
+		// Log the SQL query that would be generated (placeholder for now)
+		logSQLQuery("stats", "SELECT COUNT(*), ... FROM documents", []interface{}{dbPath})
+
+		result, err := reflectionExec.ExecuteMethod(typeName, "GetStoreStats", []interface{}{dbPath})
+		if err != nil {
+			return fmt.Errorf("failed to execute stats: %w", err)
+		}
+
+		return me.outputResult(result, format)
+
 	default:
 		// For unimplemented commands, simulate for now
 		formatter := NewOutputFormatter(format)
