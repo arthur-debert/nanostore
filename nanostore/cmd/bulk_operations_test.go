@@ -10,16 +10,54 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// TestUpdateByDimensionCLIParsing tests the CLI parsing for update-by-dimension command
-func TestUpdateByDimensionCLIParsing(t *testing.T) {
+// Test helpers to reduce code duplication
+
+// createTestRegistryAndExecutor creates a registry and executor for testing
+func createTestRegistryAndExecutor() (*EnhancedTypeRegistry, *MethodExecutor) {
 	registry := NewEnhancedTypeRegistry()
 	executor := NewMethodExecutor(registry)
+	return registry, executor
+}
+
+// createTestQuery creates a test query from filter arguments
+func createTestQuery(filterArgs []string) *Query {
+	return parseFilters(filterArgs)
+}
+
+// createTestCobraCommand creates a test Cobra command with dry run flag
+func createTestCobraCommand(commandName string) *cobra.Command {
+	cmd := &cobra.Command{
+		Use: commandName,
+	}
+	cmd.Flags().Bool("x-dry-run", true, "Dry run flag")
+	return cmd
+}
+
+// createTestContext creates a test context with a query
+func createTestContext(query *Query) context.Context {
+	ctx := context.Background()
+	return withQuery(ctx, query)
+}
+
+// createTestCommand creates a test command definition
+func createTestCommand(name, method, description string, category CommandCategory) *Command {
+	return &Command{
+		Name:        name,
+		Method:      method,
+		Description: description,
+		Category:    category,
+	}
+}
+
+// TestUpdateByDimensionCLIParsing tests the CLI parsing for update-by-dimension command
+func TestUpdateByDimensionCLIParsing(t *testing.T) {
+	_, executor := createTestRegistryAndExecutor()
 
 	// Test the query parsing for both filter criteria and update data
 	t.Run("query parsing for filter and update data", func(t *testing.T) {
 		// Simulate what would be parsed as filter args
 		filterArgs := []string{"--status=pending", "--priority=high"}
-		query := parseFilters(filterArgs)
+		query := createTestQuery(filterArgs)
 
 		expectedQuery := &Query{
 			Groups: []FilterGroup{
@@ -106,22 +144,13 @@ func TestUpdateByDimensionCommandStructure(t *testing.T) {
 
 // TestUpdateByDimensionDryRun tests the dry run functionality
 func TestUpdateByDimensionDryRun(t *testing.T) {
-	registry := NewEnhancedTypeRegistry()
-	executor := NewMethodExecutor(registry)
+	_, executor := createTestRegistryAndExecutor()
 
 	// Create a mock command
-	cmd := &Command{
-		Name:        "update-by-dimension",
-		Method:      "UpdateByDimension",
-		Description: "Update documents matching dimension filters",
-		Category:    CategoryBulk,
-	}
+	cmd := createTestCommand("update-by-dimension", "UpdateByDimension", "Update documents matching dimension filters", CategoryBulk)
 
 	// Create a Cobra command with dry run flag
-	cobraCmd := &cobra.Command{
-		Use: "update-by-dimension",
-	}
-	cobraCmd.Flags().Bool("x-dry-run", true, "Dry run flag")
+	cobraCmd := createTestCobraCommand("update-by-dimension")
 
 	// Create a context with a query
 	query := &Query{
@@ -133,8 +162,7 @@ func TestUpdateByDimensionDryRun(t *testing.T) {
 			},
 		},
 	}
-	ctx := context.Background()
-	ctx = withQuery(ctx, query)
+	ctx := createTestContext(query)
 	cobraCmd.SetContext(ctx)
 
 	// Test dry run output
@@ -148,7 +176,7 @@ func TestUpdateByDimensionDryRun(t *testing.T) {
 func TestUpdateByDimensionContextHandling(t *testing.T) {
 	// Test the context creation and retrieval (simulating what happens in main())
 	filterArgs := []string{"--status=pending", "--priority=high"}
-	query := parseFilters(filterArgs)
+	query := createTestQuery(filterArgs)
 
 	expectedQuery := &Query{
 		Groups: []FilterGroup{
@@ -167,8 +195,7 @@ func TestUpdateByDimensionContextHandling(t *testing.T) {
 	}
 
 	// Test context creation (simulating what happens in main())
-	ctx := context.Background()
-	ctx = withQuery(ctx, query)
+	ctx := createTestContext(query)
 
 	// Verify context retrieval
 	retrievedQuery, ok := fromContext(ctx)
